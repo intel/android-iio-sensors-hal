@@ -32,11 +32,9 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 
 /* We equate sensor handles to indices in these tables */
 
-struct sensor_t      sensor_desc[MAX_SENSORS]; /* Android-level descriptors */
-struct sensor_info_t sensor_info[MAX_SENSORS]; /* Internal descriptors      */
-
-int sensors_per_device[MAX_DEVICES];	/* Sensors can share a iio device  */
-int sensor_count;			/* Detected sensors */
+struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
+struct sensor_info_t sensor_info[MAX_SENSORS];	/* Internal descriptors      */
+int sensor_count;				/* Detected sensors 	     */
 
 
 static void add_sensor (int dev_num, int catalog_index, int use_polling)
@@ -107,8 +105,6 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	}
 
 	sensor_count++;
-
-	sensors_per_device[dev_num]++;
 }
 
 

@@ -110,6 +110,5 @@ struct sensor_info_t
 extern int				sensor_count;
 extern struct sensor_info_t		sensor_info[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
-extern int				sensors_per_device[MAX_DEVICES];
 
 #endif
