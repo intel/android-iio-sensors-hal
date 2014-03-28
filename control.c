@@ -476,7 +476,7 @@ static float acquire_immediate_value(int s, int c)
 	if (ret == -1)
 		return 0;
 
-	return val;
+	return (val + offset) * scale;
 }
 
 

@@ -83,6 +83,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sprintf(sysfs_path, COMMON_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale))
                 sensor_info[s].scale = scale;
+        else
+                sensor_info[s].scale = 1;
 
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
