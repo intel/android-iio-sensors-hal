@@ -19,10 +19,12 @@ char* sensor_get_name (int s)
 	if (sensor_info[s].friendly_name[0] == '\0') {
 
 		/* If we got a iio device name from sysfs, use it */
-		if (sensor_info[s].internal_name[0])
-			sprintf(sensor_info[s].friendly_name, "S%d-%s", s,
-				sensor_info[s].internal_name);
-		else
+		if (sensor_info[s].internal_name[0]) {
+			snprintf(sensor_info[s].friendly_name,
+				 MAX_NAME_SIZE, "S%d-%s", s,
+				 sensor_info[s].internal_name);
+			sensor_info[s].friendly_name[MAX_NAME_SIZE-1] = '\0';
+		} else
 			sprintf(sensor_info[s].friendly_name, "S%d", s);
 	}
 
