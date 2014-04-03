@@ -345,15 +345,16 @@ int sensor_activate(int s, int enabled)
 			sprintf(device_name, DEV_FILE_PATH, dev_num);
 			dev_fd = open(device_name, O_RDONLY | O_NONBLOCK);
 
+			device_fd[dev_num] = dev_fd;
+
 			if (dev_fd == -1) {
 				ALOGE("Could not open fd on %s (%s)\n",
 				      device_name, strerror(errno));
+				adjust_counters(s, 0);
 				return -1;
 			}
 
 			ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
-
-			device_fd[dev_num] = dev_fd;
 			break;
 
 		default:
