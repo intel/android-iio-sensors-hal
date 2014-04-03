@@ -623,9 +623,11 @@ return_first_available_sensor_report:
 			integrate_device_report(ev[i].data.u32);
 
 	/* It's a good time to invalidate poll-mode sensor values */
-	for (s=0; s<sensor_count; s++)
-		if (!sensor_info[s].num_channels && sensor_info[s].enable_count)
-			sensor_info[s].report_pending = 1;
+	if (active_poll_sensors)
+		for (s=0; s<sensor_count; s++)
+			if (sensor_info[s].enable_count &&
+				!sensor_info[s].num_channels)
+					sensor_info[s].report_pending = 1;
 
 	goto return_first_available_sensor_report;
 }
