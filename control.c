@@ -4,6 +4,7 @@
 
 #include <fcntl.h>
 #include <sys/epoll.h>
+#include <sys/socket.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "control.h"
@@ -19,13 +20,17 @@ static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
 
 static int poll_fd; /* epoll instance covering all enabled sensors */
 
+static int poll_socket_pair[2];	/* used to unblock the poll loop */
+
 /* Timestamp for the moment when we last exited a poll operation */
 static int64_t last_poll_exit_ts;
+
+static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
 /* Cap the time between poll operations to this, to counter runaway polls */
 #define POLL_MIN_INTERVAL 10000 /* uS */
 
-static int active_poll_sensors; /* Number of enabled poll-mode sensors */
+#define INVALID_DEV_NUM ((uint32_t) -1)
 
 
 static int enable_buffer(int dev_num, int enabled)
@@ -374,6 +379,9 @@ int sensor_activate(int s, int enabled)
 		}
 	}
 
+	/* Release the polling loop so an updated timeout gets used */
+	write(poll_socket_pair[1], "", 1);
+
 	return 0;
 }
 
@@ -569,6 +577,14 @@ static int get_poll_time (void)
 }
 
 
+static void acknowledge_release (void)
+{
+	/* A write to our socket circuit was performed to release epoll */
+	char buf;
+	read(poll_socket_pair[0], &buf, 1);
+}
+
+
 int sensor_poll(struct sensors_event_t* data, int count)
 {
 	int s;
@@ -614,9 +630,14 @@ await_event:
 
 	/* For each of the devices for which a report is available */
 	for (i=0; i<nfds; i++)
-		if (ev[i].events == EPOLLIN)
-			/* Read report */
-			integrate_device_report(ev[i].data.u32);
+		if (ev[i].events == EPOLLIN) {
+			if (ev[i].data.u32 == INVALID_DEV_NUM) {
+				acknowledge_release();
+				goto await_event;
+			} else
+				/* Read report */
+				integrate_device_report(ev[i].data.u32);
+		}
 
 	/* It's a good time to invalidate poll-mode sensor values */
 	if (active_poll_sensors)
@@ -659,6 +680,10 @@ int sensor_set_delay(int s, int64_t ns)
 	}
 
 	sensor_info[s].sampling_rate = new_sampling_rate;
+
+	/* Release the polling loop so an updated timeout value gets used */
+	write(poll_socket_pair[1], "", 1);
+
 	return 0;
 }
 
@@ -666,6 +691,7 @@ int sensor_set_delay(int s, int64_t ns)
 int allocate_control_data (void)
 {
 	int i;
+	struct epoll_event ev = {0};
 
 	for (i=0; i<MAX_DEVICES; i++)
 		device_fd[i] = -1;
@@ -674,7 +700,21 @@ int allocate_control_data (void)
 
 	if (poll_fd == -1) {
 		ALOGE("Can't create epoll instance for iio sensors!\n");
+		return -1;
 	}
+
+	/* Create and add "unblocking" fd to the set of watched fds */
+
+	if (socketpair(AF_UNIX, SOCK_STREAM, 0, poll_socket_pair) == -1) {
+		ALOGE("Can't create socket pair for iio sensors!\n");
+		close(poll_fd);
+		return -1;
+	}
+
+	ev.events = EPOLLIN;
+	ev.data.u32 = INVALID_DEV_NUM;
+
+	epoll_ctl(poll_fd, EPOLL_CTL_ADD, poll_socket_pair[0], &ev);
 
 	return poll_fd;
 }
