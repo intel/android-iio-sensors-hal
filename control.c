@@ -147,6 +147,11 @@ static void refresh_sensor_report_maps(int dev_num)
 					continue;
 				}
 
+			if (ch_index >= MAX_SENSORS) {
+				ALOGE("Index out of bounds!: %s\n", sysfs_path);
+				continue;
+			}
+
 			/* Record what this index is about */
 
 			sensor_handle_from_index [ch_index] = s;
