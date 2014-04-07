@@ -325,10 +325,9 @@ int sensor_activate(int s, int enabled)
 	 */
 	dev_fd = device_fd[dev_num];
 
-	switch (poll_sensors_per_dev[dev_num] +	trig_sensors_per_dev[dev_num]) {
-
-		case 0:
-			if (dev_fd != -1) {
+	if (!enabled) {
+		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] &&
+			!trig_sensors_per_dev[dev_num]) {
 				/*
 				 * Stop watching this fd. This should be a no-op
 				 * in case this fd was not in the poll set.
@@ -338,44 +337,41 @@ int sensor_activate(int s, int enabled)
 				close(dev_fd);
 				device_fd[dev_num] = -1;
 			}
-			return 0;
-
-		case 1:
-			/* First enabled sensor on this iio device */
-			sprintf(device_name, DEV_FILE_PATH, dev_num);
-			dev_fd = open(device_name, O_RDONLY | O_NONBLOCK);
-
-			device_fd[dev_num] = dev_fd;
-
-			if (dev_fd == -1) {
-				ALOGE("Could not open fd on %s (%s)\n",
-				      device_name, strerror(errno));
-				adjust_counters(s, 0);
-				return -1;
-			}
-
-			ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
-			break;
-
-		default:
-			break;
+		return 0;
 	}
 
-	if (!is_poll_sensor && trig_sensors_per_dev[dev_num] == 1) {
+	if (dev_fd == -1) {
+		/* First enabled sensor on this iio device */
+		sprintf(device_name, DEV_FILE_PATH, dev_num);
+		dev_fd = open(device_name, O_RDONLY | O_NONBLOCK);
 
-		/* Add this iio device fd to the set of watched fds */
-		ev.events = EPOLLIN;
-		ev.data.u32 = dev_num;
+		device_fd[dev_num] = dev_fd;
 
-		ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, dev_fd, &ev);
-
-		if (ret == -1) {
-			ALOGE("Failed adding %d to poll set (%s)\n", dev_fd,
-			      strerror(errno));
+		if (dev_fd == -1) {
+			ALOGE("Could not open fd on %s (%s)\n",
+			      device_name, strerror(errno));
+			adjust_counters(s, 0);
 			return -1;
 		}
 
-		/* Note: poll-mode fds are not readable */
+		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
+
+		if (!is_poll_sensor) {
+
+			/* Add this iio device fd to the set of watched fds */
+			ev.events = EPOLLIN;
+			ev.data.u32 = dev_num;
+
+			ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, dev_fd, &ev);
+
+			if (ret == -1) {
+				ALOGE(	"Failed adding %d to poll set (%s)\n",
+					dev_fd, strerror(errno));
+				return -1;
+			}
+
+			/* Note: poll-mode fds are not readable */
+		}
 	}
 
 	return 0;
