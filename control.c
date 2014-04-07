@@ -537,6 +537,9 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
 
+	/* Take note of current time counter value for rate control purposes */
+	sensor_info[s].last_integration_ts = get_timestamp();
+
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor_info[s].num_channels) {
 
@@ -570,10 +573,38 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 
 static int get_poll_time (void)
 {
+	int64_t target_ts;
+	int64_t lowest_target_ts;
+	int64_t current_ts;
+	int s;
+
 	if (!active_poll_sensors)
 		return -1;	/* Infinite wait */
 
-	return 100;	/* ms ... this needs to be dynamic */
+	/* Check if we should schedule a poll-mode sensor event delivery */
+
+	lowest_target_ts = INT64_MAX;
+
+	for (s=0; s<sensor_count; s++)
+		if (sensor_info[s].enable_count &&
+		    sensor_info[s].sampling_rate &&
+		    !sensor_info[s].num_channels) {
+				target_ts = sensor_info[s].last_integration_ts +
+				      1000000000LL/sensor_info[s].sampling_rate;
+
+				if (target_ts < lowest_target_ts)
+					lowest_target_ts = target_ts;
+			}
+
+	if (lowest_target_ts == INT64_MAX)
+		return -1;
+
+	current_ts = get_timestamp();
+
+	if (lowest_target_ts <= current_ts)
+		return 0;
+
+	return (lowest_target_ts - current_ts)/1000000; /* ms */
 }
 
 
@@ -660,15 +691,27 @@ int sensor_set_delay(int s, int64_t ns)
 	int dev_num		=	sensor_info[s].dev_num;
 	int i			=	sensor_info[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
-	int new_sampling_rate	=	(int) (1000000000L/ns);
+	int new_sampling_rate;
 	int cur_sampling_rate;
 
-	ALOGI("sensor_set_delay: sampling rate set to %d\n", new_sampling_rate);
+	if (!ns) {
+		ALOGE("Rejecting zero delay request on sensor %d\n", s);
+		return -EINVAL;
+	}
+
+	new_sampling_rate = (int) (1000000000L/ns);
+
+	if (!new_sampling_rate) {
+		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
+		new_sampling_rate = 1;
+	}
 
 	sprintf(sysfs_path, COMMON_SAMPLING_PATH, dev_num, prefix);
 
 	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
 		if (new_sampling_rate != cur_sampling_rate) {
+			ALOGI(	"Sensor %d sampling rate set to %d\n",
+				s, new_sampling_rate);
 
 			if (trig_sensors_per_dev[dev_num])
 				enable_buffer(dev_num, 0);

@@ -108,6 +108,8 @@ struct sensor_info_t
 
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
 
+	int64_t last_integration_ts; /* Last time an event was reported */
+
 	/* Note: we may have to explicitely serialize access to some fields */
 };
 
