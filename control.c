@@ -381,26 +381,24 @@ static int integrate_device_report(int dev_num)
 	int len;
 	int s,c;
 	unsigned char buf[MAX_SENSOR_REPORT_SIZE * MAX_SENSORS] = { 0 };
-	int dr_offset;
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
 	int size;
 	int expected_size = 0;
 
-	if (dev_num < 0 || dev_num >= MAX_DEVICES)
-		return -1;
-
 	/* There's an incoming report on the specified fd */
 
+	if (dev_num < 0 || dev_num >= MAX_DEVICES ||
+		!trig_sensors_per_dev[dev_num]) {
+		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
+		return -1;
+	}
+
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].enable_count &&
-		    sensor_info[s].dev_num == dev_num)
+		if (sensor_info[s].dev_num == dev_num)
 			for (c=0; c<sensor_info[s].num_channels; c++)
 				expected_size += sensor_info[s].channel[c].size;
-
-	if (expected_size == 0)
-		return 0;
 
 	len = read(device_fd[dev_num], buf, expected_size);
 
@@ -412,11 +410,8 @@ static int integrate_device_report(int dev_num)
 
 	ALOGV("Read %d bytes from iio device %d\n", len, dev_num);
 
-	dr_offset = 0;
-
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].enable_count &&
-		    sensor_info[s].dev_num == dev_num) {
+		if (sensor_info[s].dev_num == dev_num) {
 			sr_offset = 0;
 
 			/* Copy data from device to sensor report buffer */
@@ -434,10 +429,12 @@ static int integrate_device_report(int dev_num)
 				sr_offset += size;
 			}
 
-			ALOGV("Sensor %d report available (%d bytes)\n",
-				s, sr_offset);
+			if (sensor_info[s].enable_count) {
+				ALOGV("Sensor %d report available (%d bytes)\n",
+				      s, sr_offset);
 
-			sensor_info[s].report_pending = 1;
+				sensor_info[s].report_pending = 1;
+			}
 		}
 
 	return 0;
