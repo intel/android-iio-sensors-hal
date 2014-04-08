@@ -4,12 +4,12 @@
 
 #include <fcntl.h>
 #include <sys/epoll.h>
-#include <math.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
+#include "transform.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -488,10 +488,6 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	int num_fields;
 	int c;
 	unsigned char* current_sample;
-	int sample_size;
-	struct datum_info_t* sample_type;
-	int64_t s64;
-	float val;
 
 	memset(data, 0, sizeof(sensors_event_t));
 
@@ -538,12 +534,13 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 
 		/* Read values through sysfs rather than from a report buffer */
 		for (c=0; c<num_fields; c++) {
-			val = acquire_immediate_value(s, c);
 
-			data->data[c] = transform_sample(sensor_type, c, val);
+			data->data[c] = acquire_immediate_value(s, c);
 
 			ALOGV("\tfield %d: %f\n", c, data->data[c]);
 		}
+
+		finalize_sample(s, data);
 		return;
 	}
 
@@ -552,18 +549,14 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	current_sample = sensor_info[s].report_buffer;
 
 	for (c=0; c<num_fields; c++) {
-		sample_size	=  sensor_info[s].channel[c].size;
-		sample_type	= &sensor_info[s].channel[c].type_info;
 
-		s64 = sample_as_int64(current_sample, sample_type);
-
-		val = (sensor_info[s].offset + s64) * sensor_info[s].scale;
-
-		data->data[c] = transform_sample(sensor_type, c, val);
+		data->data[c] = transform_sample(s, c, current_sample);
 
 		ALOGV("\tfield %d: %f\n", c, data->data[c]);
-		current_sample += sample_size;
+		current_sample += sensor_info[s].channel[c].size;
 	}
+
+	finalize_sample(s, data);
 }
 
 

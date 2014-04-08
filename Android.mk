@@ -14,6 +14,7 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/control.c \
 	     $(src_path)/description.c \
 	     $(src_path)/utils.c \
+	     $(src_path)/transform.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors-hal
 LOCAL_MODULE := iio-sensors-hal

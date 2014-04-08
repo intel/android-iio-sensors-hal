@@ -6,6 +6,7 @@
 #include <fcntl.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
+#include "common.h"
 #include "utils.h"
 
 
@@ -219,84 +220,6 @@ int decode_type_spec(	const char type_buf[MAX_TYPE_SPEC_LEN],
 }
 
 
-int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
-{
-	uint16_t u16;
-	uint32_t u32;
-	uint64_t u64;
-	int i;
-
-	switch (type->storagebits) {
-		case 64:
-			u64 = 0;
-
-			if (type->endianness == 'b')
-				for (i=0; i<8; i++)
-					u64 = (u64 << 8) | sample[i];
-			else
-				for (i=7; i>=0; i--)
-					u64 = (u64 << 8) | sample[i];
-
-			if (type->sign == 'u')
-				return (int64_t) (u64 >> type->shift);
-
-			return ((int64_t) u64) >> type->shift;
-
-		case 32:
-			if (type->endianness == 'b')
-				u32 = (sample[0] << 24) | (sample[1] << 16) |
-					(sample[2] << 8) | sample[3];
-			else
-				u32 = (sample[3] << 24) | (sample[2] << 16) |
-					(sample[1] << 8) | sample[0];
-
-			if (type->sign == 'u')
-				return u32 >> type->shift;
-
-			return ((int32_t) u32) >> type->shift;
-
-		case 16:
-			if (type->endianness == 'b')
-				u16 = (sample[0] << 8) | sample[1];
-			else
-				u16 = (sample[1] << 8) | sample[0];
-
-			if (type->sign == 'u')
-				return u16 >> type->shift;
-
-			return  ((int16_t) u16) >> type->shift;
-	}
-
-	ALOGE("Unhandled sample storage size\n");
-	return 0;
-}
-
-
-float transform_sample (int sensor_type, int channel, float val)
-{
-	/* Last opportunity to alter sample data before it goes to Android */
-	switch (sensor_type) {
-		case SENSOR_TYPE_ACCELEROMETER:
-			/*
-			 * Invert x axis orientation from SI units - see
-			 * /hardware/libhardware/include/hardware/sensors.h
-			 * for a discussion of what Android expects
-			 */
-			if (channel == 0)
-				return -val;
-			break;
-
-		case SENSOR_TYPE_GYROSCOPE:
-			/* Limit drift */
-			if (val > -0.05 && val < 0.05)
-				return 0;
-			break;
-	}
-
-	return val;
-}
-
-
 int64_t get_timestamp(void)
 {
 	struct timespec ts = {0};
@@ -305,5 +228,3 @@ int64_t get_timestamp(void)
 
 	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
 }
-
-

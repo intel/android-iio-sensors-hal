@@ -18,10 +18,6 @@ int	sysfs_read_float(const char path[PATH_MAX], float *value);
 int	decode_type_spec(const char type_buf[MAX_TYPE_SPEC_LEN],
 			 struct datum_info_t *type_info);
 
-int64_t sample_as_int64	(unsigned char* sample, struct datum_info_t* type);
-
-float	transform_sample(int sensor_type, int channel, float val);
-
 int64_t	get_timestamp	(void);
 
 #endif
