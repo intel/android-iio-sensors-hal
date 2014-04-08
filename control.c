@@ -591,6 +591,7 @@ return_first_available_sensor_report:
 			ALOGV("Report on sensor %d\n", s);
 			return 1;
 		}
+await_event:
 
 	/* Keep a minimum time interval between poll operations */
 	delta = (get_timestamp() - last_poll_exit_ts)/1000;
@@ -603,6 +604,11 @@ return_first_available_sensor_report:
 	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, get_poll_time());
 
 	last_poll_exit_ts = get_timestamp();
+
+	if (nfds == -1) {
+		ALOGI("epoll_wait returned -1 (%s)\n", strerror(errno));
+		goto await_event;
+	}
 
 	ALOGV("%d fds signalled\n", nfds);
 
@@ -623,13 +629,37 @@ return_first_available_sensor_report:
 }
 
 
-int sensor_set_delay(int handle, int64_t ns)
+int sensor_set_delay(int s, int64_t ns)
 {
 	/* Set the rate at which a specific sensor should report events */
-	/* Continuous reports: accelerometer, gyroscope */
-	/* On change with minimum delay between events: ALS, proximity */
-	/* See sensors.h for indication on sensor trigger modes */
-	return -1;
+
+	/* See Android sensors.h for indication on sensor trigger modes */
+
+	char sysfs_path[PATH_MAX];
+	int dev_num		=	sensor_info[s].dev_num;
+	int i			=	sensor_info[s].catalog_index;
+	const char *prefix	=	sensor_catalog[i].tag;
+	int new_sampling_rate	=	(int) (1000000000L/ns);
+	int cur_sampling_rate;
+
+	ALOGI("sensor_set_delay: sampling rate set to %d\n", new_sampling_rate);
+
+	sprintf(sysfs_path, COMMON_SAMPLING_PATH, dev_num, prefix);
+
+	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
+		if (new_sampling_rate != cur_sampling_rate) {
+
+			if (trig_sensors_per_dev[dev_num])
+				enable_buffer(dev_num, 0);
+
+			sysfs_write_int(sysfs_path, new_sampling_rate);
+
+			if (trig_sensors_per_dev[dev_num])
+				enable_buffer(dev_num, 1);
+	}
+
+	sensor_info[s].sampling_rate = new_sampling_rate;
+	return 0;
 }
 
 

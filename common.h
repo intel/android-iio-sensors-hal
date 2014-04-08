@@ -19,6 +19,7 @@
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
 #define COMMON_OFFSET_PATH	BASE_PATH "in_%s_offset"
 #define COMMON_SCALE_PATH	BASE_PATH "in_%s_scale"
+#define COMMON_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
 
 #define MAX_TYPE_SPEC_LEN 32	/* Channel type spec len; ex: "le:u10/16>>0" */
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
@@ -76,6 +77,8 @@ struct sensor_info_t
 
 	float offset;	/* (cooked = raw + offset) * scale */
 	float scale;
+
+	int sampling_rate;	/* requested events / second */
 
 	int dev_num;	/* Associated iio dev num, ex: 3 for /dev/iio:device3 */
 	int enable_count;
