@@ -214,7 +214,7 @@ int adjust_counters (int s, int enabled)
 	/* Refcount per sensor, in terms of enable count */
 	if (enabled) {
 		ALOGI("Enabling sensor %d (iio device %d: %s)\n",
-			s, dev_num, sensor_info[s].internal_name);
+			s, dev_num, sensor_info[s].friendly_name);
 
 		sensor_info[s].enable_count++;
 
@@ -224,7 +224,8 @@ int adjust_counters (int s, int enabled)
 		if (sensor_info[s].enable_count == 0)
 			return -1; /* Spurious disable call */
 
-		ALOGI("Disabling sensor %d (iio device %d)\n", s, dev_num);
+		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
+		      sensor_info[s].friendly_name);
 
 		sensor_info[s].enable_count--;
 
