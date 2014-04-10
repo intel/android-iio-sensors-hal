@@ -8,11 +8,6 @@
 #include <hardware/sensors.h>
 #include "enumeration.h"
 
-/*
- * This information should be provided on a sensor basis through a configuration
- * file, or we should build a catalog of known sensors.
- */
-
 #define IIO_SENSOR_HAL_VERSION	1
 
 
