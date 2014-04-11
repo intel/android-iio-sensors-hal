@@ -194,8 +194,9 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 
 		case SENSOR_TYPE_GYROSCOPE:
 			/* Limit drift */
-			if (abs(data->data[0]) < .05 && abs(data->data[1]) < .05
-				&& abs(data->data[2]) < .05) {
+			if (	fabs(data->data[0]) < 0.1 &&
+				fabs(data->data[1]) < 0.1 &&
+				fabs(data->data[2]) < 0.1) {
 					data->data[0] = 0;
 					data->data[1] = 0;
 					data->data[2] = 0;
