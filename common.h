@@ -67,6 +67,15 @@ struct channel_info_t
 	struct datum_info_t type_info;	   /* Decoded contents of type spec */
 };
 
+struct sample_ops_t
+{
+	/* Conversion function called once per channel */
+	float (*transform)(int s, int c, unsigned char* sample_data);
+
+	/* Function called once per sample */
+	void (*finalize)(int s, struct sensors_event_t* data);
+};
+
 struct sensor_info_t
 {
 	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer */
@@ -109,6 +118,8 @@ struct sensor_info_t
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
 
 	int64_t last_integration_ts; /* Last time an event was reported */
+
+	struct sample_ops_t ops;
 
 	/* Note: we may have to explicitely serialize access to some fields */
 };

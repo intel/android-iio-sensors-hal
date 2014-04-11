@@ -10,7 +10,6 @@
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
-#include "transform.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -552,7 +551,7 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 			ALOGV("\tfield %d: %f\n", c, data->data[c]);
 		}
 
-		finalize_sample(s, data);
+		sensor_info[s].ops.finalize(s, data);
 		return;
 	}
 
@@ -562,13 +561,14 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 
 	for (c=0; c<num_fields; c++) {
 
-		data->data[c] = transform_sample(s, c, current_sample);
+		data->data[c] = sensor_info[s].ops.transform
+							(s, c, current_sample);
 
 		ALOGV("\tfield %d: %f\n", c, data->data[c]);
 		current_sample += sensor_info[s].channel[c].size;
 	}
 
-	finalize_sample(s, data);
+	sensor_info[s].ops.finalize(s, data);
 }
 
 

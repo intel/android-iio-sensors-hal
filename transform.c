@@ -5,12 +5,13 @@
 #include <stdlib.h>
 #include <math.h>
 #include <utils/Log.h>
+#include <cutils/properties.h>
 #include <hardware/sensors.h>
 #include "common.h"
 #include "transform.h"
 
 
-int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
+static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 {
 	uint16_t u16;
 	uint32_t u32;
@@ -63,7 +64,7 @@ int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 }
 
 
-void finalize_sample(int s, struct sensors_event_t* data)
+static void finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
@@ -91,11 +92,47 @@ void finalize_sample(int s, struct sensors_event_t* data)
 }
 
 
-float transform_sample(int s, int c, unsigned char* sample_data)
+static float transform_sample_default(int s, int c, unsigned char* sample_data)
 {
 	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
 	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
 
 	/* Apply default scaling rules */
 	return (sensor_info[s].offset + s64) * sensor_info[s].scale;
+}
+
+
+static void finalize_sample_ISH(int s, struct sensors_event_t* data)
+{
+}
+
+
+static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
+{
+	return 0;
+}
+
+
+void select_transform (int s)
+{
+	char prop_name[PROP_NAME_MAX];
+	char prop_val[PROP_VALUE_MAX];
+	int i			= sensor_info[s].catalog_index;
+	const char *prefix	= sensor_catalog[i].tag;
+
+	sprintf(prop_name, PROP_BASE, prefix, "transform");
+
+	if (property_get(prop_name, prop_val, "")) {
+		if (!strcmp(prop_val, "ISH")) {
+			ALOGI(	"Using Intel Sensor Hub semantics on %s\n",
+				sensor_info[s].friendly_name);
+
+			sensor_info[s].ops.transform = transform_sample_ISH;
+			sensor_info[s].ops.finalize = finalize_sample_ISH;
+			return;
+		}
+	}
+
+	sensor_info[s].ops.transform = transform_sample_default;
+	sensor_info[s].ops.finalize = finalize_sample_default;
 }

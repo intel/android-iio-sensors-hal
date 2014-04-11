@@ -8,6 +8,7 @@
 #include "enumeration.h"
 #include "description.h"
 #include "utils.h"
+#include "transform.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -104,6 +105,9 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		ALOGW("Using null trigger on sensor %d (dev %d)\n", s, dev_num);
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
+
+	/* Select one of the available sensor sample processing styles */
+	select_transform(s);
 
 	sensor_count++;
 }

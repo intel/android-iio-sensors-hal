@@ -7,10 +7,7 @@
 
 #include "common.h"
 
-float transform_sample	(int sensor, int channel, unsigned char* sample_data);
-
-void finalize_sample	(int s, struct sensors_event_t* data);
-
+void select_transform (int s);
 
 #endif
 
