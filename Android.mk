@@ -16,8 +16,9 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/utils.c \
 	     $(src_path)/transform.c \
 
-LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors-hal
-LOCAL_MODULE := iio-sensors-hal
+LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
+LOCAL_MODULE := sensors.gmin
+LOCAL_MODULE_OWNER := intel
 LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
