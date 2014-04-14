@@ -24,7 +24,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
 	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,
 					 "quat_x", "quat_y", "quat_z", "quat_w")
-	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_TEMPERATURE 		       )
+	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
