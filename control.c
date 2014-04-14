@@ -659,10 +659,34 @@ int sensor_set_delay(int s, int64_t ns)
 	const char *prefix	=	sensor_catalog[i].tag;
 	int new_sampling_rate;
 	int cur_sampling_rate;
+	int per_sensor_sampling_rate;
+	int per_device_sampling_rate;
+	int n;
 
 	if (!ns) {
 		ALOGE("Rejecting zero delay request on sensor %d\n", s);
 		return -EINVAL;
+	}
+
+	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
+
+	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1) {
+		per_sensor_sampling_rate = 1;
+		per_device_sampling_rate = 0;
+	} else {
+		per_sensor_sampling_rate = 0;
+
+		sprintf(sysfs_path, DEVICE_SAMPLING_PATH, dev_num);
+
+		if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
+			per_device_sampling_rate = 1;
+		else
+			per_device_sampling_rate = 0;
+	}
+
+	if (!per_sensor_sampling_rate && !per_device_sampling_rate) {
+		ALOGE("No way to adjust sampling rate on sensor %d\n", s);
+		return -ENOSYS;
 	}
 
 	new_sampling_rate = (int) (1000000000L/ns);
@@ -672,23 +696,29 @@ int sensor_set_delay(int s, int64_t ns)
 		new_sampling_rate = 1;
 	}
 
-	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
-
-	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
-		if (new_sampling_rate != cur_sampling_rate) {
-			ALOGI(	"Sensor %d sampling rate set to %d\n",
-				s, new_sampling_rate);
-
-			if (trig_sensors_per_dev[dev_num])
-				enable_buffer(dev_num, 0);
-
-			sysfs_write_int(sysfs_path, new_sampling_rate);
-
-			if (trig_sensors_per_dev[dev_num])
-				enable_buffer(dev_num, 1);
-	}
-
 	sensor_info[s].sampling_rate = new_sampling_rate;
+
+	/* Coordinate with others active sensors on the same device, if any */
+	if (per_device_sampling_rate)
+		for (n=0; n<sensor_count; n++)
+			if (n != s && sensor_info[n].dev_num == dev_num &&
+			    sensor_info[n].enable_count &&
+			    sensor_info[n].sampling_rate > new_sampling_rate)
+				new_sampling_rate= sensor_info[n].sampling_rate;
+
+	/* If the desired rate is already activen we're all set */
+	if (new_sampling_rate == cur_sampling_rate)
+		return 0;
+
+	ALOGI("Sensor %d sampling rate set to %d\n", s, new_sampling_rate);
+
+	if (trig_sensors_per_dev[dev_num])
+		enable_buffer(dev_num, 0);
+
+	sysfs_write_int(sysfs_path, new_sampling_rate);
+
+	if (trig_sensors_per_dev[dev_num])
+		enable_buffer(dev_num, 1);
 
 	/* Release the polling loop so an updated timeout value gets used */
 	write(poll_socket_pair[1], "", 1);

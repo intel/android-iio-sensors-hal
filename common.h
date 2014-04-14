@@ -20,6 +20,8 @@
 #define SENSOR_OFFSET_PATH	BASE_PATH "in_%s_offset"
 #define SENSOR_SCALE_PATH	BASE_PATH "in_%s_scale"
 #define SENSOR_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
+#define DEVICE_SAMPLING_PATH	BASE_PATH "sampling_frequency"
+#define DEVICE_AVAIL_FREQ_PATH	BASE_PATH "sampling_frequency_available"
 
 #define PROP_BASE	"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
