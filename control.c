@@ -85,7 +85,6 @@ static void refresh_sensor_report_maps(int dev_num)
 	char sysfs_path[PATH_MAX];
 	int active_channels;
 	int offset;
-	int channel_count;
 	int channel_size_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int sensor_handle_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int channel_number_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
