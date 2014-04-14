@@ -673,6 +673,19 @@ int sensor_set_delay(int s, int64_t ns)
 		return -EINVAL;
 	}
 
+	new_sampling_rate = (int) (1000000000L/ns);
+
+	if (!new_sampling_rate) {
+		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
+		new_sampling_rate = 1;
+	}
+
+	sensor_info[s].sampling_rate = new_sampling_rate;
+
+	/* If we're dealing with a poll-mode sensor, release poll and return */
+	if (!sensor_info[s].num_channels)
+		goto exit;
+
 	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
 
 	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1) {
@@ -694,19 +707,11 @@ int sensor_set_delay(int s, int64_t ns)
 		return -ENOSYS;
 	}
 
-	new_sampling_rate = (int) (1000000000L/ns);
-
-	if (!new_sampling_rate) {
-		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
-		new_sampling_rate = 1;
-	}
-
-	sensor_info[s].sampling_rate = new_sampling_rate;
-
 	/* Coordinate with others active sensors on the same device, if any */
 	if (per_device_sampling_rate)
 		for (n=0; n<sensor_count; n++)
 			if (n != s && sensor_info[n].dev_num == dev_num &&
+			    sensor_info[n].num_channels &&
 			    sensor_info[n].enable_count &&
 			    sensor_info[n].sampling_rate > new_sampling_rate)
 				new_sampling_rate= sensor_info[n].sampling_rate;
@@ -770,6 +775,7 @@ int sensor_set_delay(int s, int64_t ns)
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
 
+exit:
 	/* Release the polling loop so an updated timeout value gets used */
 	write(poll_socket_pair[1], "", 1);
 
