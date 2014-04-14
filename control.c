@@ -10,6 +10,7 @@
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
+#include "transform.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -448,42 +449,6 @@ static int integrate_device_report(int dev_num)
 		}
 
 	return 0;
-}
-
-
-static float acquire_immediate_value(int s, int c)
-{
-	char sysfs_path[PATH_MAX];
-	float val;
-	int ret;
-	int dev_num = sensor_info[s].dev_num;
-	int i = sensor_info[s].catalog_index;
-	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
-	const char* input_path = sensor_catalog[i].channel[c].input_path;
-	float scale = sensor_info[s].scale;
-	float offset = sensor_info[s].offset;
-
-	/* Acquire a sample value for sensor s / channel c through sysfs */
-
-	if (input_path[0]) {
-		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
-		ret = sysfs_read_float(sysfs_path, &val);
-
-		if (!ret) {
-			return val;
-		}
-	};
-
-	if (!raw_path[0])
-		return 0;
-
-	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);
-	ret = sysfs_read_float(sysfs_path, &val);
-
-	if (ret == -1)
-		return 0;
-
-	return (val + offset) * scale;
 }
 
 
