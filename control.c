@@ -2,6 +2,8 @@
  * Copyright (C) 2014 Intel Corporation.
  */
 
+#include <stdlib.h>
+#include <ctype.h>
 #include <fcntl.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -654,6 +656,7 @@ int sensor_set_delay(int s, int64_t ns)
 	/* See Android sensors.h for indication on sensor trigger modes */
 
 	char sysfs_path[PATH_MAX];
+	char avail_sysfs_path[PATH_MAX];
 	int dev_num		=	sensor_info[s].dev_num;
 	int i			=	sensor_info[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
@@ -661,6 +664,8 @@ int sensor_set_delay(int s, int64_t ns)
 	int cur_sampling_rate;
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
+	char freqs_buf[100];
+	char* cursor;
 	int n;
 
 	if (!ns) {
@@ -706,7 +711,52 @@ int sensor_set_delay(int s, int64_t ns)
 			    sensor_info[n].sampling_rate > new_sampling_rate)
 				new_sampling_rate= sensor_info[n].sampling_rate;
 
-	/* If the desired rate is already activen we're all set */
+	/* Check if we have contraints on allowed sampling rates */
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0){
+		cursor = freqs_buf;
+
+		/* Decode allowed sampling rates string, ex: "10 20 50 100" */
+
+		/* While we're not at the end of the string */
+		while (*cursor && cursor[0]) {
+
+			/* Decode a single integer value */
+			n = atoi(cursor);
+
+			/* If this matches the selected rate, we're happy */
+			if (new_sampling_rate == n)
+				break;
+
+			/*
+			 * If we reached a higher value than the desired rate,
+			 * adjust selected rate so it matches the first higher
+			 * available one and stop parsing - this makes the
+			 * assumption that rates are sorted by increasing value
+			 * in the allowed frequencies string.
+			 */
+			if (n > new_sampling_rate) {
+				ALOGI(
+				"Increasing sampling rate on sensor %d to %d\n",
+				s, n);
+
+				new_sampling_rate = n;
+				break;
+			}
+
+			/* Skip digits */
+			while (cursor[0] && !isspace(cursor[0]))
+				cursor++;
+
+			/* Skip spaces */
+			while (cursor[0] && isspace(cursor[0]))
+					cursor++;
+		}
+	}
+
+	/* If the desired rate is already active we're all set */
 	if (new_sampling_rate == cur_sampling_rate)
 		return 0;
 
@@ -725,6 +775,7 @@ int sensor_set_delay(int s, int64_t ns)
 
 	return 0;
 }
+
 
 
 int allocate_control_data (void)
