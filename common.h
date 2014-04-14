@@ -17,9 +17,9 @@
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
 #define NAME_PATH		BASE_PATH "name"
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
-#define COMMON_OFFSET_PATH	BASE_PATH "in_%s_offset"
-#define COMMON_SCALE_PATH	BASE_PATH "in_%s_scale"
-#define COMMON_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
+#define SENSOR_OFFSET_PATH	BASE_PATH "in_%s_offset"
+#define SENSOR_SCALE_PATH	BASE_PATH "in_%s_scale"
+#define SENSOR_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
 
 #define PROP_BASE	"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 

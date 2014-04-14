@@ -672,7 +672,7 @@ int sensor_set_delay(int s, int64_t ns)
 		new_sampling_rate = 1;
 	}
 
-	sprintf(sysfs_path, COMMON_SAMPLING_PATH, dev_num, prefix);
+	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
 
 	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
 		if (new_sampling_rate != cur_sampling_rate) {

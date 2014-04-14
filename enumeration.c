@@ -77,10 +77,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	/* See if we have general offsets and scale values for this sensor */
 
-	sprintf(sysfs_path, COMMON_OFFSET_PATH, dev_num, prefix);
+	sprintf(sysfs_path, SENSOR_OFFSET_PATH, dev_num, prefix);
 	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
 
-	sprintf(sysfs_path, COMMON_SCALE_PATH, dev_num, prefix);
+	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale))
                 sensor_info[s].scale = scale;
         else
