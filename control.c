@@ -30,7 +30,7 @@ static int64_t last_poll_exit_ts;
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
 /* Cap the time between poll operations to this, to counter runaway polls */
-#define POLL_MIN_INTERVAL 10000 /* uS */
+#define POLL_MIN_INTERVAL 1000 /* uS */
 
 #define INVALID_DEV_NUM ((uint32_t) -1)
 
@@ -659,8 +659,9 @@ int sensor_set_delay(int s, int64_t ns)
 	int dev_num		=	sensor_info[s].dev_num;
 	int i			=	sensor_info[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
-	int new_sampling_rate;
-	int cur_sampling_rate;
+	int new_sampling_rate;	/* Granted sampling rate after arbitration   */
+	int cur_sampling_rate;	/* Currently used sampling rate		     */
+	int req_sampling_rate;	/* Requested ; may be different from granted */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
 	char freqs_buf[100];
@@ -672,7 +673,7 @@ int sensor_set_delay(int s, int64_t ns)
 		return -EINVAL;
 	}
 
-	new_sampling_rate = (int) (1000000000L/ns);
+	new_sampling_rate = req_sampling_rate = (int) (1000000000L/ns);
 
 	if (!new_sampling_rate) {
 		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
@@ -743,8 +744,8 @@ int sensor_set_delay(int s, int64_t ns)
 			 */
 			if (n > new_sampling_rate) {
 				ALOGI(
-				"Increasing sampling rate on sensor %d to %d\n",
-				s, n);
+			"Increasing sampling rate on sensor %d from %d to %d\n",
+				s, req_sampling_rate, n);
 
 				new_sampling_rate = n;
 				break;
@@ -760,11 +761,20 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
+	/* Cap sampling rates at 1000/s for the time being */
+	if (new_sampling_rate > 1000000/POLL_MIN_INTERVAL) {
+
+		new_sampling_rate = 1000000/POLL_MIN_INTERVAL;
+
+		ALOGI(	"Can't support %d sampling rate, lowering to %d\n",
+			req_sampling_rate, new_sampling_rate);
+	}
+
 	/* If the desired rate is already active we're all set */
 	if (new_sampling_rate == cur_sampling_rate)
 		return 0;
 
-	ALOGI("Sensor %d sampling rate set to %d\n", s, new_sampling_rate);
+	ALOGI("Sensor %d sampling rate switched to %d\n", s, new_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
