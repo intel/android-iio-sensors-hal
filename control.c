@@ -664,6 +664,8 @@ int sensor_set_delay(int s, int64_t ns)
 	int req_sampling_rate;	/* Requested ; may be different from granted */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
+	int max_supported_rate = 0;
+	int limit;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -731,6 +733,9 @@ int sensor_set_delay(int s, int64_t ns)
 			/* Decode a single integer value */
 			n = atoi(cursor);
 
+			if (n > max_supported_rate)
+				max_supported_rate = n;
+
 			/* If this matches the selected rate, we're happy */
 			if (new_sampling_rate == n)
 				break;
@@ -761,10 +766,16 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-	/* Cap sampling rates at 1000/s for the time being */
-	if (new_sampling_rate > 1000000/POLL_MIN_INTERVAL) {
+	/* Cap sampling rate */
 
-		new_sampling_rate = 1000000/POLL_MIN_INTERVAL;
+	limit = 1000000/POLL_MIN_INTERVAL;
+
+	if (max_supported_rate && new_sampling_rate > max_supported_rate)
+		limit = max_supported_rate;
+
+	if (new_sampling_rate > limit) {
+
+		new_sampling_rate = limit;
 
 		ALOGI(	"Can't support %d sampling rate, lowering to %d\n",
 			req_sampling_rate, new_sampling_rate);
