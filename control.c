@@ -233,10 +233,8 @@ int adjust_counters (int s, int enabled)
 		if (sensor_info[s].enable_count > 0)
 			return 0; /* The sensor was, and remains, in use */
 
-		/* Sensor disabled, clear up pending data */
-
+		/* Sensor disabled, lower report available flag */
 		sensor_info[s].report_pending = 0;
-		memset(sensor_info[s].report_buffer, 0, MAX_SENSOR_REPORT_SIZE);
 	}
 
 	/* We changed the state of a sensor - adjust per iio device counters */
@@ -401,9 +399,13 @@ static int integrate_device_report(int dev_num)
 
 	/* There's an incoming report on the specified fd */
 
-	if (dev_num < 0 || dev_num >= MAX_DEVICES ||
-		!trig_sensors_per_dev[dev_num]) {
+	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
 		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
+		return -1;
+	}
+
+	if (device_fd[dev_num] == -1) {
+		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
 
@@ -423,7 +425,9 @@ static int integrate_device_report(int dev_num)
 	ALOGV("Read %d bytes from iio device %d\n", len, dev_num);
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].dev_num == dev_num) {
+		if (sensor_info[s].dev_num == dev_num &&
+		    sensor_info[s].enable_count) {
+
 			sr_offset = 0;
 
 			/* Copy data from device to sensor report buffer */
@@ -441,12 +445,10 @@ static int integrate_device_report(int dev_num)
 				sr_offset += size;
 			}
 
-			if (sensor_info[s].enable_count) {
-				ALOGV("Sensor %d report available (%d bytes)\n",
-				      s, sr_offset);
+			ALOGV("Sensor %d report available (%d bytes)\n", s,
+			      sr_offset);
 
-				sensor_info[s].report_pending = 1;
-			}
+			sensor_info[s].report_pending = 1;
 		}
 
 	return 0;
