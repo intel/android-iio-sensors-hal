@@ -173,11 +173,12 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/*
-			 * Invert x axis orientation from SI units - see
+			 * Invert x and z axes orientation from SI units - see
 			 * /hardware/libhardware/include/hardware/sensors.h
 			 * for a discussion of what Android expects
 			 */
 			data->data[0] = -data->data[0];
+			data->data[2] = -data->data[2];
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
