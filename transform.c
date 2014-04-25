@@ -130,46 +130,34 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 	uint32_t u32;
 	uint64_t u64;
 	int i;
+	int zeroed_bits = type->storagebits - type->realbits;
 
-	switch (type->storagebits) {
-		case 64:
-			u64 = 0;
+	u64 = 0;
 
-			if (type->endianness == 'b')
-				for (i=0; i<8; i++)
-					u64 = (u64 << 8) | sample[i];
-			else
-				for (i=7; i>=0; i--)
-					u64 = (u64 << 8) | sample[i];
+	if (type->endianness == 'b')
+		for (i=0; i<type->storagebits/8; i++)
+			u64 = (u64 << 8) | sample[i];
+	else
+		for (i=type->storagebits/8; i>=0; i--)
+			u64 = (u64 << 8) | sample[i];
 
-			if (type->sign == 'u')
-				return (int64_t) (u64 >> type->shift);
+	u64 = (u64 >> type->shift) & (~0ULL >> zeroed_bits);
 
-			return ((int64_t) u64) >> type->shift;
+	if (type->sign == 'u')
+		return (int64_t) u64; /* We don't handle unsigned 64 bits int */
 
-		case 32:
-			if (type->endianness == 'b')
-				u32 = (sample[0] << 24) | (sample[1] << 16) |
-					(sample[2] << 8) | sample[3];
-			else
-				u32 = (sample[3] << 24) | (sample[2] << 16) |
-					(sample[1] << 8) | sample[0];
-
-			if (type->sign == 'u')
-				return u32 >> type->shift;
-
-			return ((int32_t) u32) >> type->shift;
+	switch (type->realbits) {
+		case 8:
+			return (int64_t) (int8_t) u64;
 
 		case 16:
-			if (type->endianness == 'b')
-				u16 = (sample[0] << 8) | sample[1];
-			else
-				u16 = (sample[1] << 8) | sample[0];
+			return (int64_t) (int16_t) u64;
 
-			if (type->sign == 'u')
-				return u16 >> type->shift;
+		case 32:
+			return (int64_t) (int32_t) u64;
 
-			return  ((int16_t) u16) >> type->shift;
+		case 64:
+			return (int64_t) u64;
 	}
 
 	ALOGE("Unhandled sample storage size\n");
