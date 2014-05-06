@@ -65,7 +65,7 @@ static int initialize_module(const struct hw_module_t *module, const char *id,
                 return -EINVAL;
 
 	poll_device.common.tag		= HARDWARE_DEVICE_TAG;
-	poll_device.common.version	= 0;
+	poll_device.common.version	= SENSORS_DEVICE_API_VERSION_0_1;
 	poll_device.common.module	= (struct hw_module_t*) module;
 	poll_device.common.close	= close_module;
 
