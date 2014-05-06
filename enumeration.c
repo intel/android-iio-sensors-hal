@@ -192,6 +192,54 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 }
 
 
+static void orientation_sensor_check(void)
+{
+	/*
+	 * If we have accel + gyro + magn but no rotation vector sensor,
+	 * SensorService replaces the HAL provided orientation sensor by the
+	 * AOSP version... provided we report one. So initialize a virtual
+	 * orientation sensor with zero values, which will get replaced. See:
+	 * frameworks/native/services/sensorservice/SensorService.cpp, looking
+	 * for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
+	 * back to mUserSensorList.add instead of replaceAt, but accommodate it.
+	 */
+
+	int i;
+	int has_acc = 0;
+	int has_gyr = 0;
+	int has_mag = 0;
+	int has_rot = 0;
+	int has_ori = 0;
+
+	for (i=0; i<sensor_count; i++)
+		switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+			case SENSOR_TYPE_ACCELEROMETER:
+				has_acc = 1;
+				break;
+			case SENSOR_TYPE_GYROSCOPE:
+				has_gyr = 1;
+				break;
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				has_mag = 1;
+				break;
+			case SENSOR_TYPE_ORIENTATION:
+				has_ori = 1;
+				break;
+			case SENSOR_TYPE_ROTATION_VECTOR:
+				has_rot = 1;
+				break;
+		}
+
+	if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
+		for (i=0; i<CATALOG_SIZE; i++)
+			if (sensor_catalog[i].type == SENSOR_TYPE_ORIENTATION) {
+				ALOGI("Adding placeholder orientation sensor");
+				add_sensor(0, i, 1);
+				break;
+			}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -219,6 +267,9 @@ void enumerate_sensors (void)
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);
+
+	/* Make sure Android fall backs to its own orientation sensor */
+	orientation_sensor_check();
 }
 
 
