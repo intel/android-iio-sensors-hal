@@ -464,13 +464,14 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	int num_fields;
 	int c;
 	unsigned char* current_sample;
+	int64_t current_ts = get_timestamp();
 
 	memset(data, 0, sizeof(sensors_event_t));
 
 	data->version = sizeof(sensors_event_t);
 	data->sensor = s;
 	data->type = sensor_type;
-	data->timestamp = get_timestamp();
+	data->timestamp = current_ts;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
@@ -506,7 +507,7 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
 
 	/* Take note of current time counter value for rate control purposes */
-	sensor_info[s].last_integration_ts = get_timestamp();
+	sensor_info[s].last_integration_ts = current_ts;
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor_info[s].num_channels) {
@@ -592,6 +593,7 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	int nfds;
 	int delta;
 	struct epoll_event ev[MAX_DEVICES];
+	int64_t target_ts;
 
 	/* Get one or more events from our collection of sensors */
 
@@ -639,12 +641,18 @@ await_event:
 				integrate_device_report(ev[i].data.u32);
 		}
 
-	/* It's a good time to invalidate poll-mode sensor values */
+	/* Check poll-mode sensors and fire up an event if it's time to do so */
 	if (active_poll_sensors)
 		for (s=0; s<sensor_count; s++)
 			if (sensor_info[s].enable_count &&
-				!sensor_info[s].num_channels)
+			    !sensor_info[s].num_channels &&
+			    sensor_info[s].sampling_rate) {
+				target_ts = sensor_info[s].last_integration_ts +
+				      1000000000LL/sensor_info[s].sampling_rate;
+
+				if (last_poll_exit_ts >= target_ts)
 					sensor_info[s].report_pending = 1;
+			}
 
 	goto return_first_available_sensor_report;
 }
