@@ -9,7 +9,7 @@
 #include <hardware/sensors.h>
 #include "common.h"
 #include "transform.h"
-
+#include "utils.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -130,46 +130,34 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 	uint32_t u32;
 	uint64_t u64;
 	int i;
+	int zeroed_bits = type->storagebits - type->realbits;
 
-	switch (type->storagebits) {
-		case 64:
-			u64 = 0;
+	u64 = 0;
 
-			if (type->endianness == 'b')
-				for (i=0; i<8; i++)
-					u64 = (u64 << 8) | sample[i];
-			else
-				for (i=7; i>=0; i--)
-					u64 = (u64 << 8) | sample[i];
+	if (type->endianness == 'b')
+		for (i=0; i<type->storagebits/8; i++)
+			u64 = (u64 << 8) | sample[i];
+	else
+		for (i=type->storagebits/8; i>=0; i--)
+			u64 = (u64 << 8) | sample[i];
 
-			if (type->sign == 'u')
-				return (int64_t) (u64 >> type->shift);
+	u64 = (u64 >> type->shift) & (~0ULL >> zeroed_bits);
 
-			return ((int64_t) u64) >> type->shift;
+	if (type->sign == 'u')
+		return (int64_t) u64; /* We don't handle unsigned 64 bits int */
 
-		case 32:
-			if (type->endianness == 'b')
-				u32 = (sample[0] << 24) | (sample[1] << 16) |
-					(sample[2] << 8) | sample[3];
-			else
-				u32 = (sample[3] << 24) | (sample[2] << 16) |
-					(sample[1] << 8) | sample[0];
-
-			if (type->sign == 'u')
-				return u32 >> type->shift;
-
-			return ((int32_t) u32) >> type->shift;
+	switch (type->realbits) {
+		case 8:
+			return (int64_t) (int8_t) u64;
 
 		case 16:
-			if (type->endianness == 'b')
-				u16 = (sample[0] << 8) | sample[1];
-			else
-				u16 = (sample[1] << 8) | sample[0];
+			return (int64_t) (int16_t) u64;
 
-			if (type->sign == 'u')
-				return u16 >> type->shift;
+		case 32:
+			return (int64_t) (int32_t) u64;
 
-			return  ((int16_t) u16) >> type->shift;
+		case 64:
+			return (int64_t) u64;
 	}
 
 	ALOGE("Unhandled sample storage size\n");
@@ -185,11 +173,12 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/*
-			 * Invert x axis orientation from SI units - see
+			 * Invert x and z axes orientation from SI units - see
 			 * /hardware/libhardware/include/hardware/sensors.h
 			 * for a discussion of what Android expects
 			 */
 			data->data[0] = -data->data[0];
+			data->data[2] = -data->data[2];
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
@@ -327,4 +316,40 @@ void select_transform (int s)
 
 	sensor_info[s].ops.transform = transform_sample_default;
 	sensor_info[s].ops.finalize = finalize_sample_default;
+}
+
+
+float acquire_immediate_value(int s, int c)
+{
+	char sysfs_path[PATH_MAX];
+	float val;
+	int ret;
+	int dev_num = sensor_info[s].dev_num;
+	int i = sensor_info[s].catalog_index;
+	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
+	const char* input_path = sensor_catalog[i].channel[c].input_path;
+	float scale = sensor_info[s].scale;
+	float offset = sensor_info[s].offset;
+
+	/* Acquire a sample value for sensor s / channel c through sysfs */
+
+	if (input_path[0]) {
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
+		ret = sysfs_read_float(sysfs_path, &val);
+
+		if (!ret) {
+			return val;
+		}
+	};
+
+	if (!raw_path[0])
+		return 0;
+
+	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);
+	ret = sysfs_read_float(sysfs_path, &val);
+
+	if (ret == -1)
+		return 0;
+
+	return (val + offset) * scale;
 }

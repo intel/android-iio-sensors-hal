@@ -24,7 +24,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
 	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,
 					 "quat_x", "quat_y", "quat_z", "quat_w")
-	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_TEMPERATURE 		       )
+	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -77,10 +77,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	/* See if we have general offsets and scale values for this sensor */
 
-	sprintf(sysfs_path, COMMON_OFFSET_PATH, dev_num, prefix);
+	sprintf(sysfs_path, SENSOR_OFFSET_PATH, dev_num, prefix);
 	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
 
-	sprintf(sysfs_path, COMMON_SCALE_PATH, dev_num, prefix);
+	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale))
                 sensor_info[s].scale = scale;
         else
@@ -192,6 +192,54 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 }
 
 
+static void orientation_sensor_check(void)
+{
+	/*
+	 * If we have accel + gyro + magn but no rotation vector sensor,
+	 * SensorService replaces the HAL provided orientation sensor by the
+	 * AOSP version... provided we report one. So initialize a virtual
+	 * orientation sensor with zero values, which will get replaced. See:
+	 * frameworks/native/services/sensorservice/SensorService.cpp, looking
+	 * for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
+	 * back to mUserSensorList.add instead of replaceAt, but accommodate it.
+	 */
+
+	int i;
+	int has_acc = 0;
+	int has_gyr = 0;
+	int has_mag = 0;
+	int has_rot = 0;
+	int has_ori = 0;
+
+	for (i=0; i<sensor_count; i++)
+		switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+			case SENSOR_TYPE_ACCELEROMETER:
+				has_acc = 1;
+				break;
+			case SENSOR_TYPE_GYROSCOPE:
+				has_gyr = 1;
+				break;
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				has_mag = 1;
+				break;
+			case SENSOR_TYPE_ORIENTATION:
+				has_ori = 1;
+				break;
+			case SENSOR_TYPE_ROTATION_VECTOR:
+				has_rot = 1;
+				break;
+		}
+
+	if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
+		for (i=0; i<CATALOG_SIZE; i++)
+			if (sensor_catalog[i].type == SENSOR_TYPE_ORIENTATION) {
+				ALOGI("Adding placeholder orientation sensor");
+				add_sensor(0, i, 1);
+				break;
+			}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -219,6 +267,9 @@ void enumerate_sensors (void)
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);
+
+	/* Make sure Android fall backs to its own orientation sensor */
+	orientation_sensor_check();
 }
 
 

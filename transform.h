@@ -7,7 +7,8 @@
 
 #include "common.h"
 
-void select_transform (int s);
+void	select_transform	(int s);
+float	acquire_immediate_value	(int s, int c);
 
 #endif
 
