@@ -195,6 +195,12 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 					data->data[2] = 0;
 				}
 			break;
+
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		case SENSOR_TYPE_TEMPERATURE:
+			/* Only keep two decimals for temperature readings */
+			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
+			break;
 	}
 }
 
