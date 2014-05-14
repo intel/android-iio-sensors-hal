@@ -15,6 +15,8 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/description.c \
 	     $(src_path)/utils.c \
 	     $(src_path)/transform.c \
+	     $(src_path)/compass-calibration.c \
+	     $(src_path)/matrix-ops.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
 LOCAL_MODULE := sensors.gmin

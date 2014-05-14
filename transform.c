@@ -10,6 +10,7 @@
 #include "common.h"
 #include "transform.h"
 #include "utils.h"
+#include "calibration.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -201,6 +202,9 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			data->data[0] = x;
 			data->data[1] = y;
 			data->data[2] = z;
+
+			/* Calibrate compass */
+			calibrate_compass (data, get_timestamp());
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
@@ -222,6 +226,7 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			/* Only keep two decimals for temperature readings */
 			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
 			break;
+
 	}
 }
 

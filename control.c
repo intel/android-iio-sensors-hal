@@ -13,6 +13,7 @@
 #include "enumeration.h"
 #include "utils.h"
 #include "transform.h"
+#include "calibration.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -211,6 +212,8 @@ int adjust_counters (int s, int enabled)
 	 */
 
 	int dev_num = sensor_info[s].dev_num;
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type = sensor_catalog[catalog_index].type;
 
 	/* Refcount per sensor, in terms of enable count */
 	if (enabled) {
@@ -219,14 +222,21 @@ int adjust_counters (int s, int enabled)
 
 		sensor_info[s].enable_count++;
 
-		if (sensor_info[s].enable_count != 1)
+		if (sensor_info[s].enable_count != 1) {
 			return 0; /* The sensor was, and remains, in use */
+		} else {
+			if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+				compass_read_data(COMPASS_CALIBRATION_PATH);
+		}
 	} else {
 		if (sensor_info[s].enable_count == 0)
 			return -1; /* Spurious disable call */
 
 		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
 		      sensor_info[s].friendly_name);
+
+		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+			compass_store_data(COMPASS_CALIBRATION_PATH);
 
 		sensor_info[s].enable_count--;
 
