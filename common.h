@@ -22,6 +22,7 @@
 #define SENSOR_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
 #define DEVICE_SAMPLING_PATH	BASE_PATH "sampling_frequency"
 #define DEVICE_AVAIL_FREQ_PATH	BASE_PATH "sampling_frequency_available"
+#define ILLUMINATION_CALIBPATH	BASE_PATH "in_illuminance_calibscale"
 
 #define PROP_BASE	"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
@@ -90,6 +91,7 @@ struct sensor_info_t
 
 	float offset;	/* (cooked = raw + offset) * scale */
 	float scale;
+	float illumincalib;	/* to set the calibration for the ALS */
 
 	int sampling_rate;	/* requested events / second */
 

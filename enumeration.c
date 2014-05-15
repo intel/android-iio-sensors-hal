@@ -41,6 +41,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 {
 	int s;
 	int sensor_type;
+	int retval;
 	char sysfs_path[PATH_MAX];
 	const char* prefix;
         float scale;
@@ -70,6 +71,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                                 sensor_catalog[catalog_index].num_channels;
 
 	prefix = sensor_catalog[catalog_index].tag;
+
+	/*
+	 * receiving the illumination sensor calibration inputs from
+	 * the Android properties and setting it within sysfs
+	 */
+	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_LIGHT) {
+		retval = sensor_get_illumincalib(s);
+		sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
+		sysfs_write_int(sysfs_path, retval);
+	}
 
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);
