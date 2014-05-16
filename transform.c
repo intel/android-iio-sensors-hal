@@ -33,6 +33,8 @@
 #define CONVERT_M_Y                 (-CONVERT_M)
 #define CONVERT_M_Z                 (CONVERT_M)
 
+#define CONVERT_GAUSS_TO_MICROTESLA(x)        ( (x) * 100 )
+
 /* conversion of orientation data to degree units */
 #define CONVERT_O                   (1.0f/64.0f)
 #define CONVERT_O_A                 (CONVERT_O)
@@ -359,6 +361,7 @@ float acquire_immediate_value(int s, int c)
 	const char* input_path = sensor_catalog[i].channel[c].input_path;
 	float scale = sensor_info[s].scale;
 	float offset = sensor_info[s].offset;
+	int sensor_type = sensor_catalog[i].type;
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
@@ -379,6 +382,13 @@ float acquire_immediate_value(int s, int c)
 
 	if (ret == -1)
 		return 0;
+
+	/*
+	There is no transform ops defined yet for Raw sysfs values
+        Use this function to perform transformation as well.
+	*/
+	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+                return CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale); //Gauss to MicroTesla
 
 	return (val + offset) * scale;
 }
