@@ -150,6 +150,10 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 		case 8:
 			return (int64_t) (int8_t) u64;
 
+		case 12:
+			return (int64_t)  (u64 >>  11) ?
+					(((int64_t)-1) ^ 0xfff) | u64 : u64;
+
 		case 16:
 			return (int64_t) (int16_t) u64;
 
