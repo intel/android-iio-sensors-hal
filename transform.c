@@ -138,7 +138,7 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 		for (i=0; i<type->storagebits/8; i++)
 			u64 = (u64 << 8) | sample[i];
 	else
-		for (i=type->storagebits/8; i>=0; i--)
+		for (i=type->storagebits/8 - 1; i>=0; i--)
 			u64 = (u64 << 8) | sample[i];
 
 	u64 = (u64 >> type->shift) & (~0ULL >> zeroed_bits);
