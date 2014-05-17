@@ -230,9 +230,10 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 {
 	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
 	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
-
+	float scale = sensor_info[s].scale ?
+		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
 	/* Apply default scaling rules */
-	return (sensor_info[s].offset + s64) * sensor_info[s].scale;
+	return (sensor_info[s].offset + s64) * scale;
 }
 
 
@@ -359,7 +360,8 @@ float acquire_immediate_value(int s, int c)
 	int i = sensor_info[s].catalog_index;
 	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
 	const char* input_path = sensor_catalog[i].channel[c].input_path;
-	float scale = sensor_info[s].scale;
+	float scale = sensor_info[s].scale ?
+		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
 	float offset = sensor_info[s].offset;
 	int sensor_type = sensor_catalog[i].type;
 

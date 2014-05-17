@@ -13,6 +13,7 @@
 
 #define BASE_PATH	"/sys/bus/iio/devices/iio:device%d/"
 
+
 #define CHANNEL_PATH		BASE_PATH "scan_elements/"
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
 #define NAME_PATH		BASE_PATH "name"
@@ -33,6 +34,7 @@
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
+
 struct channel_descriptor_t
 {
 	/* sysfs entries located under scan_elements */
@@ -43,6 +45,7 @@ struct channel_descriptor_t
 	/* sysfs entries located in /sys/bus/iio/devices/iio:deviceX */
 	const char *raw_path;	/* _raw sysfs file name  */
 	const char *input_path;	/* _input sysfs file name */
+	const char *scale_path;	/* _scale sysfs file name */
 };
 
 struct sensor_catalog_entry_t
@@ -66,6 +69,7 @@ struct channel_info_t
 {
 	int offset; /* Offset in bytes within the iio character device report */
 	int size;			/* Field size in bytes */
+	float scale;			/* scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN]; /* From driver; ex: le:u10/16>>0 */
 	struct datum_info_t type_info;	   /* Decoded contents of type spec */
 };
@@ -90,7 +94,7 @@ struct sensor_info_t
 	float power;
 
 	float offset;	/* (cooked = raw + offset) * scale */
-	float scale;
+	float scale;    /*default: 1. when set to 0, use channel specific value*/
 	float illumincalib;	/* to set the calibration for the ALS */
 
 	int sampling_rate;	/* requested events / second */
