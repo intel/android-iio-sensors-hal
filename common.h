@@ -161,6 +161,8 @@ struct sensor_info_t
 	/* For cal-uncal sensor pairs - index to the pair sensor in sensor_info */
 	int pair_idx;
 
+	uint32_t quirks; /* Bit mask expressing the need for special tweaks */
+
 	/* Note: we may have to explicitely serialize access to some fields */
 
 	uint32_t flags;

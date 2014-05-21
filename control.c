@@ -15,6 +15,7 @@
 #include "utils.h"
 #include "transform.h"
 #include "calibration.h"
+#include "description.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */

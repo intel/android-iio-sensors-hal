@@ -7,6 +7,9 @@
 
 #include "common.h"
 
+#define QUIRKS_ALREADY_DECODED	0x1  /* Sensor quirks have been read */
+#define QUIRKS_INITIAL_RATE	0x2  /* Force initial sensor sampling rate */
+
 char*	sensor_get_name		(int handle);
 char*	sensor_get_vendor	(int handle);
 int	sensor_get_version	(int handle);
