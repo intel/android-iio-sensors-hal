@@ -20,6 +20,7 @@
 			"in_"tag spacer name"_index",	\
 			"in_"tag spacer name"_raw",	\
 			"in_"tag spacer name"_input",	\
+			"in_"tag spacer name"_scale",	\
                 },
 
 #define DECLARE_NAMED_CHANNEL(tag, name)	DECLARE_CHANNEL(tag, "_", name)

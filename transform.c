@@ -10,6 +10,7 @@
 #include "common.h"
 #include "transform.h"
 #include "utils.h"
+#include "calibration.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -32,6 +33,8 @@
 #define CONVERT_M_X                 (-CONVERT_M)
 #define CONVERT_M_Y                 (-CONVERT_M)
 #define CONVERT_M_Z                 (CONVERT_M)
+
+#define CONVERT_GAUSS_TO_MICROTESLA(x)        ( (x) * 100 )
 
 /* conversion of orientation data to degree units */
 #define CONVERT_O                   (1.0f/64.0f)
@@ -138,7 +141,7 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 		for (i=0; i<type->storagebits/8; i++)
 			u64 = (u64 << 8) | sample[i];
 	else
-		for (i=type->storagebits/8; i>=0; i--)
+		for (i=type->storagebits/8 - 1; i>=0; i--)
 			u64 = (u64 << 8) | sample[i];
 
 	u64 = (u64 >> type->shift) & (~0ULL >> zeroed_bits);
@@ -149,6 +152,10 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 	switch (type->realbits) {
 		case 8:
 			return (int64_t) (int8_t) u64;
+
+		case 12:
+			return (int64_t)  (u64 >>  11) ?
+					(((int64_t)-1) ^ 0xfff) | u64 : u64;
 
 		case 16:
 			return (int64_t) (int16_t) u64;
@@ -169,6 +176,7 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
+	float x, y, z;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
@@ -177,20 +185,48 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			 * /hardware/libhardware/include/hardware/sensors.h
 			 * for a discussion of what Android expects
 			 */
-			data->data[0] = -data->data[0];
-			data->data[2] = -data->data[2];
+			x = -data->data[0];
+			y = data->data[1];
+			z = -data->data[2];
+
+			data->data[0] = x;
+			data->data[1] = y;
+			data->data[2] = z;
+			break;
+
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			x = -data->data[0];
+			y = data->data[1];
+			z = -data->data[2];
+
+			data->data[0] = x;
+			data->data[1] = y;
+			data->data[2] = z;
+
+			/* Calibrate compass */
+			calibrate_compass (data, get_timestamp());
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
+			x = -data->data[0];
+			y = data->data[1];
+			z = -data->data[2];
+
 			/* Limit drift */
-			if (	fabs(data->data[0]) < 0.1 &&
-				fabs(data->data[1]) < 0.1 &&
-				fabs(data->data[2]) < 0.1) {
-					data->data[0] = 0;
-					data->data[1] = 0;
-					data->data[2] = 0;
-				}
+			if (fabs(x) < 0.1 && fabs(y) < 0.1 && fabs(z) < 0.1)
+				x = y = z = 0;
+
+			data->data[0] = x;
+			data->data[1] = y;
+			data->data[2] = z;
 			break;
+
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		case SENSOR_TYPE_TEMPERATURE:
+			/* Only keep two decimals for temperature readings */
+			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
+			break;
+
 	}
 }
 
@@ -199,9 +235,10 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 {
 	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
 	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
-
+	float scale = sensor_info[s].scale ?
+		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
 	/* Apply default scaling rules */
-	return (sensor_info[s].offset + s64) * sensor_info[s].scale;
+	return (sensor_info[s].offset + s64) * scale;
 }
 
 
@@ -328,8 +365,10 @@ float acquire_immediate_value(int s, int c)
 	int i = sensor_info[s].catalog_index;
 	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
 	const char* input_path = sensor_catalog[i].channel[c].input_path;
-	float scale = sensor_info[s].scale;
+	float scale = sensor_info[s].scale ?
+		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
 	float offset = sensor_info[s].offset;
+	int sensor_type = sensor_catalog[i].type;
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
@@ -350,6 +389,13 @@ float acquire_immediate_value(int s, int c)
 
 	if (ret == -1)
 		return 0;
+
+	/*
+	There is no transform ops defined yet for Raw sysfs values
+        Use this function to perform transformation as well.
+	*/
+	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+                return CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale); //Gauss to MicroTesla
 
 	return (val + offset) * scale;
 }

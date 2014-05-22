@@ -141,3 +141,15 @@ float sensor_get_power (int s)
 
 	return 0;
 }
+
+
+float sensor_get_illumincalib (int s)
+{
+	/* calibrating the ALS Sensor*/
+	if (sensor_info[s].illumincalib != 0.0 ||
+		!sensor_get_fl_prop(s, "illumincalib", &sensor_info[s].illumincalib)) {
+			return sensor_info[s].illumincalib;
+	}
+
+	return 0;
+}

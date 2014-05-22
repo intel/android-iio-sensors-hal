@@ -41,9 +41,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 {
 	int s;
 	int sensor_type;
+	int retval;
 	char sysfs_path[PATH_MAX];
 	const char* prefix;
         float scale;
+	int c;
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -71,6 +73,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	prefix = sensor_catalog[catalog_index].tag;
 
+	/*
+	 * receiving the illumination sensor calibration inputs from
+	 * the Android properties and setting it within sysfs
+	 */
+	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_LIGHT) {
+		retval = sensor_get_illumincalib(s);
+		sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
+		sysfs_write_int(sysfs_path, retval);
+	}
+
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);
 	sysfs_read_str(sysfs_path, sensor_info[s].internal_name, MAX_NAME_SIZE);
@@ -81,10 +93,26 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
 
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
-	if (!sysfs_read_float(sysfs_path, &scale))
+	if (!sysfs_read_float(sysfs_path, &scale)) {
                 sensor_info[s].scale = scale;
-        else
+		ALOGI("Scale path %s  scale: %f, dev_num =%d \n",
+                                        sysfs_path, scale, dev_num);
+	}else {
                 sensor_info[s].scale = 1;
+                /* Read channel specific scale if any*/
+                for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++)
+                {
+                        sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+                                sensor_catalog[catalog_index].channel[c].scale_path);
+
+                        if (!sysfs_read_float(sysfs_path, &scale)) {
+                                sensor_info[s].channel[c].scale = scale;
+			        sensor_info[s].scale = 0;
+                        }
+                        ALOGI("Scale path %s  channel scale: %f dev_num %d\n",
+                                        sysfs_path, scale, dev_num);
+                }
+        }
 
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
