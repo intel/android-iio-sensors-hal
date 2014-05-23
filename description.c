@@ -30,7 +30,7 @@ static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 }
 
 
-static int sensor_get_fl_prop (int s, const char* sel, float* val)
+int sensor_get_fl_prop (int s, const char* sel, float* val)
 {
 	char buf[MAX_NAME_SIZE];
 

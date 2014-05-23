@@ -9,6 +9,7 @@
 #include "description.h"
 #include "utils.h"
 #include "transform.h"
+#include "description.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -46,6 +47,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	const char* prefix;
         float scale;
 	int c;
+	float opt_scale;
+	const char* ch_name;
+	int num_channels;
+	char suffix[MAX_NAME_SIZE + 8];
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -112,6 +117,32 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                         ALOGI("Scale path %s  channel scale: %f dev_num %d\n",
                                         sysfs_path, scale, dev_num);
                 }
+        }
+
+        /*
+         * See if we have optional correction scaling factors for each of the
+         * channels of this sensor. These would be expressed using properties
+         * like iio.accel.y.scale = -1. In case of a single channel we also
+         * support things such as iio.temp.scale = -1. Note that this works
+         * for all types of sensors, and whatever transform is selected, on top
+         * of any previous conversions.
+         */
+        num_channels = sensor_catalog[catalog_index].num_channels;
+
+        if (num_channels) {
+		for (c = 0; c < num_channels; c++) {
+			opt_scale = 1;
+
+			ch_name = sensor_catalog[catalog_index].channel[c].name;
+			sprintf(suffix, "%s.scale", ch_name);
+			sensor_get_fl_prop(s, suffix, &opt_scale);
+
+			sensor_info[s].channel[c].opt_scale = opt_scale;
+		}
+        } else {
+		opt_scale = 1;
+		sensor_get_fl_prop(s, "scale", &opt_scale);
+		sensor_info[s].channel[0].opt_scale = opt_scale;
         }
 
 	/* Initialize Android-visible descriptor */

@@ -37,6 +37,8 @@
 
 struct channel_descriptor_t
 {
+	const char *name;	/* channel name ; ex: x */
+
 	/* sysfs entries located under scan_elements */
 	const char *en_path;	/* Enabled sysfs file name ; ex: "in_temp_en" */
 	const char *type_path;	/* _type sysfs file name  */
@@ -72,6 +74,11 @@ struct channel_info_t
 	float scale;			/* scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN]; /* From driver; ex: le:u10/16>>0 */
 	struct datum_info_t type_info;	   /* Decoded contents of type spec */
+	float opt_scale; /* Optional correction scale read from a property such
+			  * as iio.accel.x.scale, allowing late compensation of
+			  * problems such as misconfigured axes ; set to 1 by
+			  * default. Applied at the end of the scaling process.
+			  */
 };
 
 struct sample_ops_t
