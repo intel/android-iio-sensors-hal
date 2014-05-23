@@ -269,6 +269,7 @@ static void orientation_sensor_check(void)
 	int has_mag = 0;
 	int has_rot = 0;
 	int has_ori = 0;
+	int catalog_size = CATALOG_SIZE;
 
 	for (i=0; i<sensor_count; i++)
 		switch (sensor_catalog[sensor_info[i].catalog_index].type) {
@@ -290,7 +291,7 @@ static void orientation_sensor_check(void)
 		}
 
 	if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-		for (i=0; i<CATALOG_SIZE; i++)
+		for (i=0; i<catalog_size; i++)
 			if (sensor_catalog[i].type == SENSOR_TYPE_ORIENTATION) {
 				ALOGI("Adding placeholder orientation sensor");
 				add_sensor(0, i, 1);
