@@ -100,22 +100,25 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale)) {
                 sensor_info[s].scale = scale;
-		ALOGI("Scale path %s  scale: %f, dev_num =%d \n",
+		ALOGI("Scale path:%s scale:%f dev_num:%d\n",
                                         sysfs_path, scale, dev_num);
-	}else {
+	} else {
                 sensor_info[s].scale = 1;
+
                 /* Read channel specific scale if any*/
                 for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++)
                 {
                         sprintf(sysfs_path, BASE_PATH "%s", dev_num,
-                                sensor_catalog[catalog_index].channel[c].scale_path);
+                           sensor_catalog[catalog_index].channel[c].scale_path);
 
                         if (!sysfs_read_float(sysfs_path, &scale)) {
                                 sensor_info[s].channel[c].scale = scale;
 			        sensor_info[s].scale = 0;
-                        }
-                        ALOGI("Scale path %s  channel scale: %f dev_num %d\n",
+
+			        ALOGI(  "Scale path:%s "
+					"channel scale:%f dev_num:%d\n",
                                         sysfs_path, scale, dev_num);
+                        }
                 }
         }
 
