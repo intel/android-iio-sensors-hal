@@ -30,9 +30,6 @@ static int64_t last_poll_exit_ts;
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
-/* Cap the time between poll operations to this, to counter runaway polls */
-#define POLL_MIN_INTERVAL 1000 /* uS */
-
 #define INVALID_DEV_NUM ((uint32_t) -1)
 
 
@@ -621,12 +618,6 @@ return_first_available_sensor_report:
 		}
 await_event:
 
-	/* Keep a minimum time interval between poll operations */
-	delta = (get_timestamp() - last_poll_exit_ts)/1000;
-
-	if (delta > 0 && delta < POLL_MIN_INTERVAL)
-		usleep(POLL_MIN_INTERVAL - delta);
-
 	ALOGV("Awaiting sensor data\n");
 
 	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, get_poll_time());
@@ -786,9 +777,9 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-	/* Cap sampling rate */
+	/* Cap sampling rate at 1000 events per second for now*/
 
-	limit = 1000000/POLL_MIN_INTERVAL;
+	limit = 1000;
 
 	if (max_supported_rate && new_sampling_rate > max_supported_rate)
 		limit = max_supported_rate;
