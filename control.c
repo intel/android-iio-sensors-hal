@@ -270,26 +270,10 @@ int sensor_activate(int s, int enabled)
 		return ret;
 
 	if (!is_poll_sensor) {
-		/* Changes have to be made while the buffer is turned off */
+
+		/* Stop sampling */
 		enable_buffer(dev_num, 0);
-
-		/* Configure trigger */
-		switch (trig_sensors_per_dev[dev_num]) {
-			case 0:
-				setup_trigger(dev_num, "none");
-				break;
-
-			case 1:
-				sprintf(trigger_name, "%s-dev%d",
-					sensor_info[s].internal_name, dev_num);
-
-				setup_trigger(dev_num, trigger_name);
-				break;
-
-			default:
-				/* The trigger is already set */
-				break;
-		}
+		setup_trigger(dev_num, "\n");
 
 		/* Turn channels associated to this sensor on or off */
 		 for (c=0;c<sensor_info[s].num_channels; c++) {
@@ -300,8 +284,13 @@ int sensor_activate(int s, int enabled)
 			sysfs_write_int(sysfs_path, enabled);
 		}
 
-		/* If there's at least one sensor left */
+		/* If there's at least one sensor enabled on this iio device */
 		if (trig_sensors_per_dev[dev_num]) {
+			sprintf(trigger_name, "%s-dev%d",
+					sensor_info[s].internal_name, dev_num);
+
+			/* Start sampling */
+			setup_trigger(dev_num, trigger_name);
 			enable_buffer(dev_num, 1);
 		}
 	}
