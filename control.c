@@ -74,20 +74,19 @@ void build_sensor_report_maps(int dev_num)
 	int c;
 	int n;
 	int i;
-	int ch_enabled;
 	int ch_index;
 	char* ch_spec;
 	char spec_buf[MAX_TYPE_SPEC_LEN];
 	struct datum_info_t* ch_info;
 	int size;
 	char sysfs_path[PATH_MAX];
-	int active_channels;
+	int known_channels;
 	int offset;
 	int channel_size_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int sensor_handle_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int channel_number_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 
-	active_channels = 0;
+	known_channels = 0;
 
 	/* For each sensor that is linked to this device */
 	for (s=0; s<sensor_count; s++) {
@@ -96,25 +95,8 @@ void build_sensor_report_maps(int dev_num)
 
 		i = sensor_info[s].catalog_index;
 
-		/* Read channel status through syfs attributes */
+		/* Read channel details through sysfs attributes */
 		for (c=0; c<sensor_info[s].num_channels; c++) {
-
-			/* Read _en file */
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor_info[s].dev_num,
-				sensor_catalog[i].channel[c].en_path);
-
-			n = sysfs_read_int(sysfs_path, &ch_enabled);
-
-			if (n == -1) {
-				ALOGW(	"Failed to read _en flag: %s\n",
-				sysfs_path);
-				continue;
-			}
-
-			if (!ch_enabled != 1) {
-				sensor_info[s].channel[c].size = 0;
-			}
 
 			/* Read _type file */
 			sprintf(sysfs_path, CHANNEL_PATH "%s",
@@ -162,15 +144,14 @@ void build_sensor_report_maps(int dev_num)
 			channel_number_from_index[ch_index] = c;
 			channel_size_from_index  [ch_index] = size;
 
-			active_channels++;
+			known_channels++;
 		}
 	}
 
-	ALOGI("Found %d enabled channels for iio device %d\n", active_channels,
-		dev_num);
+	ALOGI("Found %d channels on iio device %d\n", known_channels, dev_num);
 
 	/*
-	 * Now that we know which channels are enabled, their sizes and their
+	 * Now that we know which channels are defined, their sizes and their
 	 * ordering, update channels offsets within device report. Note: there
 	 * is a possibility that several sensors share the same index, with
 	 * their data fields being isolated by masking and shifting as specified
