@@ -10,6 +10,7 @@
 #include "utils.h"
 #include "transform.h"
 #include "description.h"
+#include "control.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -316,17 +317,25 @@ void enumerate_sensors (void)
 	char trig_sensors[CATALOG_SIZE];
 	int dev_num;
 	unsigned int i;
+	int trig_found;
 
 	for (dev_num=0; dev_num<MAX_DEVICES; dev_num++) {
+		trig_found = 0;
+
 		discover_poll_sensors(dev_num, poll_sensors);
 		discover_trig_sensors(dev_num, trig_sensors);
 
 		for (i=0; i<CATALOG_SIZE; i++)
-			if (trig_sensors[i])
+			if (trig_sensors[i]) {
 				add_sensor(dev_num, i, 0);
+				trig_found = 1;
+			}
 			else
 				if (poll_sensors[i])
 					add_sensor(dev_num, i, 1);
+
+		if (trig_found)
+			build_sensor_report_maps(dev_num);
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);

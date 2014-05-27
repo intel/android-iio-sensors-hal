@@ -54,7 +54,7 @@ static int setup_trigger(int dev_num, const char* trigger_val)
 }
 
 
-static void refresh_sensor_report_maps(int dev_num)
+void build_sensor_report_maps(int dev_num)
 {
 	/*
 	 * Read sysfs files from a iio device's scan_element directory, and
@@ -310,11 +310,8 @@ int sensor_activate(int s, int enabled)
 				break;
 		}
 
-		/*
-		 * Turn channels associated to this sensor on or off, and update
-		 * the channels maps for all sensors associated to this device.
-		 */
-		for (c=0;c<sensor_info[s].num_channels; c++) {
+		/* Turn channels associated to this sensor on or off */
+		 for (c=0;c<sensor_info[s].num_channels; c++) {
 			sprintf(sysfs_path, CHANNEL_PATH "%s",
 				sensor_info[s].dev_num,
 				sensor_catalog[i].channel[c].en_path);
@@ -324,7 +321,6 @@ int sensor_activate(int s, int enabled)
 
 		/* If there's at least one sensor left */
 		if (trig_sensors_per_dev[dev_num]) {
-			refresh_sensor_report_maps(dev_num);
 			enable_buffer(dev_num, 1);
 		}
 	}
