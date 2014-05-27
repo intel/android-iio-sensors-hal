@@ -35,7 +35,7 @@ int sysfs_write_int(const char path[PATH_MAX], int value)
 		return -1;
 	}
 
-	len = sprintf(buf, "%d", value) + 1;
+	len = sprintf(buf, "%d", value);
 
 	ret = write(fd, buf, len);
 
