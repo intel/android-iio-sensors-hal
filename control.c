@@ -146,6 +146,15 @@ void build_sensor_report_maps(int dev_num)
 
 			known_channels++;
 		}
+
+		/* Turn on channels we're aware of */
+		for (c=0;c<sensor_info[s].num_channels; c++) {
+			sprintf(sysfs_path, CHANNEL_PATH "%s",
+				sensor_info[s].dev_num,
+				sensor_catalog[i].channel[c].en_path);
+
+			sysfs_write_int(sysfs_path, 1);
+		}
 	}
 
 	ALOGI("Found %d channels on iio device %d\n", known_channels, dev_num);
@@ -252,7 +261,6 @@ int adjust_counters (int s, int enabled)
 
 int sensor_activate(int s, int enabled)
 {
-	char sysfs_path[PATH_MAX];
 	char device_name[PATH_MAX];
 	char trigger_name[MAX_NAME_SIZE + 16];
 	int c;
@@ -274,15 +282,6 @@ int sensor_activate(int s, int enabled)
 		/* Stop sampling */
 		enable_buffer(dev_num, 0);
 		setup_trigger(dev_num, "\n");
-
-		/* Turn channels associated to this sensor on or off */
-		 for (c=0;c<sensor_info[s].num_channels; c++) {
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor_info[s].dev_num,
-				sensor_catalog[i].channel[c].en_path);
-
-			sysfs_write_int(sysfs_path, enabled);
-		}
 
 		/* If there's at least one sensor enabled on this iio device */
 		if (trig_sensors_per_dev[dev_num]) {
