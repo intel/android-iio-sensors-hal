@@ -206,13 +206,11 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			y = data->data[1];
 			z = -data->data[2];
 
-			/* Limit drift */
-			if (fabs(x) < 0.1 && fabs(y) < 0.1 && fabs(z) < 0.1)
-				x = y = z = 0;
-
 			data->data[0] = x;
 			data->data[1] = y;
 			data->data[2] = z;
+
+			calibrate_gyro(data, &sensor_info[s]);
 			break;
 
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:

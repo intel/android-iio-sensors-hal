@@ -144,6 +144,8 @@ struct sensor_info_t
 
 	struct sample_ops_t ops;
 
+	int calibrated;
+	void* cal_data;
 	/* Note: we may have to explicitely serialize access to some fields */
 };
 

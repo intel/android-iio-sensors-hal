@@ -3,6 +3,7 @@
  */
 
 #include <dirent.h>
+#include <stdlib.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
@@ -11,6 +12,7 @@
 #include "transform.h"
 #include "description.h"
 #include "control.h"
+#include "calibration.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -170,6 +172,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
+	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE) {
+		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
+		sensor_info[s].cal_data = calibration_data;
+	}
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
 
@@ -348,6 +354,20 @@ void enumerate_sensors (void)
 
 void delete_enumeration_data (void)
 {
+
+	int i;
+	for (i = 0; i < sensor_count; i++)
+	switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+		case SENSOR_TYPE_GYROSCOPE:
+			if (sensor_info[i].cal_data != NULL) {
+				free(sensor_info[i].cal_data);
+				sensor_info[i].cal_data = NULL;
+				sensor_info[i].calibrated = 0;
+			}
+			break;
+		default:
+			break;
+	}
 	/* Reset sensor count */
 	sensor_count = 0;
 }

@@ -214,6 +214,9 @@ int adjust_counters (int s, int enabled)
 		} else {
 			if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
 				compass_read_data(COMPASS_CALIBRATION_PATH);
+
+			if (sensor_type == SENSOR_TYPE_GYROSCOPE)
+				gyro_cal_init(&sensor_info[s]);
 		}
 	} else {
 		if (sensor_info[s].enable_count == 0)

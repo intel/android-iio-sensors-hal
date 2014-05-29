@@ -17,6 +17,7 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/transform.c \
 	     $(src_path)/compass-calibration.c \
 	     $(src_path)/matrix-ops.c \
+	     $(src_path)/gyro-calibration.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
 LOCAL_MODULE := sensors.$(TARGET_BOARD_PLATFORM)
