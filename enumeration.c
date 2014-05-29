@@ -88,8 +88,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	 */
 	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_LIGHT) {
 		retval = sensor_get_illumincalib(s);
-		sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
-		sysfs_write_int(sysfs_path, retval);
+                if (retval > 0) {
+			sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
+			sysfs_write_int(sysfs_path, retval);
+                }
 	}
 
 	/* Read name attribute, if available */
