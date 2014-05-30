@@ -118,12 +118,6 @@ inline float convert_from_vtf_format(int size, int exponent, unsigned int value)
 #define CONVERT_M_MG_VTF16E14_Y(s,d,x) (convert_from_vtf_format(s,d,x)/10)
 #define CONVERT_M_MG_VTF16E14_Z(s,d,x) (convert_from_vtf_format(s,d,x)/10)
 
-#define DATA_BYTES	2
-#define ACC_EXPONENT	-2
-#define GYRO_EXPONENT	-1
-#define MAGN_EXPONENT	0
-#define INC_EXPONENT	-1
-#define ROT_EXPONENT	-8
 
 /*----------------------------------------------------------------------------*/
 
@@ -272,6 +266,8 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
 	float correction;
+	int data_bytes  = (sample_type->realbits)/8;
+	int exponent    = sensor_info[s].offset;
 
 	/* In case correction has been requested using properties, apply it */
 	correction = sensor_info[s].channel[c].opt_scale;
@@ -282,17 +278,17 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 				case 0:
 					return	correction *
 						CONVERT_A_G_VTF16E14_X(
-						DATA_BYTES, ACC_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 1:
 					return	correction *
 						CONVERT_A_G_VTF16E14_Y(
-						DATA_BYTES, ACC_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 2:
 					return	correction *
 						CONVERT_A_G_VTF16E14_Z(
-						DATA_BYTES, ACC_EXPONENT, val);
+						data_bytes, exponent, val);
 			}
 			break;
 
@@ -302,17 +298,17 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 				case 0:
 					return	correction *
 						CONVERT_G_D_VTF16E14_X(
-						DATA_BYTES, GYRO_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 1:
 					return	correction *
 						CONVERT_G_D_VTF16E14_Y(
-						DATA_BYTES, GYRO_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 2:
 					return	correction *
 						CONVERT_G_D_VTF16E14_Z(
-						DATA_BYTES, GYRO_EXPONENT, val);
+						data_bytes, exponent, val);
 			}
 			break;
 
@@ -321,27 +317,27 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 				case 0:
 					return	correction *
 						CONVERT_M_MG_VTF16E14_X(
-						DATA_BYTES, MAGN_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 1:
 					return	correction *
 						CONVERT_M_MG_VTF16E14_Y(
-						DATA_BYTES, MAGN_EXPONENT, val);
+						data_bytes, exponent, val);
 
 				case 2:
 					return	correction *
 						CONVERT_M_MG_VTF16E14_Z(
-						DATA_BYTES, MAGN_EXPONENT, val);
+						data_bytes, exponent, val);
 			}
 			break;
 
 		case SENSOR_TYPE_ORIENTATION:
 			return	correction * convert_from_vtf_format(
-						DATA_BYTES, INC_EXPONENT, val);
+						data_bytes, exponent, val);
 
 		case SENSOR_TYPE_ROTATION_VECTOR:
 			return	correction * convert_from_vtf_format(
-						DATA_BYTES, ROT_EXPONENT, val);
+						data_bytes, exponent, val);
 	}
 
 	return 0;
