@@ -22,6 +22,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
 	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
 	DECLARE_SENSOR3("magn",       SENSOR_TYPE_MAGNETIC_FIELD, "x", "y", "z")
+	DECLARE_SENSOR1("intensity",  SENSOR_TYPE_LIGHT,          "both"       )
 	DECLARE_SENSOR0("illuminance",SENSOR_TYPE_LIGHT                        )
 	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
 	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,

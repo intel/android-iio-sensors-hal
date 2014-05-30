@@ -331,6 +331,9 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 			}
 			break;
 
+		case SENSOR_TYPE_LIGHT:
+				return (float) val;
+
 		case SENSOR_TYPE_ORIENTATION:
 			return	correction * convert_from_vtf_format(
 						data_bytes, exponent, val);
