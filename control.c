@@ -368,6 +368,7 @@ static int integrate_device_report(int dev_num)
 	unsigned char *source;
 	int size;
 	int expected_size = 0;
+	int ts;
 
 	/* There's an incoming report on the specified fd */
 
@@ -385,6 +386,8 @@ static int integrate_device_report(int dev_num)
 		if (sensor_info[s].dev_num == dev_num)
 			for (c=0; c<sensor_info[s].num_channels; c++)
 				expected_size += sensor_info[s].channel[c].size;
+
+	ts = get_timestamp();
 
 	len = read(device_fd[dev_num], buf, expected_size);
 
@@ -420,6 +423,7 @@ static int integrate_device_report(int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
+			sensor_info[s].report_ts = ts;
 			sensor_info[s].report_pending = 1;
 		}
 
@@ -443,7 +447,11 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	data->version = sizeof(sensors_event_t);
 	data->sensor = s;
 	data->type = sensor_type;
-	data->timestamp = current_ts;
+
+	if (sensor_info[s].report_ts)
+		data->timestamp = sensor_info[s].report_ts;
+	else
+		data->timestamp = current_ts;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/

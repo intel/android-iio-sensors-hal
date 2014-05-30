@@ -130,6 +130,14 @@ struct sensor_info_t
 	 */
 	int report_pending;
 
+	/*
+	 * Timestamp closely matching the date of sampling, preferably retrieved
+	 * from a iio channel alongside sample data. Value zero indicates that
+	 * we couldn't get such a closely correlated timestamp, and that one
+	 * has to be generated before the report gets sent up to Android.
+	 */
+	int64_t report_ts;
+
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
 
 	int64_t last_integration_ts; /* Last time an event was reported */
