@@ -362,12 +362,11 @@ static int integrate_device_report(int dev_num)
 {
 	int len;
 	int s,c;
-	unsigned char buf[MAX_SENSOR_REPORT_SIZE * MAX_SENSORS] = { 0 };
+	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int expected_size = 0;
 	int ts;
 
 	/* There's an incoming report on the specified fd */
@@ -382,14 +381,9 @@ static int integrate_device_report(int dev_num)
 		return -1;
 	}
 
-	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].dev_num == dev_num)
-			for (c=0; c<sensor_info[s].num_channels; c++)
-				expected_size += sensor_info[s].channel[c].size;
-
 	ts = get_timestamp();
 
-	len = read(device_fd[dev_num], buf, expected_size);
+	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n",
