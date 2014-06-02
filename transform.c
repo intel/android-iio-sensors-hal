@@ -198,7 +198,7 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			data->data[2] = z;
 
 			/* Calibrate compass */
-			calibrate_compass (data, get_timestamp());
+			calibrate_compass (data, &sensor_info[s], get_timestamp());
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
