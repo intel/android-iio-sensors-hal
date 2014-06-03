@@ -24,7 +24,10 @@ int sysfs_write_int(const char path[PATH_MAX], int value)
 	int len;
 	char buf[20];
 
-	if (!path[0]) {
+	len = sprintf(buf, "%d", value);
+
+	if (!path[0] || len <= 0) {
+		ALOGE("Unexpected condition in sysfs_write_int\n");
 		return -1;
 	}
 
@@ -34,8 +37,6 @@ int sysfs_write_int(const char path[PATH_MAX], int value)
 		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
 		return -1;
 	}
-
-	len = sprintf(buf, "%d", value);
 
 	ret = write(fd, buf, len);
 
