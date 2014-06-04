@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
 #include <errno.h>
 #include <fcntl.h>
 #include <math.h>

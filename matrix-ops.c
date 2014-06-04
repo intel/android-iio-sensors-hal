@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
 #include "matrix-ops.h"
 #include <math.h>
 #include <stdio.h>
