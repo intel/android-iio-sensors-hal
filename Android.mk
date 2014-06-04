@@ -22,7 +22,7 @@ src_files := $(src_path)/entry.c \
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
 LOCAL_MODULE := sensors.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_OWNER := intel
-LOCAL_MODULE_PATH := $(TARGET_OUT_SHARED_LIBRARIES)/hw
+LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
 LOCAL_LDFLAGS := -Wl,--gc-sections
