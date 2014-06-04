@@ -4,6 +4,8 @@
 
 # IIO sensors HAL module implementation, compiled as hw/iio-sensors-hal.so
 
+ifeq ($(USE_INTEL_SENSOR_HAL),true)
+
 LOCAL_PATH := $(call my-dir)
 
 include $(CLEAR_VARS)
@@ -43,3 +45,4 @@ LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_SRC_FILES := $(src_files)
 LOCAL_MODULE_TAGS := eng
 include $(BUILD_EXECUTABLE)
+endif
