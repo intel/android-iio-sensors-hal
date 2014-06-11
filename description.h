@@ -15,4 +15,6 @@ float	sensor_get_resolution	(int handle);
 float	sensor_get_power	(int handle);
 float	sensor_get_illumincalib (int handle);
 
+int		sensor_get_fl_prop (int s, const char* sel, float* val);
+
 #endif

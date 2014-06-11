@@ -12,4 +12,6 @@ int	sensor_poll		(sensors_event_t* data, int count);
 int	allocate_control_data	(void);
 void	delete_control_data	(void);
 
+void	build_sensor_report_maps(int dev_num);
+
 #endif

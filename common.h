@@ -37,6 +37,8 @@
 
 struct channel_descriptor_t
 {
+	const char *name;	/* channel name ; ex: x */
+
 	/* sysfs entries located under scan_elements */
 	const char *en_path;	/* Enabled sysfs file name ; ex: "in_temp_en" */
 	const char *type_path;	/* _type sysfs file name  */
@@ -72,6 +74,11 @@ struct channel_info_t
 	float scale;			/* scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN]; /* From driver; ex: le:u10/16>>0 */
 	struct datum_info_t type_info;	   /* Decoded contents of type spec */
+	float opt_scale; /* Optional correction scale read from a property such
+			  * as iio.accel.x.scale, allowing late compensation of
+			  * problems such as misconfigured axes ; set to 1 by
+			  * default. Applied at the end of the scaling process.
+			  */
 };
 
 struct sample_ops_t
@@ -122,6 +129,14 @@ struct sensor_info_t
 	 * contains that data.
 	 */
 	int report_pending;
+
+	/*
+	 * Timestamp closely matching the date of sampling, preferably retrieved
+	 * from a iio channel alongside sample data. Value zero indicates that
+	 * we couldn't get such a closely correlated timestamp, and that one
+	 * has to be generated before the report gets sent up to Android.
+	 */
+	int64_t report_ts;
 
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
 

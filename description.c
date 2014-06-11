@@ -30,7 +30,7 @@ static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 }
 
 
-static int sensor_get_fl_prop (int s, const char* sel, float* val)
+int sensor_get_fl_prop (int s, const char* sel, float* val)
 {
 	char buf[MAX_NAME_SIZE];
 
@@ -52,7 +52,6 @@ char* sensor_get_name (int s)
 	if (sensor_info[s].internal_name[0]) {
 		snprintf(sensor_info[s].friendly_name, MAX_NAME_SIZE, "S%d-%s",
 			 s, sensor_info[s].internal_name);
-		sensor_info[s].friendly_name[MAX_NAME_SIZE-1] = '\0';
 	} else {
 		sprintf(sensor_info[s].friendly_name, "S%d", s);
 	}

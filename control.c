@@ -30,9 +30,6 @@ static int64_t last_poll_exit_ts;
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
-/* Cap the time between poll operations to this, to counter runaway polls */
-#define POLL_MIN_INTERVAL 1000 /* uS */
-
 #define INVALID_DEV_NUM ((uint32_t) -1)
 
 
@@ -57,7 +54,7 @@ static int setup_trigger(int dev_num, const char* trigger_val)
 }
 
 
-static void refresh_sensor_report_maps(int dev_num)
+void build_sensor_report_maps(int dev_num)
 {
 	/*
 	 * Read sysfs files from a iio device's scan_element directory, and
@@ -77,20 +74,19 @@ static void refresh_sensor_report_maps(int dev_num)
 	int c;
 	int n;
 	int i;
-	int ch_enabled;
 	int ch_index;
 	char* ch_spec;
 	char spec_buf[MAX_TYPE_SPEC_LEN];
 	struct datum_info_t* ch_info;
 	int size;
 	char sysfs_path[PATH_MAX];
-	int active_channels;
+	int known_channels;
 	int offset;
 	int channel_size_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int sensor_handle_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 	int channel_number_from_index[MAX_SENSORS * MAX_CHANNELS] = { 0 };
 
-	active_channels = 0;
+	known_channels = 0;
 
 	/* For each sensor that is linked to this device */
 	for (s=0; s<sensor_count; s++) {
@@ -99,25 +95,8 @@ static void refresh_sensor_report_maps(int dev_num)
 
 		i = sensor_info[s].catalog_index;
 
-		/* Read channel status through syfs attributes */
+		/* Read channel details through sysfs attributes */
 		for (c=0; c<sensor_info[s].num_channels; c++) {
-
-			/* Read _en file */
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor_info[s].dev_num,
-				sensor_catalog[i].channel[c].en_path);
-
-			n = sysfs_read_int(sysfs_path, &ch_enabled);
-
-			if (n == -1) {
-				ALOGW(	"Failed to read _en flag: %s\n",
-				sysfs_path);
-				continue;
-			}
-
-			if (!ch_enabled != 1) {
-				sensor_info[s].channel[c].size = 0;
-			}
 
 			/* Read _type file */
 			sprintf(sysfs_path, CHANNEL_PATH "%s",
@@ -165,15 +144,23 @@ static void refresh_sensor_report_maps(int dev_num)
 			channel_number_from_index[ch_index] = c;
 			channel_size_from_index  [ch_index] = size;
 
-			active_channels++;
+			known_channels++;
+		}
+
+		/* Turn on channels we're aware of */
+		for (c=0;c<sensor_info[s].num_channels; c++) {
+			sprintf(sysfs_path, CHANNEL_PATH "%s",
+				sensor_info[s].dev_num,
+				sensor_catalog[i].channel[c].en_path);
+
+			sysfs_write_int(sysfs_path, 1);
 		}
 	}
 
-	ALOGI("Found %d enabled channels for iio device %d\n", active_channels,
-		dev_num);
+	ALOGI("Found %d channels on iio device %d\n", known_channels, dev_num);
 
 	/*
-	 * Now that we know which channels are enabled, their sizes and their
+	 * Now that we know which channels are defined, their sizes and their
 	 * ordering, update channels offsets within device report. Note: there
 	 * is a possibility that several sensors share the same index, with
 	 * their data fields being isolated by masking and shifting as specified
@@ -274,7 +261,6 @@ int adjust_counters (int s, int enabled)
 
 int sensor_activate(int s, int enabled)
 {
-	char sysfs_path[PATH_MAX];
 	char device_name[PATH_MAX];
 	char trigger_name[MAX_NAME_SIZE + 16];
 	int c;
@@ -292,42 +278,18 @@ int sensor_activate(int s, int enabled)
 		return ret;
 
 	if (!is_poll_sensor) {
-		/* Changes have to be made while the buffer is turned off */
+
+		/* Stop sampling */
 		enable_buffer(dev_num, 0);
+		setup_trigger(dev_num, "\n");
 
-		/* Configure trigger */
-		switch (trig_sensors_per_dev[dev_num]) {
-			case 0:
-				setup_trigger(dev_num, "none");
-				break;
-
-			case 1:
-				sprintf(trigger_name, "%s-dev%d",
+		/* If there's at least one sensor enabled on this iio device */
+		if (trig_sensors_per_dev[dev_num]) {
+			sprintf(trigger_name, "%s-dev%d",
 					sensor_info[s].internal_name, dev_num);
 
-				setup_trigger(dev_num, trigger_name);
-				break;
-
-			default:
-				/* The trigger is already set */
-				break;
-		}
-
-		/*
-		 * Turn channels associated to this sensor on or off, and update
-		 * the channels maps for all sensors associated to this device.
-		 */
-		for (c=0;c<sensor_info[s].num_channels; c++) {
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor_info[s].dev_num,
-				sensor_catalog[i].channel[c].en_path);
-
-			sysfs_write_int(sysfs_path, enabled);
-		}
-
-		/* If there's at least one sensor left */
-		if (trig_sensors_per_dev[dev_num]) {
-			refresh_sensor_report_maps(dev_num);
+			/* Start sampling */
+			setup_trigger(dev_num, trigger_name);
 			enable_buffer(dev_num, 1);
 		}
 	}
@@ -400,12 +362,12 @@ static int integrate_device_report(int dev_num)
 {
 	int len;
 	int s,c;
-	unsigned char buf[MAX_SENSOR_REPORT_SIZE * MAX_SENSORS] = { 0 };
+	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int expected_size = 0;
+	int ts;
 
 	/* There's an incoming report on the specified fd */
 
@@ -419,12 +381,9 @@ static int integrate_device_report(int dev_num)
 		return -1;
 	}
 
-	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].dev_num == dev_num)
-			for (c=0; c<sensor_info[s].num_channels; c++)
-				expected_size += sensor_info[s].channel[c].size;
+	ts = get_timestamp();
 
-	len = read(device_fd[dev_num], buf, expected_size);
+	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n",
@@ -458,6 +417,7 @@ static int integrate_device_report(int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
+			sensor_info[s].report_ts = ts;
 			sensor_info[s].report_pending = 1;
 		}
 
@@ -481,7 +441,11 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	data->version = sizeof(sensors_event_t);
 	data->sensor = s;
 	data->type = sensor_type;
-	data->timestamp = current_ts;
+
+	if (sensor_info[s].report_ts)
+		data->timestamp = sensor_info[s].report_ts;
+	else
+		data->timestamp = current_ts;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
@@ -620,12 +584,6 @@ return_first_available_sensor_report:
 			return 1;
 		}
 await_event:
-
-	/* Keep a minimum time interval between poll operations */
-	delta = (get_timestamp() - last_poll_exit_ts)/1000;
-
-	if (delta > 0 && delta < POLL_MIN_INTERVAL)
-		usleep(POLL_MIN_INTERVAL - delta);
 
 	ALOGV("Awaiting sensor data\n");
 
@@ -786,9 +744,9 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-	/* Cap sampling rate */
+	/* Cap sampling rate at 1000 events per second for now*/
 
-	limit = 1000000/POLL_MIN_INTERVAL;
+	limit = 1000;
 
 	if (max_supported_rate && new_sampling_rate > max_supported_rate)
 		limit = max_supported_rate;

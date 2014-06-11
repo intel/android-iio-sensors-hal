@@ -13,12 +13,12 @@
 /* If no cal data is present - first calibration will
    use a more relaxed set of values to get an initial
    calibration faster */
-#define FIRST_MIN_DIFF 1.0f
-#define FIRST_MAX_SQR_ERR 3.5f
+#define FIRST_MIN_DIFF 0.5f
+#define FIRST_MAX_SQR_ERR 5.0f
 #define FIRST_LOOKBACK_COUNT 4
 
-#define MIN_DIFF 1.5f
-#define MAX_SQR_ERR 2.5f
+#define MIN_DIFF 1.0f
+#define MAX_SQR_ERR 3.5f
 #define LOOKBACK_COUNT 6
 
 

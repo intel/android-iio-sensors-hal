@@ -118,12 +118,6 @@ inline float convert_from_vtf_format(int size, int exponent, unsigned int value)
 #define CONVERT_M_MG_VTF16E14_Y(s,d,x) (convert_from_vtf_format(s,d,x)/10)
 #define CONVERT_M_MG_VTF16E14_Z(s,d,x) (convert_from_vtf_format(s,d,x)/10)
 
-#define DATA_BYTES	2
-#define ACC_EXPONENT	-2
-#define GYRO_EXPONENT	-1
-#define MAGN_EXPONENT	0
-#define INC_EXPONENT	-1
-#define ROT_EXPONENT	-8
 
 /*----------------------------------------------------------------------------*/
 
@@ -237,6 +231,10 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
 	float scale = sensor_info[s].scale ?
 		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
+
+	/* In case correction has been requested using properties, apply it */
+	scale *= sensor_info[s].channel[c].opt_scale;
+
 	/* Apply default scaling rules */
 	return (sensor_info[s].offset + s64) * scale;
 }
@@ -267,21 +265,30 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 	int val		= (int) sample_as_int64(sample_data, sample_type);
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
+	float correction;
+	int data_bytes  = (sample_type->realbits)/8;
+	int exponent    = sensor_info[s].offset;
+
+	/* In case correction has been requested using properties, apply it */
+	correction = sensor_info[s].channel[c].opt_scale;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			switch (c) {
 				case 0:
-					return CONVERT_A_G_VTF16E14_X(
-						DATA_BYTES, ACC_EXPONENT, val);
+					return	correction *
+						CONVERT_A_G_VTF16E14_X(
+						data_bytes, exponent, val);
 
 				case 1:
-					return CONVERT_A_G_VTF16E14_Y(
-						DATA_BYTES, ACC_EXPONENT, val);
+					return	correction *
+						CONVERT_A_G_VTF16E14_Y(
+						data_bytes, exponent, val);
 
 				case 2:
-					return CONVERT_A_G_VTF16E14_Z(
-						DATA_BYTES, ACC_EXPONENT, val);
+					return	correction *
+						CONVERT_A_G_VTF16E14_Z(
+						data_bytes, exponent, val);
 			}
 			break;
 
@@ -289,42 +296,51 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 		case SENSOR_TYPE_GYROSCOPE:
 			switch (c) {
 				case 0:
-					return CONVERT_G_D_VTF16E14_X(
-						DATA_BYTES, GYRO_EXPONENT, val);
+					return	correction *
+						CONVERT_G_D_VTF16E14_X(
+						data_bytes, exponent, val);
 
 				case 1:
-					return CONVERT_G_D_VTF16E14_Y(
-						DATA_BYTES, GYRO_EXPONENT, val);
+					return	correction *
+						CONVERT_G_D_VTF16E14_Y(
+						data_bytes, exponent, val);
 
 				case 2:
-					return CONVERT_G_D_VTF16E14_Z(
-						DATA_BYTES, GYRO_EXPONENT, val);
+					return	correction *
+						CONVERT_G_D_VTF16E14_Z(
+						data_bytes, exponent, val);
 			}
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			switch (c) {
 				case 0:
-					return CONVERT_M_MG_VTF16E14_X(
-						DATA_BYTES, MAGN_EXPONENT, val);
+					return	correction *
+						CONVERT_M_MG_VTF16E14_X(
+						data_bytes, exponent, val);
 
 				case 1:
-					return CONVERT_M_MG_VTF16E14_Y(
-						DATA_BYTES, MAGN_EXPONENT, val);
+					return	correction *
+						CONVERT_M_MG_VTF16E14_Y(
+						data_bytes, exponent, val);
 
 				case 2:
-					return CONVERT_M_MG_VTF16E14_Z(
-						DATA_BYTES, MAGN_EXPONENT, val);
+					return	correction *
+						CONVERT_M_MG_VTF16E14_Z(
+						data_bytes, exponent, val);
 			}
 			break;
 
+		case SENSOR_TYPE_LIGHT:
+				return (float) val;
+
 		case SENSOR_TYPE_ORIENTATION:
-			return convert_from_vtf_format(DATA_BYTES, INC_EXPONENT,
-				val);
+			return	correction * convert_from_vtf_format(
+						data_bytes, exponent, val);
 
 		case SENSOR_TYPE_ROTATION_VECTOR:
-			return convert_from_vtf_format(DATA_BYTES, ROT_EXPONENT,
-				val);
+			return	correction * convert_from_vtf_format(
+						data_bytes, exponent, val);
 	}
 
 	return 0;
@@ -369,6 +385,10 @@ float acquire_immediate_value(int s, int c)
 		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
 	float offset = sensor_info[s].offset;
 	int sensor_type = sensor_catalog[i].type;
+	float correction;
+
+	/* In case correction has been requested using properties, apply it */
+	correction = sensor_info[s].channel[c].opt_scale;
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
@@ -377,7 +397,7 @@ float acquire_immediate_value(int s, int c)
 		ret = sysfs_read_float(sysfs_path, &val);
 
 		if (!ret) {
-			return val;
+			return val * correction;
 		}
 	};
 
@@ -395,7 +415,8 @@ float acquire_immediate_value(int s, int c)
         Use this function to perform transformation as well.
 	*/
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
-                return CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale); //Gauss to MicroTesla
+                return  CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale) *
+			correction;
 
-	return (val + offset) * scale;
+	return (val + offset) * scale * correction;
 }

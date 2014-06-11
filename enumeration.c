@@ -9,6 +9,8 @@
 #include "description.h"
 #include "utils.h"
 #include "transform.h"
+#include "description.h"
+#include "control.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -20,6 +22,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
 	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
 	DECLARE_SENSOR3("magn",       SENSOR_TYPE_MAGNETIC_FIELD, "x", "y", "z")
+	DECLARE_SENSOR1("intensity",  SENSOR_TYPE_LIGHT,          "both"       )
 	DECLARE_SENSOR0("illuminance",SENSOR_TYPE_LIGHT                        )
 	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
 	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,
@@ -46,6 +49,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	const char* prefix;
         float scale;
 	int c;
+	float opt_scale;
+	const char* ch_name;
+	int num_channels;
+	char suffix[MAX_NAME_SIZE + 8];
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -95,23 +102,52 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale)) {
                 sensor_info[s].scale = scale;
-		ALOGI("Scale path %s  scale: %f, dev_num =%d \n",
+		ALOGI("Scale path:%s scale:%f dev_num:%d\n",
                                         sysfs_path, scale, dev_num);
-	}else {
+	} else {
                 sensor_info[s].scale = 1;
+
                 /* Read channel specific scale if any*/
                 for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++)
                 {
                         sprintf(sysfs_path, BASE_PATH "%s", dev_num,
-                                sensor_catalog[catalog_index].channel[c].scale_path);
+                           sensor_catalog[catalog_index].channel[c].scale_path);
 
                         if (!sysfs_read_float(sysfs_path, &scale)) {
                                 sensor_info[s].channel[c].scale = scale;
 			        sensor_info[s].scale = 0;
-                        }
-                        ALOGI("Scale path %s  channel scale: %f dev_num %d\n",
+
+			        ALOGI(  "Scale path:%s "
+					"channel scale:%f dev_num:%d\n",
                                         sysfs_path, scale, dev_num);
+                        }
                 }
+        }
+
+        /*
+         * See if we have optional correction scaling factors for each of the
+         * channels of this sensor. These would be expressed using properties
+         * like iio.accel.y.scale = -1. In case of a single channel we also
+         * support things such as iio.temp.scale = -1. Note that this works
+         * for all types of sensors, and whatever transform is selected, on top
+         * of any previous conversions.
+         */
+        num_channels = sensor_catalog[catalog_index].num_channels;
+
+        if (num_channels) {
+		for (c = 0; c < num_channels; c++) {
+			opt_scale = 1;
+
+			ch_name = sensor_catalog[catalog_index].channel[c].name;
+			sprintf(suffix, "%s.scale", ch_name);
+			sensor_get_fl_prop(s, suffix, &opt_scale);
+
+			sensor_info[s].channel[c].opt_scale = opt_scale;
+		}
+        } else {
+		opt_scale = 1;
+		sensor_get_fl_prop(s, "scale", &opt_scale);
+		sensor_info[s].channel[0].opt_scale = opt_scale;
         }
 
 	/* Initialize Android-visible descriptor */
@@ -238,6 +274,7 @@ static void orientation_sensor_check(void)
 	int has_mag = 0;
 	int has_rot = 0;
 	int has_ori = 0;
+	int catalog_size = CATALOG_SIZE;
 
 	for (i=0; i<sensor_count; i++)
 		switch (sensor_catalog[sensor_info[i].catalog_index].type) {
@@ -259,7 +296,7 @@ static void orientation_sensor_check(void)
 		}
 
 	if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-		for (i=0; i<CATALOG_SIZE; i++)
+		for (i=0; i<catalog_size; i++)
 			if (sensor_catalog[i].type == SENSOR_TYPE_ORIENTATION) {
 				ALOGI("Adding placeholder orientation sensor");
 				add_sensor(0, i, 1);
@@ -281,17 +318,25 @@ void enumerate_sensors (void)
 	char trig_sensors[CATALOG_SIZE];
 	int dev_num;
 	unsigned int i;
+	int trig_found;
 
 	for (dev_num=0; dev_num<MAX_DEVICES; dev_num++) {
+		trig_found = 0;
+
 		discover_poll_sensors(dev_num, poll_sensors);
 		discover_trig_sensors(dev_num, trig_sensors);
 
 		for (i=0; i<CATALOG_SIZE; i++)
-			if (trig_sensors[i])
+			if (trig_sensors[i]) {
 				add_sensor(dev_num, i, 0);
+				trig_found = 1;
+			}
 			else
 				if (poll_sensors[i])
 					add_sensor(dev_num, i, 1);
+
+		if (trig_found)
+			build_sensor_report_maps(dev_num);
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);

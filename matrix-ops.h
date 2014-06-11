@@ -1,3 +1,7 @@
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
 #ifndef __MATRIX_OPS__
 #define __MATRIX_OPS__
 

@@ -15,6 +15,7 @@
 
 #define DECLARE_CHANNEL(tag, spacer, name)		\
 		{					\
+			name,				\
 			"in_"tag spacer name"_en",	\
 			"in_"tag spacer name"_type",	\
 			"in_"tag spacer name"_index",	\
