@@ -5,6 +5,9 @@
 #ifndef __CALIBRATION_H__
 #define __CALIBRATION_H__
 
+#include "common.h"
+
+/* compass defines */
 #define COMPASS_CALIBRATION_PATH "/data/compass.conf"
 #define DS_SIZE 48
 #define EPSILON 0.000000001
@@ -27,6 +30,10 @@
 #define RAW_DATA_SELECTED_PATH "/data/raw_compass_data_selected_%d.txt"
 #endif
 
+/* gyro defines */
+#define GYRO_MAX_ERR 0.05f
+#define GYRO_DS_SIZE 8
+
 typedef struct {
     /* hard iron offsets */
     double offset[3][1];
@@ -39,10 +46,19 @@ typedef struct {
 
 } calibration_data;
 
+struct gyro_cal {
+    float bias[3];
+    int start;
+    int count;
+    float sample[GYRO_DS_SIZE][3];
+};
+
 typedef double mat_input_t[DS_SIZE][3];
 
 void calibrate_compass (struct sensors_event_t* event, int64_t time);
 void compass_read_data (const char* config_path);
 void compass_store_data (const char* config_path);
 
+void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info);
+void gyro_cal_init(struct sensor_info_t* info);
 #endif

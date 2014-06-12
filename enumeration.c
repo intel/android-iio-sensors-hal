@@ -3,6 +3,7 @@
  */
 
 #include <dirent.h>
+#include <stdlib.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
@@ -11,6 +12,7 @@
 #include "transform.h"
 #include "description.h"
 #include "control.h"
+#include "calibration.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -86,8 +88,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	 */
 	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_LIGHT) {
 		retval = sensor_get_illumincalib(s);
-		sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
-		sysfs_write_int(sysfs_path, retval);
+                if (retval > 0) {
+			sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
+			sysfs_write_int(sysfs_path, retval);
+                }
 	}
 
 	/* Read name attribute, if available */
@@ -127,8 +131,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
         /*
          * See if we have optional correction scaling factors for each of the
          * channels of this sensor. These would be expressed using properties
-         * like iio.accel.y.scale = -1. In case of a single channel we also
-         * support things such as iio.temp.scale = -1. Note that this works
+         * like iio.accel.y.opt_scale = -1. In case of a single channel we also
+         * support things such as iio.temp.opt_scale = -1. Note that this works
          * for all types of sensors, and whatever transform is selected, on top
          * of any previous conversions.
          */
@@ -139,7 +143,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 			opt_scale = 1;
 
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
-			sprintf(suffix, "%s.scale", ch_name);
+			sprintf(suffix, "%s.opt_scale", ch_name);
 			sensor_get_fl_prop(s, suffix, &opt_scale);
 
 			sensor_info[s].channel[c].opt_scale = opt_scale;
@@ -170,6 +174,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
+	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE) {
+		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
+		sensor_info[s].cal_data = calibration_data;
+	}
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
 
@@ -348,6 +356,20 @@ void enumerate_sensors (void)
 
 void delete_enumeration_data (void)
 {
+
+	int i;
+	for (i = 0; i < sensor_count; i++)
+	switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+		case SENSOR_TYPE_GYROSCOPE:
+			if (sensor_info[i].cal_data != NULL) {
+				free(sensor_info[i].cal_data);
+				sensor_info[i].cal_data = NULL;
+				sensor_info[i].calibrated = 0;
+			}
+			break;
+		default:
+			break;
+	}
 	/* Reset sensor count */
 	sensor_count = 0;
 }
