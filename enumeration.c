@@ -131,8 +131,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
         /*
          * See if we have optional correction scaling factors for each of the
          * channels of this sensor. These would be expressed using properties
-         * like iio.accel.y.scale = -1. In case of a single channel we also
-         * support things such as iio.temp.scale = -1. Note that this works
+         * like iio.accel.y.opt_scale = -1. In case of a single channel we also
+         * support things such as iio.temp.opt_scale = -1. Note that this works
          * for all types of sensors, and whatever transform is selected, on top
          * of any previous conversions.
          */
@@ -143,7 +143,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 			opt_scale = 1;
 
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
-			sprintf(suffix, "%s.scale", ch_name);
+			sprintf(suffix, "%s.opt_scale", ch_name);
 			sensor_get_fl_prop(s, suffix, &opt_scale);
 
 			sensor_info[s].channel[c].opt_scale = opt_scale;
