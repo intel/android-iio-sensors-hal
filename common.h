@@ -31,6 +31,7 @@
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
 
 #define MAX_NAME_SIZE		32
+#define CAP_SENSOR_MAX_FREQUENCY	1000
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
