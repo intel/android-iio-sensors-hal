@@ -147,12 +147,15 @@ void build_sensor_report_maps(int dev_num)
 			known_channels++;
 		}
 
+		/* Stop sampling - if we are recovering from hal restart */
+                enable_buffer(dev_num, 0);
+                setup_trigger(dev_num, "\n");
+
 		/* Turn on channels we're aware of */
 		for (c=0;c<sensor_info[s].num_channels; c++) {
 			sprintf(sysfs_path, CHANNEL_PATH "%s",
 				sensor_info[s].dev_num,
 				sensor_catalog[i].channel[c].en_path);
-
 			sysfs_write_int(sysfs_path, 1);
 		}
 	}
