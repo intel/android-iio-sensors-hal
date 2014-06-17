@@ -213,7 +213,7 @@ int adjust_counters (int s, int enabled)
 			return 0; /* The sensor was, and remains, in use */
 		} else {
 			if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
-				compass_read_data(COMPASS_CALIBRATION_PATH);
+				compass_read_data(&sensor_info[s]);
 
 			if (sensor_type == SENSOR_TYPE_GYROSCOPE)
 				gyro_cal_init(&sensor_info[s]);
@@ -226,7 +226,7 @@ int adjust_counters (int s, int enabled)
 		      sensor_info[s].friendly_name);
 
 		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
-			compass_store_data(COMPASS_CALIBRATION_PATH);
+			compass_store_data(&sensor_info[s]);
 
 		sensor_info[s].enable_count--;
 
@@ -646,7 +646,6 @@ int sensor_set_delay(int s, int64_t ns)
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
 	int max_supported_rate = 0;
-	int limit;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -714,6 +713,10 @@ int sensor_set_delay(int s, int64_t ns)
 			/* Decode a single integer value */
 			n = atoi(cursor);
 
+			/* Cap sampling rate to CAP_SENSOR_MAX_FREQUENCY*/
+                        if(n > CAP_SENSOR_MAX_FREQUENCY)
+                                 break;
+
 			if (n > max_supported_rate)
 				max_supported_rate = n;
 
@@ -747,20 +750,14 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-	/* Cap sampling rate at 1000 events per second for now*/
 
-	limit = 1000;
-
-	if (max_supported_rate && new_sampling_rate > max_supported_rate)
-		limit = max_supported_rate;
-
-	if (new_sampling_rate > limit) {
-
-		new_sampling_rate = limit;
-
+	if (max_supported_rate &&
+		new_sampling_rate > max_supported_rate) {
+		new_sampling_rate = max_supported_rate;
 		ALOGI(	"Can't support %d sampling rate, lowering to %d\n",
 			req_sampling_rate, new_sampling_rate);
 	}
+
 
 	/* If the desired rate is already active we're all set */
 	if (new_sampling_rate == cur_sampling_rate)

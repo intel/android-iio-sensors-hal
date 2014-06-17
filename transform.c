@@ -170,46 +170,16 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
-	float x, y, z;
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
-			/*
-			 * Invert x and z axes orientation from SI units - see
-			 * /hardware/libhardware/include/hardware/sensors.h
-			 * for a discussion of what Android expects
-			 */
-			x = -data->data[0];
-			y = data->data[1];
-			z = -data->data[2];
-
-			data->data[0] = x;
-			data->data[1] = y;
-			data->data[2] = z;
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			x = -data->data[0];
-			y = data->data[1];
-			z = -data->data[2];
-
-			data->data[0] = x;
-			data->data[1] = y;
-			data->data[2] = z;
-
-			/* Calibrate compass */
-			calibrate_compass (data, get_timestamp());
+			calibrate_compass (data, &sensor_info[s], get_timestamp());
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
-			x = -data->data[0];
-			y = data->data[1];
-			z = -data->data[2];
-
-			data->data[0] = x;
-			data->data[1] = y;
-			data->data[2] = z;
-
 			calibrate_gyro(data, &sensor_info[s]);
 			break;
 

@@ -17,43 +17,37 @@
 #define MAX_RAW_DATA_COUNT 2000
 static FILE *raw_data = NULL;
 static FILE *raw_data_selected = NULL;
-static FILE *compensation_data = NULL;
 static int raw_data_count = 0;
 int file_no = 0;
 #endif
 
-static float select_points[DS_SIZE][3];
-static int select_point_count = 0;
-
-static int calibrated = 0;
-static calibration_data cal_data;
 
 /* reset calibration algorithm */
-static void reset_calibration ()
+static void reset_sample (struct compass_cal* data)
 {
     int i,j;
-    select_point_count = 0;
+    data->sample_count = 0;
     for (i = 0; i < DS_SIZE; i++)
         for (j=0; j < 3; j++)
-            select_points[i][j] = 0;
+            data->sample[i][j] = 0;
 }
 
-static double calc_square_err (calibration_data data)
+static double calc_square_err (struct compass_cal* data)
 {
     double err = 0;
     double raw[3][1], result[3][1], mat_diff[3][1];
     int i;
 
     for (i = 0; i < DS_SIZE; i++) {
-        raw[0][0] = select_points[i][0];
-        raw[1][0] = select_points[i][1];
-        raw[2][0] = select_points[i][2];
+        raw[0][0] = data->sample[i][0];
+        raw[1][0] = data->sample[i][1];
+        raw[2][0] = data->sample[i][2];
 
-        substract (3, 1, raw, data.offset, mat_diff);
-        multiply(3, 3, 1, data.w_invert, mat_diff, result);
+        substract (3, 1, raw, data->offset, mat_diff);
+        multiply(3, 3, 1, data->w_invert, mat_diff, result);
 
         double diff = sqrt(result[0][0] * result[0][0] + result[1][0] * result[1][0]
-             + result[2][0] * result[2][0]) - data.bfield;
+             + result[2][0] * result[2][0]) - data->bfield;
 
         err += diff * diff;
     }
@@ -236,7 +230,7 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     return 1;
 }
 
-static void compass_cal_init (FILE* data_file)
+static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
 {
 
 #ifdef DBG_RAW_DATA
@@ -259,71 +253,83 @@ static void compass_cal_init (FILE* data_file)
     raw_data_count = 0;
 #endif
 
-    int data_count = 14;
-    reset_calibration();
-    calibrated = 0;
+    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
 
-    if (data_file != NULL) {
+    if (cal_data == NULL)
+        return;
+
+    int data_count = 14;
+    reset_sample(cal_data);
+
+    if (!info->calibrated && data_file != NULL) {
        int ret = fscanf(data_file, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-            &calibrated, &cal_data.offset[0][0], &cal_data.offset[1][0], &cal_data.offset[2][0],
-            &cal_data.w_invert[0][0], &cal_data.w_invert[0][1], &cal_data.w_invert[0][2],
-            &cal_data.w_invert[1][0], &cal_data.w_invert[1][1], &cal_data.w_invert[1][2],
-            &cal_data.w_invert[2][0], &cal_data.w_invert[2][1], &cal_data.w_invert[2][2],
-            &cal_data.bfield);
+            &info->calibrated, &cal_data->offset[0][0], &cal_data->offset[1][0], &cal_data->offset[2][0],
+            &cal_data->w_invert[0][0], &cal_data->w_invert[0][1], &cal_data->w_invert[0][2],
+            &cal_data->w_invert[1][0], &cal_data->w_invert[1][1], &cal_data->w_invert[1][2],
+            &cal_data->w_invert[2][0], &cal_data->w_invert[2][1], &cal_data->w_invert[2][2],
+            &cal_data->bfield);
 
         if (ret != data_count) {
-            calibrated = 0;
+            info->calibrated = 0;
         }
     }
 
-    if (calibrated) {
-        ALOGI("CompassCalibration: load old data, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f",
-            cal_data.offset[0][0], cal_data.offset[1][0], cal_data.offset[2][0],
-            cal_data.w_invert[0][0], cal_data.w_invert[0][1],cal_data.w_invert[0][2],cal_data.w_invert[1][0],
-            cal_data.w_invert[1][1], cal_data.w_invert[1][2],cal_data.w_invert[2][0],cal_data.w_invert[2][1],
-            cal_data.w_invert[2][2], cal_data.bfield);
+    if (info->calibrated) {
+        ALOGV("CompassCalibration: load old data, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f",
+            cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0],
+            cal_data->w_invert[0][0], cal_data->w_invert[0][1], cal_data->w_invert[0][2], cal_data->w_invert[1][0],
+            cal_data->w_invert[1][1], cal_data->w_invert[1][2], cal_data->w_invert[2][0], cal_data->w_invert[2][1],
+            cal_data->w_invert[2][2], cal_data->bfield);
 
     } else {
-        cal_data.offset[0][0] = 0;
-        cal_data.offset[1][0] = 0;
-        cal_data.offset[2][0] = 0;
+        cal_data->offset[0][0] = 0;
+        cal_data->offset[1][0] = 0;
+        cal_data->offset[2][0] = 0;
 
-        cal_data.w_invert[0][0] = 1;
-        cal_data.w_invert[1][0] = 0;
-        cal_data.w_invert[2][0] = 0;
-        cal_data.w_invert[0][1] = 0;
-        cal_data.w_invert[1][1] = 1;
-        cal_data.w_invert[2][1] = 0;
-        cal_data.w_invert[0][2] = 0;
-        cal_data.w_invert[1][2] = 0;
-        cal_data.w_invert[2][2] = 1;
+        cal_data->w_invert[0][0] = 1;
+        cal_data->w_invert[1][0] = 0;
+        cal_data->w_invert[2][0] = 0;
+        cal_data->w_invert[0][1] = 0;
+        cal_data->w_invert[1][1] = 1;
+        cal_data->w_invert[2][1] = 0;
+        cal_data->w_invert[0][2] = 0;
+        cal_data->w_invert[1][2] = 0;
+        cal_data->w_invert[2][2] = 1;
 
-        cal_data.bfield = 0;
+        cal_data->bfield = 0;
     }
 
 }
 
-static void compass_store_result(FILE* data_file)
+static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
 {
-    if (data_file == NULL)
+    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+
+    if (data_file == NULL || cal_data == NULL)
         return;
+
     int ret = fprintf(data_file, "%d %f %f %f %f %f %f %f %f %f %f %f %f %f\n",
-        calibrated, cal_data.offset[0][0], cal_data.offset[1][0], cal_data.offset[2][0],
-        cal_data.w_invert[0][0], cal_data.w_invert[0][1], cal_data.w_invert[0][2],
-        cal_data.w_invert[1][0], cal_data.w_invert[1][1], cal_data.w_invert[1][2],
-        cal_data.w_invert[2][0], cal_data.w_invert[2][1], cal_data.w_invert[2][2],
-        cal_data.bfield);
+        info->calibrated, cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0],
+        cal_data->w_invert[0][0], cal_data->w_invert[0][1], cal_data->w_invert[0][2],
+        cal_data->w_invert[1][0], cal_data->w_invert[1][1], cal_data->w_invert[1][2],
+        cal_data->w_invert[2][0], cal_data->w_invert[2][1], cal_data->w_invert[2][2],
+        cal_data->bfield);
 
     if (ret < 0)
         ALOGE ("compass calibration - store data failed!");
 }
 
-static int compass_collect (struct sensors_event_t* event, int64_t current_time)
+static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
 {
     float data[3] = {event->magnetic.x, event->magnetic.y, event->magnetic.z};
-    int index,j;
-    int lookback_count;
+    unsigned int index,j;
+    unsigned int lookback_count;
     float min_diff;
+
+    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+
+    if (cal_data == NULL)
+        return -1;
 
 #ifdef DBG_RAW_DATA
     if (raw_data && raw_data_count < MAX_RAW_DATA_COUNT) {
@@ -338,29 +344,30 @@ static int compass_collect (struct sensors_event_t* event, int64_t current_time)
     }
 #endif
 
-    lookback_count = calibrated ? LOOKBACK_COUNT : FIRST_LOOKBACK_COUNT;
-    min_diff = calibrated ? MIN_DIFF : FIRST_MIN_DIFF;
+    lookback_count = info->calibrated ? LOOKBACK_COUNT : FIRST_LOOKBACK_COUNT;
+    min_diff = info->calibrated ? MIN_DIFF : FIRST_MIN_DIFF;
 
     // For the current point to be accepted, each x/y/z value must be different enough
     // to the last several collected points
-    if (select_point_count > 0 && select_point_count < DS_SIZE) {
-        int lookback = lookback_count < select_point_count ? lookback_count : select_point_count;
+    if (cal_data->sample_count > 0 && cal_data->sample_count < DS_SIZE) {
+        unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count :
+                        cal_data->sample_count;
         for (index = 0; index < lookback; index++){
             for (j = 0; j < 3; j++) {
-                if (fabsf(data[j] - select_points[select_point_count-1-index][j]) < min_diff) {
+                if (fabsf(data[j] - cal_data->sample[cal_data->sample_count-1-index][j]) < min_diff) {
                     ALOGV("CompassCalibration:point reject: [%f,%f,%f], selected_count=%d",
-                       data[0], data[1], data[2], select_point_count);
+                       data[0], data[1], data[2], cal_data->sample_count);
                        return 0;
                 }
             }
         }
     }
 
-    if (select_point_count < DS_SIZE) {
-        memcpy(select_points[select_point_count], data, sizeof(float) * 3);
-        select_point_count++;
+    if (cal_data->sample_count < DS_SIZE) {
+        memcpy(cal_data->sample[cal_data->sample_count], data, sizeof(float) * 3);
+        cal_data->sample_count++;
         ALOGV("CompassCalibration:point collected [%f,%f,%f], selected_count=%d",
-            (double)data[0], (double)data[1], (double)data[2], select_point_count);
+            (double)data[0], (double)data[1], (double)data[2], cal_data->sample_count);
 #ifdef DBG_RAW_DATA
         if (raw_data_selected) {
             fprintf(raw_data_selected, "%f %f %f\n", (double)data[0], (double)data[1], (double)data[2]);
@@ -370,9 +377,11 @@ static int compass_collect (struct sensors_event_t* event, int64_t current_time)
     return 1;
 }
 
-static void compass_compute_cal (struct sensors_event_t* event)
+static void compass_compute_cal (struct sensors_event_t* event, struct sensor_info_t* info)
 {
-    if (!calibrated)
+    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+
+    if (!info->calibrated || cal_data == NULL)
         return;
 
     double result[3][1], raw[3][1], diff[3][1];
@@ -381,81 +390,87 @@ static void compass_compute_cal (struct sensors_event_t* event)
     raw[1][0] = event->magnetic.y;
     raw[2][0] = event->magnetic.z;
 
-    substract(3, 1, raw, cal_data.offset, diff);
-    multiply (3, 3, 1, cal_data.w_invert, diff, result);
+    substract(3, 1, raw, cal_data->offset, diff);
+    multiply (3, 3, 1, cal_data->w_invert, diff, result);
 
     event->magnetic.x = event->data[0] = result[0][0];
     event->magnetic.y = event->data[1] = result[1][0];
     event->magnetic.z = event->data[2] = result[2][0];
 }
 
-static int compass_ready ()
+static int compass_ready (struct sensor_info_t* info)
 {
     mat_input_t mat;
     int i;
     float max_sqr_err;
 
-    if (select_point_count < DS_SIZE)
-        return calibrated;
+    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
 
-    max_sqr_err = calibrated ? MAX_SQR_ERR : FIRST_MAX_SQR_ERR;
+    if (cal_data->sample_count < DS_SIZE)
+        return info->calibrated;
+
+    max_sqr_err = info->calibrated ? MAX_SQR_ERR : FIRST_MAX_SQR_ERR;
 
     /* enough points have been collected, do the ellipsoid calibration */
     for (i = 0; i < DS_SIZE; i++) {
-       mat[i][0] = select_points[i][0];
-       mat[i][1] = select_points[i][1];
-       mat[i][2] = select_points[i][2];
+       mat[i][0] = cal_data->sample[i][0];
+       mat[i][1] = cal_data->sample[i][1];
+       mat[i][2] = cal_data->sample[i][2];
     }
 
     /* check if result is good */
-    calibration_data new_cal_data;
+    struct compass_cal new_cal_data;
+    /* the sample data must remain the same */
+    new_cal_data = *cal_data;
     if (ellipsoid_fit(mat, new_cal_data.offset, new_cal_data.w_invert, &new_cal_data.bfield)) {
-        double new_err = calc_square_err (new_cal_data);
-        ALOGV("new err is %f, max sqr err id %f", new_err,max_sqr_err);
+        double new_err = calc_square_err (&new_cal_data);
+        ALOGI("new err is %f, max sqr err id %f", new_err,max_sqr_err);
         if (new_err < max_sqr_err) {
             double err = calc_square_err(cal_data);
             if (new_err < err) {
                 /* new cal data is better, so we switch to the new */
-                cal_data = new_cal_data;
-                calibrated = 1;
+                memcpy(cal_data->offset, new_cal_data.offset, sizeof(cal_data->offset));
+                memcpy(cal_data->w_invert, new_cal_data.w_invert, sizeof(cal_data->w_invert));
+                cal_data->bfield = new_cal_data.bfield;
+                info->calibrated = 1;
                 ALOGV("CompassCalibration: ready check success, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f, err %f",
-                    cal_data.offset[0][0], cal_data.offset[1][0], cal_data.offset[2][0], cal_data.w_invert[0][0],
-                    cal_data.w_invert[0][1], cal_data.w_invert[0][2], cal_data.w_invert[1][0],cal_data.w_invert[1][1],
-                    cal_data.w_invert[1][2], cal_data.w_invert[2][0], cal_data.w_invert[2][1], cal_data.w_invert[2][2],
-                    cal_data.bfield, new_err);
+                    cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0], cal_data->w_invert[0][0],
+                    cal_data->w_invert[0][1], cal_data->w_invert[0][2], cal_data->w_invert[1][0], cal_data->w_invert[1][1],
+                    cal_data->w_invert[1][2], cal_data->w_invert[2][0], cal_data->w_invert[2][1], cal_data->w_invert[2][2],
+                    cal_data->bfield, new_err);
             }
         }
     }
-    reset_calibration();
-    return calibrated;
+    reset_sample(cal_data);
+    return info->calibrated;
 }
 
-void calibrate_compass (struct sensors_event_t* event, int64_t current_time)
+void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
 {
     long current_time_ms = current_time / 1000000;
-    compass_collect (event, current_time_ms);
-    if (compass_ready()) {
-        compass_compute_cal (event);
+    compass_collect (event, info, current_time_ms);
+    if (compass_ready(info)) {
+        compass_compute_cal (event, info);
         event->magnetic.status = SENSOR_STATUS_ACCURACY_HIGH;
     } else {
         event->magnetic.status = SENSOR_STATUS_ACCURACY_LOW;
     }
 }
 
-void compass_read_data (const char* config_file)
+void compass_read_data (struct sensor_info_t* info)
 {
-    FILE* data_file = fopen (config_file, "r");
+    FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "r");
 
-    compass_cal_init(data_file);
+    compass_cal_init(data_file, info);
     if (data_file)
         fclose(data_file);
 }
 
-void compass_store_data (const char* config_file)
+void compass_store_data (struct sensor_info_t* info)
 {
-    FILE* data_file = fopen (config_file, "w");
+    FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "w");
 
-    compass_store_result(data_file);
+    compass_store_result(data_file, info);
     if (data_file)
         fclose(data_file);
 

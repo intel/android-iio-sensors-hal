@@ -34,7 +34,7 @@
 #define GYRO_MAX_ERR 0.05f
 #define GYRO_DS_SIZE 8
 
-typedef struct {
+struct compass_cal {
     /* hard iron offsets */
     double offset[3][1];
 
@@ -44,7 +44,10 @@ typedef struct {
     /* geomagnetic strength */
     double bfield;
 
-} calibration_data;
+    /* selection data */
+    float sample[DS_SIZE][3];
+    unsigned int sample_count;
+};
 
 struct gyro_cal {
     float bias[3];
@@ -55,9 +58,9 @@ struct gyro_cal {
 
 typedef double mat_input_t[DS_SIZE][3];
 
-void calibrate_compass (struct sensors_event_t* event, int64_t time);
-void compass_read_data (const char* config_path);
-void compass_store_data (const char* config_path);
+void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t time);
+void compass_read_data (struct sensor_info_t* info);
+void compass_store_data (struct sensor_info_t* info);
 
 void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info);
 void gyro_cal_init(struct sensor_info_t* info);
