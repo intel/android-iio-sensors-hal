@@ -105,7 +105,7 @@ struct sensor_info_t
 	float scale;    /*default: 1. when set to 0, use channel specific value*/
 	float illumincalib;	/* to set the calibration for the ALS */
 
-	int sampling_rate;	/* requested events / second */
+	float sampling_rate;	/* requested events / second */
 
 	int dev_num;	/* Associated iio dev num, ex: 3 for /dev/iio:device3 */
 	int enable_count;
