@@ -197,6 +197,7 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			calibrate_gyro(data, &sensor_info[s]);
 			break;
 

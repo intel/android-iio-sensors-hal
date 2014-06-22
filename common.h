@@ -158,6 +158,9 @@ struct sensor_info_t
 	int thread_data_fd[2];
 	pthread_t acquisition_thread;
 
+	/* For cal-uncal sensor pairs - index to the pair sensor in sensor_info */
+	int pair_idx;
+
 	/* Note: we may have to explicitely serialize access to some fields */
 
 	uint32_t flags;

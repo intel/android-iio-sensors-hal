@@ -228,6 +228,7 @@ int adjust_counters (int s, int enabled)
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				gyro_cal_init(&sensor_info[s]);
 				break;
 		}
@@ -249,6 +250,12 @@ int adjust_counters (int s, int enabled)
 		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor_info[s]);
 	}
+
+
+	/* If uncalibrated type and pair is already active don't adjust counters */
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+			return 0;
 
 	/* We changed the state of a sensor - adjust per iio device counters */
 
@@ -284,6 +291,7 @@ static int get_field_count (int s)
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
 		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
 			return 3;
 
@@ -490,11 +498,31 @@ int sensor_activate(int s, int enabled)
 	int i = sensor_info[s].catalog_index;
 	int is_poll_sensor = !sensor_info[s].num_channels;
 
+	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
+	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
+	 * Activate gyro calibrated     - Calibrated has handler
+	 * Reactivate gyro uncalibrated - Uncalibrated gets data from calibrated */
+
+	/* If we want to deactivate gyro calibrated and gyro uncalibrated is active
+	 * Deactivate gyro uncalibrated - Uncalibrated no longer gets data from handler
+	 * Deactivate gyro calibrated   - Calibrated releases handler
+	 * Reactivate gyro uncalibrated - Uncalibrated has handler */
+
+	if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+
+				sensor_activate(sensor_info[s].pair_idx, 0);
+				ret = sensor_activate(s, enabled);
+				sensor_activate(sensor_info[s].pair_idx, 1);
+				return ret;
+	}
+
 	ret = adjust_counters(s, enabled);
 
 	/* If the operation was neutral in terms of state, we're done */
 	if (ret <= 0)
 		return ret;
+
 
 	if (!is_poll_sensor) {
 
@@ -664,6 +692,12 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 	if (!num_fields)
 		return 0;
 
+
+	/* Only return uncalibrated event if also gyro active */
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+			return 0;
+
 	memset(data, 0, sizeof(sensors_event_t));
 
 	data->version	= sizeof(sensors_event_t);
@@ -728,6 +762,7 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	struct epoll_event ev[MAX_DEVICES];
 	int64_t target_ts;
 	int returned_events;
+	int event_count;
 
 	/* Get one or more events from our collection of sensors */
 
@@ -736,16 +771,38 @@ return_available_sensor_reports:
 	returned_events = 0;
 
 	/* Check our sensor collection for available reports */
-	for (s=0; s<sensor_count && returned_events<count; s++)
+	for (s=0; s<sensor_count && returned_events < count; s++)
 		if (sensor_info[s].report_pending) {
-
+			event_count = 0;
 			/* Lower flag */
 			sensor_info[s].report_pending = 0;
 
 			/* Report this event if it looks OK */
-			returned_events +=
-			     propagate_sensor_report(s, &data[returned_events]);
+			event_count = propagate_sensor_report(s, &data[returned_events]);
 
+			/* Duplicate only if both cal & uncal are active */
+			if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+					struct gyro_cal* gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
+
+					memcpy(&data[returned_events + event_count], &data[returned_events],
+							sizeof(struct sensors_event_t) * event_count);
+					for (i = 0; i < event_count; i++) {
+						data[returned_events + i].type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+						data[returned_events + i].sensor = sensor_info[s].pair_idx;
+
+						data[returned_events + i].data[0] = data[returned_events + i].data[0] + gyro_data->bias[0];
+						data[returned_events + i].data[1] = data[returned_events + i].data[1] + gyro_data->bias[1];
+						data[returned_events + i].data[2] = data[returned_events + i].data[2] + gyro_data->bias[2];
+
+						data[returned_events + i].uncalibrated_gyro.bias[0] = gyro_data->bias[0];
+						data[returned_events + i].uncalibrated_gyro.bias[1] = gyro_data->bias[1];
+						data[returned_events + i].uncalibrated_gyro.bias[2] = gyro_data->bias[2];
+					}
+					event_count <<= 1;
+			}
+			sensor_info[sensor_info[s].pair_idx].report_pending = 0;
+			returned_events += event_count;
 			/*
 			 * If the sample was deemed invalid or unreportable,
 			 * e.g. had the same value as the previously reported
