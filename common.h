@@ -88,7 +88,7 @@ struct sample_ops_t
 	float (*transform)(int s, int c, unsigned char* sample_data);
 
 	/* Function called once per sample */
-	void (*finalize)(int s, struct sensors_event_t* data);
+	int (*finalize)(int s, struct sensors_event_t* data);
 };
 
 struct sensor_info_t
@@ -147,6 +147,9 @@ struct sensor_info_t
 
 	int calibrated;
 	void* cal_data;
+
+	float prev_val; /* Previously reported value, for on-change sensors */
+
 	/* Note: we may have to explicitely serialize access to some fields */
 };
 

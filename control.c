@@ -431,7 +431,7 @@ static int integrate_device_report(int dev_num)
 }
 
 
-static void propagate_sensor_report(int s, struct sensors_event_t* data)
+static int propagate_sensor_report(int s, struct sensors_event_t* data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
@@ -500,8 +500,7 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 			ALOGV("\tfield %d: %f\n", c, data->data[c]);
 		}
 
-		sensor_info[s].ops.finalize(s, data);
-		return;
+		return sensor_info[s].ops.finalize(s, data);
 	}
 
 	/* Convert the data into the expected Android-level format */
@@ -517,7 +516,7 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 		current_sample += sensor_info[s].channel[c].size;
 	}
 
-	sensor_info[s].ops.finalize(s, data);
+	return sensor_info[s].ops.finalize(s, data);
 }
 
 
@@ -583,11 +582,20 @@ return_first_available_sensor_report:
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].report_pending) {
 
-			/* Return that up */
-			propagate_sensor_report(s, data);
+			/* Lower flag */
 			sensor_info[s].report_pending = 0;
-			ALOGV("Report on sensor %d\n", s);
-			return 1;
+
+			if (propagate_sensor_report(s, data)) {
+				/* Return that up */
+				ALOGV("Report on sensor %d\n", s);
+				return 1;
+			}
+
+			/*
+			 * If the sample was deemed invalid or unreportable,
+			 * e.g. had the same value as the previously reported
+			 * value for a 'on change' sensor, silently drop it
+			 */
 		}
 await_event:
 

@@ -166,7 +166,7 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 }
 
 
-static void finalize_sample_default(int s, struct sensors_event_t* data)
+static int finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
@@ -183,13 +183,24 @@ static void finalize_sample_default(int s, struct sensors_event_t* data)
 			calibrate_gyro(data, &sensor_info[s]);
 			break;
 
+		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
-			/* Only keep two decimals for temperature readings */
+			/* Only keep two decimals for these readings */
 			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
-			break;
 
+			/*
+			 * These are on change sensors ; drop the sample if it
+			 * has the same value as the previously reported one.
+			 */
+			if (data->data[0] == sensor_info[s].prev_val)
+				return 0;
+
+			sensor_info[s].prev_val = data->data[0];
+			break;
 	}
+
+	return 1; /* Return sample to Android */
 }
 
 
@@ -208,7 +219,7 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 }
 
 
-static void finalize_sample_ISH(int s, struct sensors_event_t* data)
+static int finalize_sample_ISH(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
@@ -224,6 +235,8 @@ static void finalize_sample_ISH(int s, struct sensors_event_t* data)
 		data->data[1] = -pitch;
 		data->data[2] = -roll;
 	}
+
+	return 1; /* Return sample to Android */
 }
 
 
