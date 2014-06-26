@@ -302,9 +302,9 @@ int sensor_activate(int s, int enabled)
 
 	/*
 	 * Make sure we have a fd on the character device ; conversely, close
-	 * the fd if no one is using associated sensor anymore. The assumption
+	 * the fd if no one is using associated sensors anymore. The assumption
 	 * here is that the underlying driver will power on the relevant
-	 * hardware block while someone hold a fd on the device.
+	 * hardware block while someone holds a fd on the device.
 	 */
 	dev_fd = device_fd[dev_num];
 
@@ -474,14 +474,12 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 			num_fields = 4;
 			break;
 
-		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* hidden for now */
-			num_fields = 0;
-			break;
+		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* Hidden for now */
+			return 0;			/* Drop sample */
 
 		default:
 			ALOGE("Unknown sensor type!\n");
-			num_fields = 0;
-			break;
+			return 0;			/* Drop sample */
 	}
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
@@ -516,6 +514,10 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 		current_sample += sensor_info[s].channel[c].size;
 	}
 
+	/*
+	 * The finalize routine, in addition to its late sample processing duty,
+	 * has the final say on whether or not the sample gets sent to Android.
+	 */
 	return sensor_info[s].ops.finalize(s, data);
 }
 
