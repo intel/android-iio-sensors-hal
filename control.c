@@ -441,6 +441,7 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 	int c;
 	unsigned char* current_sample;
 	int64_t current_ts = get_timestamp();
+	int64_t delta;
 
 	memset(data, 0, sizeof(sensors_event_t));
 
@@ -496,6 +497,14 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 			data->data[c] = acquire_immediate_value(s, c);
 
 			ALOGV("\tfield %d: %f\n", c, data->data[c]);
+		}
+
+		/* Control acquisition time and flag anything beyond 100 ms */
+		delta = get_timestamp() - current_ts;
+
+		if (delta > 100 * 1000 * 1000) {
+			ALOGI("Sensor %d (%s) sampling time: %d ms\n", s,
+			sensor_info[s].friendly_name, (int) (delta / 1000000));
 		}
 
 		return sensor_info[s].ops.finalize(s, data);
