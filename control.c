@@ -212,14 +212,17 @@ int adjust_counters (int s, int enabled)
 
 		sensor_info[s].enable_count++;
 
-		if (sensor_info[s].enable_count != 1) {
+		if (sensor_info[s].enable_count > 1)
 			return 0; /* The sensor was, and remains, in use */
-		} else {
-			if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
-				compass_read_data(&sensor_info[s]);
 
-			if (sensor_type == SENSOR_TYPE_GYROSCOPE)
+		switch (sensor_type) {
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				compass_read_data(&sensor_info[s]);
+				break;
+
+			case SENSOR_TYPE_GYROSCOPE:
 				gyro_cal_init(&sensor_info[s]);
+				break;
 		}
 	} else {
 		if (sensor_info[s].enable_count == 0)
