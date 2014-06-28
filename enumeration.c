@@ -150,7 +150,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		}
         } else {
 		opt_scale = 1;
-		sensor_get_fl_prop(s, "scale", &opt_scale);
+		sensor_get_fl_prop(s, "opt_scale", &opt_scale);
 		sensor_info[s].channel[0].opt_scale = opt_scale;
         }
 

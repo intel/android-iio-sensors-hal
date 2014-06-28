@@ -147,12 +147,15 @@ void build_sensor_report_maps(int dev_num)
 			known_channels++;
 		}
 
+		/* Stop sampling - if we are recovering from hal restart */
+                enable_buffer(dev_num, 0);
+                setup_trigger(dev_num, "\n");
+
 		/* Turn on channels we're aware of */
 		for (c=0;c<sensor_info[s].num_channels; c++) {
 			sprintf(sysfs_path, CHANNEL_PATH "%s",
 				sensor_info[s].dev_num,
 				sensor_catalog[i].channel[c].en_path);
-
 			sysfs_write_int(sysfs_path, 1);
 		}
 	}
@@ -299,9 +302,9 @@ int sensor_activate(int s, int enabled)
 
 	/*
 	 * Make sure we have a fd on the character device ; conversely, close
-	 * the fd if no one is using associated sensor anymore. The assumption
+	 * the fd if no one is using associated sensors anymore. The assumption
 	 * here is that the underlying driver will power on the relevant
-	 * hardware block while someone hold a fd on the device.
+	 * hardware block while someone holds a fd on the device.
 	 */
 	dev_fd = device_fd[dev_num];
 
@@ -428,7 +431,7 @@ static int integrate_device_report(int dev_num)
 }
 
 
-static void propagate_sensor_report(int s, struct sensors_event_t* data)
+static int propagate_sensor_report(int s, struct sensors_event_t* data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
@@ -438,6 +441,7 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 	int c;
 	unsigned char* current_sample;
 	int64_t current_ts = get_timestamp();
+	int64_t delta;
 
 	memset(data, 0, sizeof(sensors_event_t));
 
@@ -471,14 +475,12 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 			num_fields = 4;
 			break;
 
-		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* hidden for now */
-			num_fields = 0;
-			break;
+		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* Hidden for now */
+			return 0;			/* Drop sample */
 
 		default:
 			ALOGE("Unknown sensor type!\n");
-			num_fields = 0;
-			break;
+			return 0;			/* Drop sample */
 	}
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
@@ -497,8 +499,15 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 			ALOGV("\tfield %d: %f\n", c, data->data[c]);
 		}
 
-		sensor_info[s].ops.finalize(s, data);
-		return;
+		/* Control acquisition time and flag anything beyond 100 ms */
+		delta = get_timestamp() - current_ts;
+
+		if (delta > 100 * 1000 * 1000) {
+			ALOGI("Sensor %d (%s) sampling time: %d ms\n", s,
+			sensor_info[s].friendly_name, (int) (delta / 1000000));
+		}
+
+		return sensor_info[s].ops.finalize(s, data);
 	}
 
 	/* Convert the data into the expected Android-level format */
@@ -514,7 +523,11 @@ static void propagate_sensor_report(int s, struct sensors_event_t* data)
 		current_sample += sensor_info[s].channel[c].size;
 	}
 
-	sensor_info[s].ops.finalize(s, data);
+	/*
+	 * The finalize routine, in addition to its late sample processing duty,
+	 * has the final say on whether or not the sample gets sent to Android.
+	 */
+	return sensor_info[s].ops.finalize(s, data);
 }
 
 
@@ -534,7 +547,7 @@ static int get_poll_time (void)
 
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
-		    sensor_info[s].sampling_rate &&
+		    sensor_info[s].sampling_rate > 0 &&
 		    !sensor_info[s].num_channels) {
 				target_ts = sensor_info[s].last_integration_ts +
 				      1000000000LL/sensor_info[s].sampling_rate;
@@ -580,11 +593,20 @@ return_first_available_sensor_report:
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].report_pending) {
 
-			/* Return that up */
-			propagate_sensor_report(s, data);
+			/* Lower flag */
 			sensor_info[s].report_pending = 0;
-			ALOGV("Report on sensor %d\n", s);
-			return 1;
+
+			if (propagate_sensor_report(s, data)) {
+				/* Return that up */
+				ALOGV("Report on sensor %d\n", s);
+				return 1;
+			}
+
+			/*
+			 * If the sample was deemed invalid or unreportable,
+			 * e.g. had the same value as the previously reported
+			 * value for a 'on change' sensor, silently drop it
+			 */
 		}
 await_event:
 
@@ -617,7 +639,7 @@ await_event:
 		for (s=0; s<sensor_count; s++)
 			if (sensor_info[s].enable_count &&
 			    !sensor_info[s].num_channels &&
-			    sensor_info[s].sampling_rate) {
+			    sensor_info[s].sampling_rate > 0) {
 				target_ts = sensor_info[s].last_integration_ts +
 				      1000000000LL/sensor_info[s].sampling_rate;
 
@@ -640,24 +662,25 @@ int sensor_set_delay(int s, int64_t ns)
 	int dev_num		=	sensor_info[s].dev_num;
 	int i			=	sensor_info[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
-	int new_sampling_rate;	/* Granted sampling rate after arbitration   */
-	int cur_sampling_rate;	/* Currently used sampling rate		     */
-	int req_sampling_rate;	/* Requested ; may be different from granted */
+	float new_sampling_rate; /* Granted sampling rate after arbitration   */
+	float cur_sampling_rate; /* Currently used sampling rate	      */
+	float req_sampling_rate; /* Requested ; may be different from granted */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
 	int max_supported_rate = 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
+	int sr;
 
 	if (!ns) {
 		ALOGE("Rejecting zero delay request on sensor %d\n", s);
 		return -EINVAL;
 	}
 
-	new_sampling_rate = req_sampling_rate = (int) (1000000000L/ns);
+	new_sampling_rate = req_sampling_rate = 1000000000L/ns;
 
-	if (!new_sampling_rate) {
+	if (new_sampling_rate < 1) {
 		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
 		new_sampling_rate = 1;
 	}
@@ -670,7 +693,7 @@ int sensor_set_delay(int s, int64_t ns)
 
 	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
 
-	if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1) {
+	if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1) {
 		per_sensor_sampling_rate = 1;
 		per_device_sampling_rate = 0;
 	} else {
@@ -678,7 +701,7 @@ int sensor_set_delay(int s, int64_t ns)
 
 		sprintf(sysfs_path, DEVICE_SAMPLING_PATH, dev_num);
 
-		if (sysfs_read_int(sysfs_path, &cur_sampling_rate) != -1)
+		if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1)
 			per_device_sampling_rate = 1;
 		else
 			per_device_sampling_rate = 0;
@@ -710,18 +733,18 @@ int sensor_set_delay(int s, int64_t ns)
 		/* While we're not at the end of the string */
 		while (*cursor && cursor[0]) {
 
-			/* Decode a single integer value */
-			n = atoi(cursor);
+			/* Decode a single value */
+			sr = strtod(cursor, NULL);
 
 			/* Cap sampling rate to CAP_SENSOR_MAX_FREQUENCY*/
-                        if(n > CAP_SENSOR_MAX_FREQUENCY)
+                        if (sr > CAP_SENSOR_MAX_FREQUENCY)
                                  break;
 
-			if (n > max_supported_rate)
-				max_supported_rate = n;
+			if (sr > max_supported_rate)
+				max_supported_rate = sr;
 
 			/* If this matches the selected rate, we're happy */
-			if (new_sampling_rate == n)
+			if (new_sampling_rate == sr)
 				break;
 
 			/*
@@ -731,12 +754,12 @@ int sensor_set_delay(int s, int64_t ns)
 			 * assumption that rates are sorted by increasing value
 			 * in the allowed frequencies string.
 			 */
-			if (n > new_sampling_rate) {
+			if (sr > new_sampling_rate) {
 				ALOGI(
-			"Increasing sampling rate on sensor %d from %d to %d\n",
-				s, req_sampling_rate, n);
+			"Increasing sampling rate on sensor %d from %g to %g\n",
+				s, (double) req_sampling_rate, (double) sr);
 
-				new_sampling_rate = n;
+				new_sampling_rate = sr;
 				break;
 			}
 
@@ -754,8 +777,8 @@ int sensor_set_delay(int s, int64_t ns)
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
 		new_sampling_rate = max_supported_rate;
-		ALOGI(	"Can't support %d sampling rate, lowering to %d\n",
-			req_sampling_rate, new_sampling_rate);
+		ALOGI(	"Can't support %g sampling rate, lowering to %g\n",
+			(double) req_sampling_rate, (double) new_sampling_rate);
 	}
 
 
@@ -763,12 +786,12 @@ int sensor_set_delay(int s, int64_t ns)
 	if (new_sampling_rate == cur_sampling_rate)
 		return 0;
 
-	ALOGI("Sensor %d sampling rate switched to %d\n", s, new_sampling_rate);
+	ALOGI("Sensor %d sampling rate switched to %g\n", s, new_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
-	sysfs_write_int(sysfs_path, new_sampling_rate);
+	sysfs_write_float(sysfs_path, new_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
