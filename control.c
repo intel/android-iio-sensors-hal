@@ -5,6 +5,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 #include <fcntl.h>
+#include <pthread.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
@@ -23,14 +24,16 @@ static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
 
 static int poll_fd; /* epoll instance covering all enabled sensors */
 
-static int poll_socket_pair[2];	/* used to unblock the poll loop */
-
-/* Timestamp for the moment when we last exited a poll operation */
-static int64_t last_poll_exit_ts;
-
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
-#define INVALID_DEV_NUM ((uint32_t) -1)
+/*
+ * We associate tags to each of our poll set entries. These tags have the
+ * following values:
+ * - a iio device number if the fd is a iio character device fd
+ * - THREAD_REPORT_TAG_BASE + sensor handle if the fd is the receiving end of a
+ *   pipe used by a sysfs data acquisition thread
+ *  */
+#define THREAD_REPORT_TAG_BASE	0x00010000
 
 
 static int enable_buffer(int dev_num, int enabled)
@@ -268,6 +271,178 @@ int adjust_counters (int s, int enabled)
 }
 
 
+static int get_field_count (int sensor_type)
+{
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
+		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
+		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
+		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
+			return 3;
+
+		case SENSOR_TYPE_LIGHT:			/* SI lux units */
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
+		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
+		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
+		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
+			return 1;
+
+		case SENSOR_TYPE_ROTATION_VECTOR:
+			return  4;
+
+		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* Hidden for now */
+			return 0;			/* Drop sample */
+
+		default:
+			ALOGE("Unknown sensor type!\n");
+			return 0;			/* Drop sample */
+	}
+}
+
+
+/* Check and honor termination requests */
+#define CHECK_CANCEL(s)							       \
+	if (sensor_info[s].thread_data_fd[1] == -1) {			       \
+			ALOGV("Acquisition thread for S%d exiting\n", s);      \
+			pthread_exit(0);				       \
+	}
+
+
+static void* acquisition_routine (void* param)
+{
+	/*
+	 * Data acquisition routine run in a dedicated thread, covering a single
+	 * sensor. This loop will periodically retrieve sampling data through
+	 * sysfs, then package it as a sample and transfer it to our master poll
+	 * loop through a report fd. Checks for a cancellation signal quite
+	 * frequently, as the thread may be disposed of at any time. Note that
+	 * Bionic does not provide pthread_cancel / pthread_testcancel...
+	 */
+
+	int s = (int) param;
+	int report_fd;
+	int catalog_index;
+	int sensor_type;
+	int num_fields;
+	uint32_t period;
+	int64_t entry_ts;
+	struct sensors_event_t data = {0};
+	int c;
+	int sampling_rate;
+	int ret;
+	uint32_t elapsed;
+
+	ALOGV("Entering data acquisition thread for sensor %d\n", s);
+
+	if (s < 0 || s >= sensor_count) {
+		ALOGE("Invalid sensor handle!\n");
+		return NULL;
+	}
+
+	if (!sensor_info[s].sampling_rate) {
+		ALOGE("Zero rate in acquisition routine for sensor %d\n", s);
+		return NULL;
+	}
+
+	sensor_type = sensor_catalog[sensor_info[s].catalog_index].type;
+	num_fields  = get_field_count(sensor_type);
+
+	while (1) {
+		CHECK_CANCEL(s)
+
+		/* Pinpoint the moment we start sampling */
+		entry_ts = get_timestamp();
+
+		ALOGV("Acquiring sample data for sensor %d through sysfs\n", s);
+
+		/* Read values through sysfs */
+		for (c=0; c<num_fields; c++) {
+			data.data[c] = acquire_immediate_value(s, c);
+
+			ALOGV("\tfield %d: %f\n", c, data.data[c]);
+			CHECK_CANCEL(s)
+		}
+
+		/* If the sample looks good */
+		if (sensor_info[s].ops.finalize(s, &data)) {
+
+			/* Pipe it for transmission to poll loop */
+			ret = write(	sensor_info[s].thread_data_fd[1],
+					data.data,
+					num_fields * sizeof(float));
+		}
+
+		CHECK_CANCEL(s)
+
+		/* Sleep a little, deducting read & write times */
+		elapsed = (get_timestamp() - entry_ts) / 1000;
+
+		period = (uint32_t)
+			 (1000000000LL / sensor_info[s].sampling_rate / 1000);
+
+		if (period > elapsed)
+			usleep(period - elapsed);
+	}
+
+	return NULL;
+}
+
+
+static void start_acquisition_thread (int s)
+{
+	int incoming_data_fd;
+	int ret;
+
+	struct epoll_event ev = {0};
+
+	ALOGV("Initializing acquisition context for sensor %d\n", s);
+
+	/* Create a pipe for inter thread communication */
+	ret = pipe(sensor_info[s].thread_data_fd);
+
+	incoming_data_fd = sensor_info[s].thread_data_fd[0];
+
+	ev.events = EPOLLIN;
+	ev.data.u32 = THREAD_REPORT_TAG_BASE + s;
+
+	/* Add incoming side of pipe to our poll set, with a suitable tag */
+	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, incoming_data_fd , &ev);
+
+	/* Create and start worker thread */
+	ret = pthread_create(	&sensor_info[s].acquisition_thread,
+				NULL,
+				acquisition_routine,
+				(void*) s);
+}
+
+
+static void stop_acquisition_thread (int s)
+{
+	int incoming_data_fd = sensor_info[s].thread_data_fd[0];
+	int outgoing_data_fd = sensor_info[s].thread_data_fd[1];
+
+	ALOGV("Tearing down acquisition context for sensor %d\n", s);
+
+	/* Delete the incoming side of the pipe from our poll set */
+	epoll_ctl(poll_fd, EPOLL_CTL_DEL, incoming_data_fd, NULL);
+
+	/* Mark the pipe ends as invalid ; that's a cheap exit signal */
+	sensor_info[s].thread_data_fd[0] = -1;
+	sensor_info[s].thread_data_fd[1] = -1;
+
+	/* Close both sides of our pipe */
+	close(incoming_data_fd);
+	close(outgoing_data_fd);
+
+	/* Wait end of thread, and clean up thread handle */
+	pthread_join(sensor_info[s].acquisition_thread, NULL);
+
+	/* Clean up our sensor descriptor */
+	sensor_info[s].acquisition_thread = -1;
+}
+
+
 int sensor_activate(int s, int enabled)
 {
 	char device_name[PATH_MAX];
@@ -312,6 +487,9 @@ int sensor_activate(int s, int enabled)
 	dev_fd = device_fd[dev_num];
 
 	if (!enabled) {
+		if (is_poll_sensor)
+			stop_acquisition_thread(s);
+
 		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] &&
 			!trig_sensors_per_dev[dev_num]) {
 				/*
@@ -342,7 +520,9 @@ int sensor_activate(int s, int enabled)
 
 		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
 
-		if (!is_poll_sensor) {
+		if (is_poll_sensor)
+			start_acquisition_thread(s);
+		else {
 
 			/* Add this iio device fd to the set of watched fds */
 			ev.events = EPOLLIN;
@@ -360,9 +540,6 @@ int sensor_activate(int s, int enabled)
 		}
 	}
 
-	/* Release the polling loop so an updated timeout gets used */
-	write(poll_socket_pair[1], "", 1);
-
 	return 0;
 }
 
@@ -378,7 +555,7 @@ static int integrate_device_report(int dev_num)
 	int size;
 	int ts;
 
-	/* There's an incoming report on the specified fd */
+	/* There's an incoming report on the specified iio device char dev fd */
 
 	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
 		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
@@ -438,84 +615,38 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type = sensor_catalog[catalog_index].type;
-	int num_fields;
+	int catalog_index	= sensor_info[s].catalog_index;
+	int sensor_type		= sensor_catalog[catalog_index].type;
+	int num_fields		= get_field_count(sensor_type);
 	int c;
 	unsigned char* current_sample;
 	int64_t current_ts = get_timestamp();
 	int64_t delta;
 
+	/* If there's nothing to return... we're done */
+	if (!num_fields)
+		return 0;
+
 	memset(data, 0, sizeof(sensors_event_t));
 
-	data->version = sizeof(sensors_event_t);
-	data->sensor = s;
-	data->type = sensor_type;
-
-	if (sensor_info[s].report_ts)
-		data->timestamp = sensor_info[s].report_ts;
-	else
-		data->timestamp = current_ts;
-
-	switch (sensor_type) {
-		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
-		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
-		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
-		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
-			num_fields = 3;
-			break;
-
-		case SENSOR_TYPE_LIGHT:			/* SI lux units */
-		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
-		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
-		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
-		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
-		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
-			num_fields = 1;
-			break;
-
-		case SENSOR_TYPE_ROTATION_VECTOR:
-			num_fields = 4;
-			break;
-
-		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* Hidden for now */
-			return 0;			/* Drop sample */
-
-		default:
-			ALOGE("Unknown sensor type!\n");
-			return 0;			/* Drop sample */
-	}
+	data->version	= sizeof(sensors_event_t);
+	data->sensor	= s;
+	data->type	= sensor_type;
+	data->timestamp = sensor_info[s].report_ts;
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
 
-	/* Take note of current time counter value for rate control purposes */
-	sensor_info[s].last_integration_ts = current_ts;
+	current_sample = sensor_info[s].report_buffer;
 
-	/* If we're dealing with a poll-mode sensor */
+	/* If this is a poll sensor */
 	if (!sensor_info[s].num_channels) {
-
-		/* Read values through sysfs rather than from a report buffer */
-		for (c=0; c<num_fields; c++) {
-
-			data->data[c] = acquire_immediate_value(s, c);
-
-			ALOGV("\tfield %d: %f\n", c, data->data[c]);
-		}
-
-		/* Control acquisition time and flag anything beyond 100 ms */
-		delta = get_timestamp() - current_ts;
-
-		if (delta > 100 * 1000 * 1000) {
-			ALOGI("Sensor %d (%s) sampling time: %d ms\n", s,
-			sensor_info[s].friendly_name, (int) (delta / 1000000));
-		}
-
-		return sensor_info[s].ops.finalize(s, data);
+		/* Use the data provided by the acquisition thread */
+		ALOGV("Reporting data from worker thread for S%d\n", s);
+		memcpy(data->data, current_sample, num_fields * sizeof(float));
+		return 1;
 	}
 
 	/* Convert the data into the expected Android-level format */
-
-	current_sample = sensor_info[s].report_buffer;
 
 	for (c=0; c<num_fields; c++) {
 
@@ -534,48 +665,26 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 }
 
 
-static int get_poll_time (void)
+static void integrate_thread_report (uint32_t tag)
 {
-	int64_t target_ts;
-	int64_t lowest_target_ts;
-	int64_t current_ts;
-	int s;
+	int s = tag - THREAD_REPORT_TAG_BASE;
+	int incoming_data_fd;
+	int catalog_index	= sensor_info[s].catalog_index;
+	int sensor_type		= sensor_catalog[catalog_index].type;
+	int num_fields		= get_field_count(sensor_type);
+	int len;
+	int expected_len;
 
-	if (!active_poll_sensors)
-		return -1;	/* Infinite wait */
+	sensor_info[s].report_ts = get_timestamp();
 
-	/* Check if we should schedule a poll-mode sensor event delivery */
+	incoming_data_fd = sensor_info[s].thread_data_fd[0];
 
-	lowest_target_ts = INT64_MAX;
+	expected_len = num_fields * sizeof(float);
 
-	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].enable_count &&
-		    sensor_info[s].sampling_rate > 0 &&
-		    !sensor_info[s].num_channels) {
-				target_ts = sensor_info[s].last_integration_ts +
-				      1000000000LL/sensor_info[s].sampling_rate;
+	len= read(incoming_data_fd, sensor_info[s].report_buffer, expected_len);
 
-				if (target_ts < lowest_target_ts)
-					lowest_target_ts = target_ts;
-			}
-
-	if (lowest_target_ts == INT64_MAX)
-		return -1;
-
-	current_ts = get_timestamp();
-
-	if (lowest_target_ts <= current_ts)
-		return 0;
-
-	return (lowest_target_ts - current_ts)/1000000; /* ms */
-}
-
-
-static void acknowledge_release (void)
-{
-	/* A write to our socket circuit was performed to release epoll */
-	char buf;
-	read(poll_socket_pair[0], &buf, 1);
+	if (len == expected_len)
+		sensor_info[s].report_pending = 1;
 }
 
 
@@ -615,9 +724,7 @@ await_event:
 
 	ALOGV("Awaiting sensor data\n");
 
-	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, get_poll_time());
-
-	last_poll_exit_ts = get_timestamp();
+	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, -1);
 
 	if (nfds == -1) {
 		ALOGI("epoll_wait returned -1 (%s)\n", strerror(errno));
@@ -626,28 +733,24 @@ await_event:
 
 	ALOGV("%d fds signalled\n", nfds);
 
-	/* For each of the devices for which a report is available */
+	/* For each of the signalled sources */
 	for (i=0; i<nfds; i++)
-		if (ev[i].events == EPOLLIN) {
-			if (ev[i].data.u32 == INVALID_DEV_NUM) {
-				acknowledge_release();
-				goto await_event;
-			} else
-				/* Read report */
-				integrate_device_report(ev[i].data.u32);
-		}
+		if (ev[i].events == EPOLLIN)
+			switch (ev[i].data.u32) {
+				case 0 ... MAX_DEVICES-1:
+					/* Read report from iio char dev fd */
+					integrate_device_report(ev[i].data.u32);
+					break;
 
-	/* Check poll-mode sensors and fire up an event if it's time to do so */
-	if (active_poll_sensors)
-		for (s=0; s<sensor_count; s++)
-			if (sensor_info[s].enable_count &&
-			    !sensor_info[s].num_channels &&
-			    sensor_info[s].sampling_rate > 0) {
-				target_ts = sensor_info[s].last_integration_ts +
-				      1000000000LL/sensor_info[s].sampling_rate;
+				case THREAD_REPORT_TAG_BASE ...
+				     THREAD_REPORT_TAG_BASE + MAX_SENSORS-1:
+					/* Get report from acquisition thread */
+					integrate_thread_report(ev[i].data.u32);
+					break;
 
-				if (last_poll_exit_ts >= target_ts)
-					sensor_info[s].report_pending = 1;
+				default:
+					ALOGW("Unexpected event source!\n");
+					break;
 			}
 
 	goto return_first_available_sensor_report;
@@ -690,9 +793,11 @@ int sensor_set_delay(int s, int64_t ns)
 
 	sensor_info[s].sampling_rate = new_sampling_rate;
 
-	/* If we're dealing with a poll-mode sensor, release poll and return */
-	if (!sensor_info[s].num_channels)
-		goto exit;
+	/* If we're dealing with a poll-mode sensor */
+	if (!sensor_info[s].num_channels) {
+		/* The new sampling rate will be used on next iteration */
+		return 0;
+	}
 
 	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
 
@@ -799,13 +904,8 @@ int sensor_set_delay(int s, int64_t ns)
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
 
-exit:
-	/* Release the polling loop so an updated timeout value gets used */
-	write(poll_socket_pair[1], "", 1);
-
 	return 0;
 }
-
 
 
 int allocate_control_data (void)
@@ -822,19 +922,6 @@ int allocate_control_data (void)
 		ALOGE("Can't create epoll instance for iio sensors!\n");
 		return -1;
 	}
-
-	/* Create and add "unblocking" fd to the set of watched fds */
-
-	if (socketpair(AF_UNIX, SOCK_STREAM, 0, poll_socket_pair) == -1) {
-		ALOGE("Can't create socket pair for iio sensors!\n");
-		close(poll_fd);
-		return -1;
-	}
-
-	ev.events = EPOLLIN;
-	ev.data.u32 = INVALID_DEV_NUM;
-
-	epoll_ctl(poll_fd, EPOLL_CTL_ADD, poll_socket_pair[0], &ev);
 
 	return poll_fd;
 }
