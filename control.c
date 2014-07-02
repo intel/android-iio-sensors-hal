@@ -234,9 +234,6 @@ int adjust_counters (int s, int enabled)
 		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
 		      sensor_info[s].friendly_name);
 
-		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
-			compass_store_data(&sensor_info[s]);
-
 		sensor_info[s].enable_count--;
 
 		if (sensor_info[s].enable_count > 0)
@@ -244,6 +241,9 @@ int adjust_counters (int s, int enabled)
 
 		/* Sensor disabled, lower report available flag */
 		sensor_info[s].report_pending = 0;
+
+		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+			compass_store_data(&sensor_info[s]);
 	}
 
 	/* We changed the state of a sensor - adjust per iio device counters */
