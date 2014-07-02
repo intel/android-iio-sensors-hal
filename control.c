@@ -838,10 +838,6 @@ int sensor_set_delay(int s, int64_t ns)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			/* Cap sampling rate to CAP_SENSOR_MAX_FREQUENCY*/
-                        if (sr > CAP_SENSOR_MAX_FREQUENCY)
-                                 break;
-
 			if (sr > max_supported_rate)
 				max_supported_rate = sr;
 
