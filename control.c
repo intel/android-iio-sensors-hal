@@ -271,8 +271,11 @@ int adjust_counters (int s, int enabled)
 }
 
 
-static int get_field_count (int sensor_type)
+static int get_field_count (int s)
 {
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type	  = sensor_catalog[catalog_index].type;
+
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
@@ -290,9 +293,6 @@ static int get_field_count (int sensor_type)
 
 		case SENSOR_TYPE_ROTATION_VECTOR:
 			return  4;
-
-		case SENSOR_TYPE_DEVICE_PRIVATE_BASE:	/* Hidden for now */
-			return 0;			/* Drop sample */
 
 		default:
 			ALOGE("Unknown sensor type!\n");
@@ -322,8 +322,6 @@ static void* acquisition_routine (void* param)
 
 	int s = (int) param;
 	int report_fd;
-	int catalog_index;
-	int sensor_type;
 	int num_fields;
 	uint32_t period;
 	int64_t entry_ts;
@@ -345,8 +343,7 @@ static void* acquisition_routine (void* param)
 		return NULL;
 	}
 
-	sensor_type = sensor_catalog[sensor_info[s].catalog_index].type;
-	num_fields  = get_field_count(sensor_type);
+	num_fields = get_field_count(s);
 
 	while (1) {
 		CHECK_CANCEL(s)
@@ -611,17 +608,15 @@ static int integrate_device_report(int dev_num)
 }
 
 
-static int propagate_sensor_report(int s, struct sensors_event_t* data)
+static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
-	int catalog_index	= sensor_info[s].catalog_index;
-	int sensor_type		= sensor_catalog[catalog_index].type;
-	int num_fields		= get_field_count(sensor_type);
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type	  = sensor_catalog[catalog_index].type;
+	int num_fields	  = get_field_count(s);
 	int c;
 	unsigned char* current_sample;
-	int64_t current_ts = get_timestamp();
-	int64_t delta;
 
 	/* If there's nothing to return... we're done */
 	if (!num_fields)
@@ -647,7 +642,6 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 	}
 
 	/* Convert the data into the expected Android-level format */
-
 	for (c=0; c<num_fields; c++) {
 
 		data->data[c] = sensor_info[s].ops.transform
@@ -668,23 +662,19 @@ static int propagate_sensor_report(int s, struct sensors_event_t* data)
 static void integrate_thread_report (uint32_t tag)
 {
 	int s = tag - THREAD_REPORT_TAG_BASE;
-	int incoming_data_fd;
-	int catalog_index	= sensor_info[s].catalog_index;
-	int sensor_type		= sensor_catalog[catalog_index].type;
-	int num_fields		= get_field_count(sensor_type);
 	int len;
 	int expected_len;
 
-	sensor_info[s].report_ts = get_timestamp();
+	expected_len = get_field_count(s) * sizeof(float);
 
-	incoming_data_fd = sensor_info[s].thread_data_fd[0];
+	len = read(sensor_info[s].thread_data_fd[0],
+		   sensor_info[s].report_buffer,
+		   expected_len);
 
-	expected_len = num_fields * sizeof(float);
-
-	len= read(incoming_data_fd, sensor_info[s].report_buffer, expected_len);
-
-	if (len == expected_len)
+	if (len == expected_len) {
+		sensor_info[s].report_ts = get_timestamp();
 		sensor_info[s].report_pending = 1;
+	}
 }
 
 
@@ -693,7 +683,6 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	int s;
 	int i;
 	int nfds;
-	int delta;
 	struct epoll_event ev[MAX_DEVICES];
 	int64_t target_ts;
 	int returned_events;
