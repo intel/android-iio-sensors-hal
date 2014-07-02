@@ -696,30 +696,35 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	int delta;
 	struct epoll_event ev[MAX_DEVICES];
 	int64_t target_ts;
+	int returned_events;
 
 	/* Get one or more events from our collection of sensors */
 
-return_first_available_sensor_report:
+return_available_sensor_reports:
 
-	/* If there's at least one available report */
-	for (s=0; s<sensor_count; s++)
+	returned_events = 0;
+
+	/* Check our sensor collection for available reports */
+	for (s=0; s<sensor_count && returned_events<count; s++)
 		if (sensor_info[s].report_pending) {
 
 			/* Lower flag */
 			sensor_info[s].report_pending = 0;
 
-			if (propagate_sensor_report(s, data)) {
-				/* Return that up */
-				ALOGV("Report on sensor %d\n", s);
-				return 1;
-			}
+			/* Report this event if it looks OK */
+			returned_events +=
+			     propagate_sensor_report(s, &data[returned_events]);
 
 			/*
 			 * If the sample was deemed invalid or unreportable,
 			 * e.g. had the same value as the previously reported
-			 * value for a 'on change' sensor, silently drop it
+			 * value for a 'on change' sensor, silently drop it.
 			 */
 		}
+
+	if (returned_events)
+		return returned_events;
+
 await_event:
 
 	ALOGV("Awaiting sensor data\n");
@@ -753,7 +758,7 @@ await_event:
 					break;
 			}
 
-	goto return_first_available_sensor_report;
+	goto return_available_sensor_reports;
 }
 
 
