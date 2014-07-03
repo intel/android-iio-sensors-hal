@@ -764,7 +764,6 @@ int sensor_set_delay(int s, int64_t ns)
 	const char *prefix	=	sensor_catalog[i].tag;
 	float new_sampling_rate; /* Granted sampling rate after arbitration   */
 	float cur_sampling_rate; /* Currently used sampling rate	      */
-	float req_sampling_rate; /* Requested ; may be different from granted */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
 	int max_supported_rate = 0;
@@ -778,7 +777,7 @@ int sensor_set_delay(int s, int64_t ns)
 		return -EINVAL;
 	}
 
-	new_sampling_rate = req_sampling_rate = 1000000000L/ns;
+	new_sampling_rate = 1000000000LL/ns;
 
 	if (new_sampling_rate < 1) {
 		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
@@ -853,10 +852,6 @@ int sensor_set_delay(int s, int64_t ns)
 			 * in the allowed frequencies string.
 			 */
 			if (sr > new_sampling_rate) {
-				ALOGI(
-			"Increasing sampling rate on sensor %d from %g to %g\n",
-				s, (double) req_sampling_rate, (double) sr);
-
 				new_sampling_rate = sr;
 				break;
 			}
@@ -875,8 +870,6 @@ int sensor_set_delay(int s, int64_t ns)
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
 		new_sampling_rate = max_supported_rate;
-		ALOGI(	"Can't support %g sampling rate, lowering to %g\n",
-			(double) req_sampling_rate, (double) new_sampling_rate);
 	}
 
 
