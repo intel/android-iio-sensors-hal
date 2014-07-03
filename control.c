@@ -779,10 +779,12 @@ int sensor_set_delay(int s, int64_t ns)
 
 	new_sampling_rate = 1000000000LL/ns;
 
-	if (new_sampling_rate < 1) {
-		ALOGI("Sub-HZ sampling rate requested on on sensor %d\n", s);
+	/*
+	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
+	 * avoid setting up the stage for divisions by zero.
+	 */
+	if (new_sampling_rate < 1)
 		new_sampling_rate = 1;
-	}
 
 	sensor_info[s].sampling_rate = new_sampling_rate;
 
@@ -877,7 +879,7 @@ int sensor_set_delay(int s, int64_t ns)
 	if (new_sampling_rate == cur_sampling_rate)
 		return 0;
 
-	ALOGI("Sensor %d sampling rate switched to %g\n", s, new_sampling_rate);
+	ALOGI("Sensor %d sampling rate set to %g\n", s, new_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
