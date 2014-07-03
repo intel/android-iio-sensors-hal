@@ -517,9 +517,7 @@ int sensor_activate(int s, int enabled)
 
 		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
 
-		if (is_poll_sensor)
-			start_acquisition_thread(s);
-		else {
+		if (!is_poll_sensor) {
 
 			/* Add this iio device fd to the set of watched fds */
 			ev.events = EPOLLIN;
@@ -536,6 +534,9 @@ int sensor_activate(int s, int enabled)
 			/* Note: poll-mode fds are not readable */
 		}
 	}
+
+	if (is_poll_sensor)
+		start_acquisition_thread(s);
 
 	return 0;
 }
