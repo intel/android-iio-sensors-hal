@@ -766,11 +766,11 @@ int sensor_set_delay(int s, int64_t ns)
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	int max_supported_rate = 0;
+	float max_supported_rate = 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
-	int sr;
+	float sr;
 
 	if (!ns) {
 		ALOGE("Rejecting zero delay request on sensor %d\n", s);
