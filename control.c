@@ -535,6 +535,9 @@ int sensor_activate(int s, int enabled)
 		}
 	}
 
+	/* Ensure that on-change sensors send at least one event after enable */
+	sensor_info[s].prev_val = -1;
+
 	if (is_poll_sensor)
 		start_acquisition_thread(s);
 
