@@ -26,6 +26,10 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
+/* We use pthread condition variables to get worker threads out of sleep */
+static pthread_cond_t  thread_release_cond	[MAX_SENSORS];
+static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
+
 /*
  * We associate tags to each of our poll set entries. These tags have the
  * following values:
@@ -301,12 +305,13 @@ static int get_field_count (int s)
 }
 
 
-/* Check and honor termination requests */
-#define CHECK_CANCEL(s)							       \
-	if (sensor_info[s].thread_data_fd[1] == -1) {			       \
-			ALOGV("Acquisition thread for S%d exiting\n", s);      \
-			pthread_exit(0);				       \
-	}
+static void time_add(struct timespec *out, struct timespec *in, int64_t ns)
+{
+	int64_t target_ts = 1000000000LL * in->tv_sec + in->tv_nsec + ns;
+
+	out->tv_sec = target_ts / 1000000000;
+	out->tv_nsec = target_ts % 1000000000;
+}
 
 
 static void* acquisition_routine (void* param)
@@ -323,13 +328,13 @@ static void* acquisition_routine (void* param)
 	int s = (int) param;
 	int report_fd;
 	int num_fields;
-	uint32_t period;
-	int64_t entry_ts;
 	struct sensors_event_t data = {0};
 	int c;
 	int sampling_rate;
 	int ret;
-	uint32_t elapsed;
+	struct timespec entry_time;
+	struct timespec target_time;
+	int64_t period;
 
 	ALOGV("Entering data acquisition thread for sensor %d\n", s);
 
@@ -345,11 +350,17 @@ static void* acquisition_routine (void* param)
 
 	num_fields = get_field_count(s);
 
-	while (1) {
-		CHECK_CANCEL(s)
+	/*
+	 * Each condition variable is associated to a mutex that has to be
+	 * locked by the thread that's waiting on it. We use these condition
+	 * variables to get the acquisition threads out of sleep quickly after
+	 * the sampling rate is adjusted, or the sensor is disabled.
+	 */
+	pthread_mutex_lock(&thread_release_mutex[s]);
 
+	while (1) {
 		/* Pinpoint the moment we start sampling */
-		entry_ts = get_timestamp();
+		clock_gettime(CLOCK_REALTIME, &entry_time);
 
 		ALOGV("Acquiring sample data for sensor %d through sysfs\n", s);
 
@@ -357,8 +368,12 @@ static void* acquisition_routine (void* param)
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
 
+			/* Check and honor termination requests */
+			if (sensor_info[s].thread_data_fd[1] == -1)
+				goto exit;
+
 			ALOGV("\tfield %d: %f\n", c, data.data[c]);
-			CHECK_CANCEL(s)
+
 		}
 
 		/* If the sample looks good */
@@ -370,18 +385,32 @@ static void* acquisition_routine (void* param)
 					num_fields * sizeof(float));
 		}
 
-		CHECK_CANCEL(s)
+		/* Check and honor termination requests */
+		if (sensor_info[s].thread_data_fd[1] == -1)
+			goto exit;
 
-		/* Sleep a little, deducting read & write times */
-		elapsed = (get_timestamp() - entry_ts) / 1000;
 
-		period = (uint32_t)
-			 (1000000000LL / sensor_info[s].sampling_rate / 1000);
+		period = 1000000000LL / sensor_info[s].sampling_rate;
 
-		if (period > elapsed)
-			usleep(period - elapsed);
+		time_add(&target_time, &entry_time, period);
+
+		/*
+		 * Wait until the sampling time elapses, or a rate change is
+		 * signaled, or a thread exit is requested.
+		 */
+		ret = pthread_cond_timedwait(	&thread_release_cond[s],
+						&thread_release_mutex[s],
+						&target_time);
+
+		/* Check and honor termination requests */
+		if (sensor_info[s].thread_data_fd[1] == -1)
+				goto exit;
 	}
 
+exit:
+	ALOGV("Acquisition thread for S%d exiting\n", s);
+	pthread_mutex_unlock(&thread_release_mutex[s]);
+	pthread_exit(0);
 	return NULL;
 }
 
@@ -394,6 +423,10 @@ static void start_acquisition_thread (int s)
 	struct epoll_event ev = {0};
 
 	ALOGV("Initializing acquisition context for sensor %d\n", s);
+
+	/* Create condition variable and mutex for quick thread release */
+	ret = pthread_cond_init(&thread_release_cond[s], NULL);
+	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
 	/* Create a pipe for inter thread communication */
 	ret = pipe(sensor_info[s].thread_data_fd);
@@ -424,7 +457,7 @@ static void stop_acquisition_thread (int s)
 	/* Delete the incoming side of the pipe from our poll set */
 	epoll_ctl(poll_fd, EPOLL_CTL_DEL, incoming_data_fd, NULL);
 
-	/* Mark the pipe ends as invalid ; that's a cheap exit signal */
+	/* Mark the pipe ends as invalid ; that's a cheap exit flag */
 	sensor_info[s].thread_data_fd[0] = -1;
 	sensor_info[s].thread_data_fd[1] = -1;
 
@@ -432,11 +465,16 @@ static void stop_acquisition_thread (int s)
 	close(incoming_data_fd);
 	close(outgoing_data_fd);
 
-	/* Wait end of thread, and clean up thread handle */
+	/* Stop acquisition thread and clean up thread handle */
+	pthread_cond_signal(&thread_release_cond[s]);
 	pthread_join(sensor_info[s].acquisition_thread, NULL);
 
 	/* Clean up our sensor descriptor */
 	sensor_info[s].acquisition_thread = -1;
+
+	/* Delete condition variable and mutex */
+	pthread_cond_destroy(&thread_release_cond[s]);
+	pthread_mutex_destroy(&thread_release_mutex[s]);
 }
 
 
@@ -794,7 +832,8 @@ int sensor_set_delay(int s, int64_t ns)
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor_info[s].num_channels) {
-		/* The new sampling rate will be used on next iteration */
+		/* Interrupt current sleep so the new sampling gets used */
+		pthread_cond_signal(&thread_release_cond[s]);
 		return 0;
 	}
 
