@@ -166,10 +166,27 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 }
 
 
+static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
+{
+	int i;
+	float temp[MAX_CHANNELS];
+
+	for (i=0; i<MAX_CHANNELS; i++)
+		temp[i] = data[map[i]];
+
+	for (i=0; i<MAX_CHANNELS; i++)
+		data[i] = temp[i];
+}
+
+
 static int finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
+
+	/* Swap fields if we have a custom channel ordering on this sensor */
+	if (sensor_info[s].flags & FLAG_FIELD_ORDERING)
+		reorder_fields(data->data, sensor_info[s].order);
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
@@ -224,6 +241,10 @@ static int finalize_sample_ISH(int s, struct sensors_event_t* data)
 	int i		= sensor_info[s].catalog_index;
 	int sensor_type	= sensor_catalog[i].type;
 	float pitch, roll, yaw;
+
+	/* Swap fields if we have a custom channel ordering on this sensor */
+	if (sensor_info[s].flags & FLAG_FIELD_ORDERING)
+		reorder_fields(data->data, sensor_info[s].order);
 
 	if (sensor_type == SENSOR_TYPE_ORIENTATION) {
 
