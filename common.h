@@ -31,7 +31,6 @@
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
 
 #define MAX_NAME_SIZE		32
-#define CAP_SENSOR_MAX_FREQUENCY	1000
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
@@ -141,14 +140,22 @@ struct sensor_info_t
 
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
 
-	int64_t last_integration_ts; /* Last time an event was reported */
-
 	struct sample_ops_t ops;
 
 	int calibrated;
 	void* cal_data;
 
 	float prev_val; /* Previously reported value, for on-change sensors */
+
+	/*
+	 * Certain sensors expose their readings through sysfs files that have
+	 * a long response time (100-200 ms for ALS). Rather than block our
+	 * global control loop for several hundred ms each second, offload those
+	 * lengthy blocking reads to dedicated threads, which will then report
+	 * their data through a fd that we can add to our poll fd set.
+	 */
+	int thread_data_fd[2];
+	pthread_t acquisition_thread;
 
 	/* Note: we may have to explicitely serialize access to some fields */
 };

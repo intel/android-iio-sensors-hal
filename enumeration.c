@@ -184,8 +184,14 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
+
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
+
+	/* Initialize fields related to sysfs reads offloading */
+	sensor_info[s].thread_data_fd[0]  = -1;
+	sensor_info[s].thread_data_fd[1]  = -1;
+	sensor_info[s].acquisition_thread = -1;
 
 	sensor_count++;
 }
