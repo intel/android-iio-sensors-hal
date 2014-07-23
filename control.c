@@ -621,7 +621,7 @@ static int integrate_device_report(int dev_num)
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int ts;
+	int64_t ts;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
