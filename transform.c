@@ -126,6 +126,8 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 	uint64_t u64;
 	int i;
 	int zeroed_bits = type->storagebits - type->realbits;
+	uint64_t sign_mask;
+	uint64_t value_mask;
 
 	u64 = 0;
 
@@ -141,13 +143,14 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 	if (type->sign == 'u')
 		return (int64_t) u64; /* We don't handle unsigned 64 bits int */
 
+	/* Signed integer */
+
 	switch (type->realbits) {
+		case 0 ... 1:
+			return 0;
+
 		case 8:
 			return (int64_t) (int8_t) u64;
-
-		case 12:
-			return (int64_t)  (u64 >>  11) ?
-					(((int64_t)-1) ^ 0xfff) | u64 : u64;
 
 		case 16:
 			return (int64_t) (int16_t) u64;
@@ -157,10 +160,17 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 
 		case 64:
 			return (int64_t) u64;
-	}
 
-	ALOGE("Unhandled sample storage size\n");
-	return 0;
+		default:
+			sign_mask = 1 << (type->realbits-1);
+			value_mask = sign_mask - 1;
+
+			if (u64 & sign_mask)
+				/* Negative value: return 2-complement */
+				return - ((~u64 & value_mask) + 1);
+			else
+				return (int64_t) u64; /* Positive value */
+	}
 }
 
 
