@@ -28,7 +28,6 @@ LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
 LOCAL_LDFLAGS := -Wl,--gc-sections
-LOCAL_LDLIBS := -lpthreads
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_PRELINK_MODULE := false
 LOCAL_SRC_FILES := $(src_files)
