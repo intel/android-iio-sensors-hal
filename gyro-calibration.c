@@ -76,15 +76,30 @@ void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 {
 	if (!info->calibrated) {
 		gyro_collect(event->data[0], event->data[1], event->data[2], info);
+		return;
 	}
-	else {
-		struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
 
-		if (gyro_data == NULL)
-			return;
+	struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
 
-		event->data[0] = event->gyro.x = event->data[0] - gyro_data->bias[0];
-		event->data[1] = event->gyro.y = event->data[1] - gyro_data->bias[1];
-		event->data[2] = event->gyro.z = event->data[2] - gyro_data->bias[2];
+	if (gyro_data == NULL)
+		return;
+
+	switch (event->type) {
+		case SENSOR_TYPE_GYROSCOPE:
+			/* For the gyroscope apply the bias */
+			event->data[0] = event->data[0] - gyro_data->bias[0];
+			event->data[1] = event->data[1] - gyro_data->bias[1];
+			event->data[2] = event->data[2] - gyro_data->bias[2];
+			break;
+
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			/* For the uncalibrated gyroscope don't apply the bias but save it */
+			event->uncalibrated_gyro.bias[0] = gyro_data->bias[0];
+			event->uncalibrated_gyro.bias[1] = gyro_data->bias[1];
+			event->uncalibrated_gyro.bias[2] = gyro_data->bias[2];
+			break;
+
+		default:
+			break;
 	}
 }

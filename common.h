@@ -34,6 +34,7 @@
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
+#define FLAG_FIELD_ORDERING	0x01
 
 struct channel_descriptor_t
 {
@@ -157,7 +158,21 @@ struct sensor_info_t
 	int thread_data_fd[2];
 	pthread_t acquisition_thread;
 
+	/* For cal-uncal sensor pairs - index to the pair sensor in sensor_info */
+	int pair_idx;
+
 	/* Note: we may have to explicitely serialize access to some fields */
+
+	uint32_t flags;
+
+	/*
+	 * If the FLAG_FIELD_ORDERING bit is set in flags, the contents of
+	 * this array are used in the finalization stage to swap sample fields
+	 * before transmitting them to Android ; they form a mapping between
+	 * the indices of the input and output arrays: ex: 0123 is identity for
+	 * a sample containing 4 fields.
+	 */
+	unsigned char order[MAX_CHANNELS];
 };
 
 /* Reference a few commonly used variables... */

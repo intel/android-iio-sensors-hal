@@ -26,6 +26,10 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
+/* We use pthread condition variables to get worker threads out of sleep */
+static pthread_cond_t  thread_release_cond	[MAX_SENSORS];
+static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
+
 /*
  * We associate tags to each of our poll set entries. These tags have the
  * following values:
@@ -224,6 +228,7 @@ int adjust_counters (int s, int enabled)
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				gyro_cal_init(&sensor_info[s]);
 				break;
 		}
@@ -245,6 +250,12 @@ int adjust_counters (int s, int enabled)
 		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor_info[s]);
 	}
+
+
+	/* If uncalibrated type and pair is already active don't adjust counters */
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+			return 0;
 
 	/* We changed the state of a sensor - adjust per iio device counters */
 
@@ -280,6 +291,7 @@ static int get_field_count (int s)
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
 		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
 			return 3;
 
@@ -301,12 +313,13 @@ static int get_field_count (int s)
 }
 
 
-/* Check and honor termination requests */
-#define CHECK_CANCEL(s)							       \
-	if (sensor_info[s].thread_data_fd[1] == -1) {			       \
-			ALOGV("Acquisition thread for S%d exiting\n", s);      \
-			pthread_exit(0);				       \
-	}
+static void time_add(struct timespec *out, struct timespec *in, int64_t ns)
+{
+	int64_t target_ts = 1000000000LL * in->tv_sec + in->tv_nsec + ns;
+
+	out->tv_sec = target_ts / 1000000000;
+	out->tv_nsec = target_ts % 1000000000;
+}
 
 
 static void* acquisition_routine (void* param)
@@ -323,13 +336,13 @@ static void* acquisition_routine (void* param)
 	int s = (int) param;
 	int report_fd;
 	int num_fields;
-	uint32_t period;
-	int64_t entry_ts;
 	struct sensors_event_t data = {0};
 	int c;
 	int sampling_rate;
 	int ret;
-	uint32_t elapsed;
+	struct timespec entry_time;
+	struct timespec target_time;
+	int64_t period;
 
 	ALOGV("Entering data acquisition thread for sensor %d\n", s);
 
@@ -345,11 +358,17 @@ static void* acquisition_routine (void* param)
 
 	num_fields = get_field_count(s);
 
-	while (1) {
-		CHECK_CANCEL(s)
+	/*
+	 * Each condition variable is associated to a mutex that has to be
+	 * locked by the thread that's waiting on it. We use these condition
+	 * variables to get the acquisition threads out of sleep quickly after
+	 * the sampling rate is adjusted, or the sensor is disabled.
+	 */
+	pthread_mutex_lock(&thread_release_mutex[s]);
 
+	while (1) {
 		/* Pinpoint the moment we start sampling */
-		entry_ts = get_timestamp();
+		clock_gettime(CLOCK_REALTIME, &entry_time);
 
 		ALOGV("Acquiring sample data for sensor %d through sysfs\n", s);
 
@@ -357,8 +376,12 @@ static void* acquisition_routine (void* param)
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
 
+			/* Check and honor termination requests */
+			if (sensor_info[s].thread_data_fd[1] == -1)
+				goto exit;
+
 			ALOGV("\tfield %d: %f\n", c, data.data[c]);
-			CHECK_CANCEL(s)
+
 		}
 
 		/* If the sample looks good */
@@ -370,18 +393,32 @@ static void* acquisition_routine (void* param)
 					num_fields * sizeof(float));
 		}
 
-		CHECK_CANCEL(s)
+		/* Check and honor termination requests */
+		if (sensor_info[s].thread_data_fd[1] == -1)
+			goto exit;
 
-		/* Sleep a little, deducting read & write times */
-		elapsed = (get_timestamp() - entry_ts) / 1000;
 
-		period = (uint32_t)
-			 (1000000000LL / sensor_info[s].sampling_rate / 1000);
+		period = 1000000000LL / sensor_info[s].sampling_rate;
 
-		if (period > elapsed)
-			usleep(period - elapsed);
+		time_add(&target_time, &entry_time, period);
+
+		/*
+		 * Wait until the sampling time elapses, or a rate change is
+		 * signaled, or a thread exit is requested.
+		 */
+		ret = pthread_cond_timedwait(	&thread_release_cond[s],
+						&thread_release_mutex[s],
+						&target_time);
+
+		/* Check and honor termination requests */
+		if (sensor_info[s].thread_data_fd[1] == -1)
+				goto exit;
 	}
 
+exit:
+	ALOGV("Acquisition thread for S%d exiting\n", s);
+	pthread_mutex_unlock(&thread_release_mutex[s]);
+	pthread_exit(0);
 	return NULL;
 }
 
@@ -394,6 +431,10 @@ static void start_acquisition_thread (int s)
 	struct epoll_event ev = {0};
 
 	ALOGV("Initializing acquisition context for sensor %d\n", s);
+
+	/* Create condition variable and mutex for quick thread release */
+	ret = pthread_cond_init(&thread_release_cond[s], NULL);
+	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
 	/* Create a pipe for inter thread communication */
 	ret = pipe(sensor_info[s].thread_data_fd);
@@ -424,7 +465,7 @@ static void stop_acquisition_thread (int s)
 	/* Delete the incoming side of the pipe from our poll set */
 	epoll_ctl(poll_fd, EPOLL_CTL_DEL, incoming_data_fd, NULL);
 
-	/* Mark the pipe ends as invalid ; that's a cheap exit signal */
+	/* Mark the pipe ends as invalid ; that's a cheap exit flag */
 	sensor_info[s].thread_data_fd[0] = -1;
 	sensor_info[s].thread_data_fd[1] = -1;
 
@@ -432,11 +473,16 @@ static void stop_acquisition_thread (int s)
 	close(incoming_data_fd);
 	close(outgoing_data_fd);
 
-	/* Wait end of thread, and clean up thread handle */
+	/* Stop acquisition thread and clean up thread handle */
+	pthread_cond_signal(&thread_release_cond[s]);
 	pthread_join(sensor_info[s].acquisition_thread, NULL);
 
 	/* Clean up our sensor descriptor */
 	sensor_info[s].acquisition_thread = -1;
+
+	/* Delete condition variable and mutex */
+	pthread_cond_destroy(&thread_release_cond[s]);
+	pthread_mutex_destroy(&thread_release_mutex[s]);
 }
 
 
@@ -452,11 +498,31 @@ int sensor_activate(int s, int enabled)
 	int i = sensor_info[s].catalog_index;
 	int is_poll_sensor = !sensor_info[s].num_channels;
 
+	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
+	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
+	 * Activate gyro calibrated     - Calibrated has handler
+	 * Reactivate gyro uncalibrated - Uncalibrated gets data from calibrated */
+
+	/* If we want to deactivate gyro calibrated and gyro uncalibrated is active
+	 * Deactivate gyro uncalibrated - Uncalibrated no longer gets data from handler
+	 * Deactivate gyro calibrated   - Calibrated releases handler
+	 * Reactivate gyro uncalibrated - Uncalibrated has handler */
+
+	if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+
+				sensor_activate(sensor_info[s].pair_idx, 0);
+				ret = sensor_activate(s, enabled);
+				sensor_activate(sensor_info[s].pair_idx, 1);
+				return ret;
+	}
+
 	ret = adjust_counters(s, enabled);
 
 	/* If the operation was neutral in terms of state, we're done */
 	if (ret <= 0)
 		return ret;
+
 
 	if (!is_poll_sensor) {
 
@@ -626,6 +692,12 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 	if (!num_fields)
 		return 0;
 
+
+	/* Only return uncalibrated event if also gyro active */
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+			return 0;
+
 	memset(data, 0, sizeof(sensors_event_t));
 
 	data->version	= sizeof(sensors_event_t);
@@ -690,6 +762,7 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	struct epoll_event ev[MAX_DEVICES];
 	int64_t target_ts;
 	int returned_events;
+	int event_count;
 
 	/* Get one or more events from our collection of sensors */
 
@@ -698,16 +771,38 @@ return_available_sensor_reports:
 	returned_events = 0;
 
 	/* Check our sensor collection for available reports */
-	for (s=0; s<sensor_count && returned_events<count; s++)
+	for (s=0; s<sensor_count && returned_events < count; s++)
 		if (sensor_info[s].report_pending) {
-
+			event_count = 0;
 			/* Lower flag */
 			sensor_info[s].report_pending = 0;
 
 			/* Report this event if it looks OK */
-			returned_events +=
-			     propagate_sensor_report(s, &data[returned_events]);
+			event_count = propagate_sensor_report(s, &data[returned_events]);
 
+			/* Duplicate only if both cal & uncal are active */
+			if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+					struct gyro_cal* gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
+
+					memcpy(&data[returned_events + event_count], &data[returned_events],
+							sizeof(struct sensors_event_t) * event_count);
+					for (i = 0; i < event_count; i++) {
+						data[returned_events + i].type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+						data[returned_events + i].sensor = sensor_info[s].pair_idx;
+
+						data[returned_events + i].data[0] = data[returned_events + i].data[0] + gyro_data->bias[0];
+						data[returned_events + i].data[1] = data[returned_events + i].data[1] + gyro_data->bias[1];
+						data[returned_events + i].data[2] = data[returned_events + i].data[2] + gyro_data->bias[2];
+
+						data[returned_events + i].uncalibrated_gyro.bias[0] = gyro_data->bias[0];
+						data[returned_events + i].uncalibrated_gyro.bias[1] = gyro_data->bias[1];
+						data[returned_events + i].uncalibrated_gyro.bias[2] = gyro_data->bias[2];
+					}
+					event_count <<= 1;
+			}
+			sensor_info[sensor_info[s].pair_idx].report_pending = 0;
+			returned_events += event_count;
 			/*
 			 * If the sample was deemed invalid or unreportable,
 			 * e.g. had the same value as the previously reported
@@ -794,7 +889,8 @@ int sensor_set_delay(int s, int64_t ns)
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor_info[s].num_channels) {
-		/* The new sampling rate will be used on next iteration */
+		/* Interrupt current sleep so the new sampling gets used */
+		pthread_cond_signal(&thread_release_cond[s]);
 		return 0;
 	}
 

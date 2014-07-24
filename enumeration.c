@@ -20,6 +20,13 @@
  * device number associated to a specific sensor.
  */
 
+ /*
+  * We duplicate entries for the uncalibrated types after their respective base
+  * sensor. This is because all sensor entries must have an associated catalog entry
+  * and also because when only the uncal sensor is active it needs to take it's data
+  * from the same iio device as the base one.
+  */
+
 struct sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
 	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
@@ -31,6 +38,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 					 "quat_x", "quat_y", "quat_z", "quat_w")
 	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
+	DECLARE_SENSOR3("anglvel",      SENSOR_TYPE_GYROSCOPE_UNCALIBRATED, "x", "y", "z")
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -175,7 +183,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE) {
+	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE ||
+		sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
@@ -192,6 +201,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].thread_data_fd[0]  = -1;
 	sensor_info[s].thread_data_fd[1]  = -1;
 	sensor_info[s].acquisition_thread = -1;
+
+	/* Check if we have a special ordering property on this sensor */
+	if (sensor_get_order(s, sensor_info[s].order))
+		sensor_info[s].flags |= FLAG_FIELD_ORDERING;
 
 	sensor_count++;
 }
@@ -213,7 +226,7 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 
 	dir = opendir(base_dir);
 	if (!dir) {
-               return;
+		return;
 	}
 
 	/* Enumerate entries in this iio device's base folder */
@@ -222,16 +235,18 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
 			continue;
 
-                /* If the name matches a catalog entry, flag it */
-                for (i = 0; i<CATALOG_SIZE; i++)
-                        for (c=0; c<sensor_catalog[i].num_channels; c++)
-                                if (!strcmp(d->d_name,
-				    sensor_catalog[i].channel[c].raw_path) ||
-                                    !strcmp(d->d_name,
-				    sensor_catalog[i].channel[c].input_path)) {
-				map[i] = 1;
-                                break;
-                        }
+		/* If the name matches a catalog entry, flag it */
+		for (i = 0; i<CATALOG_SIZE; i++) {
+		/* This will be added separately later */
+		if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+			continue;
+		for (c=0; c<sensor_catalog[i].num_channels; c++)
+			if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) ||
+				!strcmp(d->d_name, sensor_catalog[i].channel[c].input_path)) {
+					map[i] = 1;
+					break;
+			}
+		}
 	}
 
 	closedir(dir);
@@ -247,7 +262,7 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 	struct dirent *d;
 	unsigned int i;
 
-        memset(map, 0, CATALOG_SIZE);
+	memset(map, 0, CATALOG_SIZE);
 
 	/* Enumerate entries in this iio device's scan_elements folder */
 
@@ -255,7 +270,7 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 
 	dir = opendir(scan_elem_dir);
 	if (!dir) {
-               return;
+		return;
 	}
 
 	while ((d = readdir(dir))) {
@@ -264,12 +279,15 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 
 		/* Compare en entry to known ones and create matching sensors */
 
-                for (i = 0; i<CATALOG_SIZE; i++)
+		for (i = 0; i<CATALOG_SIZE; i++) {
+			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+				continue;
 			if (!strcmp(d->d_name,
-				    sensor_catalog[i].channel[0].en_path)) {
-				map[i] = 1;
-                                break;
-                        }
+					sensor_catalog[i].channel[0].en_path)) {
+					map[i] = 1;
+					break;
+			}
+		}
 	}
 
 	closedir(dir);
@@ -324,6 +342,54 @@ static void orientation_sensor_check(void)
 			}
 }
 
+static void uncalibrated_gyro_check (void)
+{
+	unsigned int has_gyr = 0;
+	unsigned int dev_num;
+	int i, c;
+	unsigned int is_poll_sensor;
+
+	int cal_idx = 0;
+	int uncal_idx = 0;
+
+	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
+	for (i=0; i < sensor_count; i++)
+		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
+		{
+			has_gyr=1;
+			dev_num = sensor_info[i].dev_num;
+			is_poll_sensor = !sensor_info[i].num_channels;
+			cal_idx = i;
+			break;
+		}
+
+	/*
+	 * If we have a gyro we can add the uncalibrated sensor of the same type and
+	 * on the same dev_num. We will save indexes for easy finding and also save the
+	 * channel specific information.
+	 */
+	if (has_gyr)
+		for (i=0; i<CATALOG_SIZE; i++)
+			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+				add_sensor(dev_num, i, is_poll_sensor);
+
+				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
+
+				/* Similar to build_sensor_report_maps */
+				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
+				{
+					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
+						&(sensor_info[cal_idx].channel[c].type_spec),
+						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
+					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
+					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
+					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
+				}
+				sensor_info[uncal_idx].pair_idx = cal_idx;
+				sensor_info[cal_idx].pair_idx = uncal_idx;
+				break;
+			}
+}
 
 void enumerate_sensors (void)
 {
@@ -363,6 +429,10 @@ void enumerate_sensors (void)
 
 	/* Make sure Android fall backs to its own orientation sensor */
 	orientation_sensor_check();
+
+	/* Create the uncalibrated counterpart to the compensated gyroscope;
+	 * This is is a new sensor type in Android 4.4 */
+	uncalibrated_gyro_check();
 }
 
 
@@ -373,6 +443,7 @@ void delete_enumeration_data (void)
 	for (i = 0; i < sensor_count; i++)
 	switch (sensor_catalog[sensor_info[i].catalog_index].type) {
 		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:
 			if (sensor_info[i].cal_data != NULL) {
 				free(sensor_info[i].cal_data);
