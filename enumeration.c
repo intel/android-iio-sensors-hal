@@ -2,6 +2,7 @@
  * Copyright (C) 2014 Intel Corporation.
  */
 
+#include <ctype.h>
 #include <dirent.h>
 #include <stdlib.h>
 #include <utils/Log.h>
@@ -387,6 +388,92 @@ static void uncalibrated_gyro_check (void)
 			}
 }
 
+static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
+{
+	/*
+	 * Check if we have a sensor matching the specified trigger name,
+	 * which should then begin with the sensor name, and end with a number
+	 * equal to the iio device number the sensor is associated to. If so,
+	 * update the string we're going to write to trigger/current_trigger
+	 * when enabling this sensor.
+	 */
+
+	int s;
+	int dev_num;
+	int len;
+	char* cursor;
+
+	/*
+	 * First determine the iio device number this trigger refers to. We
+	 * expect the last few characters (typically one) of the trigger name
+	 * to be this number, so perform a few checks.
+	 */
+	len = strnlen(name, MAX_NAME_SIZE);
+
+	if (len < 2)
+		return;
+
+	cursor = name + len - 1;
+
+	if (!isdigit(*cursor))
+		return;
+
+	while (len && isdigit(*cursor)) {
+		len--;
+		cursor--;
+	}
+
+	dev_num = atoi(cursor+1);
+
+	/* See if that matches a sensor */
+	for (s=0; s<sensor_count; s++)
+		if (sensor_info[s].dev_num == dev_num &&
+			!strncmp(name, sensor_info[s].internal_name,
+				strlen(sensor_info[s].internal_name))) {
+				/* Update sensor structure and return */
+				strcpy(sensor_info[s].trigger_name, name);
+				return;
+			}
+}
+
+
+static void setup_trigger_names (void)
+{
+	char filename[PATH_MAX];
+	char buf[MAX_NAME_SIZE];
+	int len;
+	int s;
+	int trigger;
+	int ret;
+
+	/* By default, use the name-dev convention that most drivers use */
+	for (s=0; s<sensor_count; s++)
+		snprintf(sensor_info[s].trigger_name, MAX_NAME_SIZE, "%s-dev%d",
+			sensor_info[s].internal_name, sensor_info[s].dev_num);
+
+	/* Now have a look to /sys/bus/iio/devices/triggerX entries */
+
+	for (trigger=0; trigger<MAX_TRIGGERS; trigger++) {
+
+		snprintf(filename, sizeof(filename), TRIGGER_FILE_PATH,trigger);
+
+		ret = sysfs_read_str(filename, buf, sizeof(buf));
+
+		if (ret < 0)
+			break;
+
+		update_sensor_matching_trigger_name(buf);
+	}
+
+	for (s=0; s<sensor_count; s++)
+		if (sensor_info[s].num_channels) {
+			ALOGI(	"Sensor %d (%s) using iio trigger %s\n", s,
+				sensor_info[s].friendly_name,
+				sensor_info[s].trigger_name);
+		}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -417,11 +504,15 @@ void enumerate_sensors (void)
 				if (poll_sensors[i])
 					add_sensor(dev_num, i, 1);
 
-		if (trig_found)
+		if (trig_found) {
 			build_sensor_report_maps(dev_num);
+		}
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);
+
+	/* Set up default - as well as custom - trigger names */
+	setup_trigger_names();
 
 	/* Make sure Android fall backs to its own orientation sensor */
 	orientation_sensor_check();

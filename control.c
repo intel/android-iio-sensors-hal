@@ -488,7 +488,6 @@ static void stop_acquisition_thread (int s)
 int sensor_activate(int s, int enabled)
 {
 	char device_name[PATH_MAX];
-	char trigger_name[MAX_NAME_SIZE + 16];
 	struct epoll_event ev = {0};
 	int dev_fd;
 	int ret;
@@ -529,11 +528,9 @@ int sensor_activate(int s, int enabled)
 
 		/* If there's at least one sensor enabled on this iio device */
 		if (trig_sensors_per_dev[dev_num]) {
-			sprintf(trigger_name, "%s-dev%d",
-					sensor_info[s].internal_name, dev_num);
 
 			/* Start sampling */
-			setup_trigger(dev_num, trigger_name);
+			setup_trigger(dev_num, sensor_info[s].trigger_name);
 			enable_buffer(dev_num, 1);
 		}
 	}

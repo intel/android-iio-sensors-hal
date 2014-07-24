@@ -8,11 +8,11 @@
 #define MAX_DEVICES	8	/* Check iio devices 0 to MAX_DEVICES-1 */
 #define MAX_SENSORS	10	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
+#define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
-#define DEV_FILE_PATH	"/dev/iio:device%d"
-
-#define BASE_PATH	"/sys/bus/iio/devices/iio:device%d/"
-
+#define DEV_FILE_PATH		"/dev/iio:device%d"
+#define BASE_PATH		"/sys/bus/iio/devices/iio:device%d/"
+#define TRIGGER_FILE_PATH	"/sys/bus/iio/devices/trigger%d/name"
 
 #define CHANNEL_PATH		BASE_PATH "scan_elements/"
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
@@ -96,7 +96,7 @@ struct sensor_info_t
 	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer */
 	char internal_name[MAX_NAME_SIZE];	/* ex: accel_3d */
 	char vendor_name[MAX_NAME_SIZE];	/* ex: Intel */
-
+	char trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1 */
 	float max_range;
 	float resolution;
 	float power;
