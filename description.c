@@ -7,9 +7,57 @@
 #include <cutils/properties.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
+#include "description.h"
 
 #define IIO_SENSOR_HAL_VERSION	1
 
+/*
+ * About properties
+ *
+ * We acquire a number of parameters about sensors by reading properties.
+ * The idea here is that someone (either a script, or daemon, sets them
+ * depending on the set of sensors present on the machine.
+ *
+ * There are fallback paths in case the properties are not defined, but it is
+ * highly desirable to at least have the following for each sensor:
+ *
+ * ro.iio.anglvel.name = Gyroscope
+ * ro.iio.anglvel.vendor = Intel
+ * ro.iio.anglvel.max_range = 35
+ * ro.iio.anglvel.resolution = 0.002
+ * ro.iio.anglvel.power = 6.1
+ *
+ * Besides these, we have a couple of knobs initially used to cope with Intel
+ * Sensor Hub oddities, such as HID inspired units or firmware bugs:
+ *
+ * ro.iio.anglvel.transform = ISH
+ * ro.iio.anglvel.quirks = init-rate
+ *
+ * This one is used specifically to pass a calibration scale to ALS drivers:
+ *
+ * ro.iio.illuminance.name = CPLM3218x Ambient Light Sensor
+ * ro.iio.illuminance.vendor = Capella Microsystems
+ * ro.iio.illuminance.max_range = 167000
+ * ro.iio.illuminance.resolution = 1
+ * ro.iio.illuminance.power = .001
+ * ro.iio.illuminance.illumincalib = 7400
+ *
+ * Finally there's a 'opt_scale' specifier, documented as follows:
+ *
+ *  This adds support for a scaling factor that can be expressed
+ *  using properties, for all sensors, on a channel basis. That
+ *  scaling factor is applied after all other transforms have been
+ *  applied, and is intended as a way to compensate for problems
+ *  such as an incorrect axis polarity for a given sensor.
+ *
+ *  The syntax is <usual property prefix>.<channel>.opt_scale, e.g.
+ *  ro.iio.accel.y.opt_scale = -1 to negate the sign of the y readings
+ *  for the accelerometer.
+ *
+ *  For sensors using a single channel - and only those - the channel
+ *  name is implicitly void and a syntax such as ro.iio.illuminance.
+ *  opt_scale = 3 has to be used.
+ */
 
 static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 {
@@ -151,6 +199,25 @@ float sensor_get_illumincalib (int s)
 	}
 
 	return 0;
+}
+
+
+uint32_t sensor_get_quirks (int s)
+{
+	char quirks_buf[MAX_NAME_SIZE];
+
+	/* Read and decode quirks property on first reference */
+	if (!(sensor_info[s].quirks & QUIRKS_ALREADY_DECODED)) {
+		quirks_buf[0] = '\0';
+		sensor_get_st_prop(s, "quirks", quirks_buf);
+
+		if (strstr(quirks_buf, "init-rate"))
+			sensor_info[s].quirks |= QUIRKS_INITIAL_RATE;
+
+		sensor_info[s].quirks |= QUIRKS_ALREADY_DECODED;
+	}
+
+	return sensor_info[s].quirks;
 }
 
 

@@ -15,6 +15,7 @@
 #include "utils.h"
 #include "transform.h"
 #include "calibration.h"
+#include "description.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -334,11 +335,9 @@ static void* acquisition_routine (void* param)
 	 */
 
 	int s = (int) param;
-	int report_fd;
 	int num_fields;
 	struct sensors_event_t data = {0};
 	int c;
-	int sampling_rate;
 	int ret;
 	struct timespec entry_time;
 	struct timespec target_time;
@@ -490,12 +489,10 @@ int sensor_activate(int s, int enabled)
 {
 	char device_name[PATH_MAX];
 	char trigger_name[MAX_NAME_SIZE + 16];
-	int c;
 	struct epoll_event ev = {0};
 	int dev_fd;
 	int ret;
 	int dev_num = sensor_info[s].dev_num;
-	int i = sensor_info[s].catalog_index;
 	int is_poll_sensor = !sensor_info[s].num_channels;
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
@@ -620,7 +617,7 @@ static int integrate_device_report(int dev_num)
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int ts;
+	int64_t ts;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -760,7 +757,6 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	int i;
 	int nfds;
 	struct epoll_event ev[MAX_DEVICES];
-	int64_t target_ts;
 	int returned_events;
 	int event_count;
 
@@ -996,7 +992,6 @@ int sensor_set_delay(int s, int64_t ns)
 int allocate_control_data (void)
 {
 	int i;
-	struct epoll_event ev = {0};
 
 	for (i=0; i<MAX_DEVICES; i++)
 		device_fd[i] = -1;

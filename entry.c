@@ -6,6 +6,7 @@
 #include <utils/Log.h>
 #include "enumeration.h"
 #include "control.h"
+#include "description.h"
 
 /* This is the IIO Sensors HAL module entry points file */
 
@@ -15,6 +16,25 @@ static int activate(struct sensors_poll_device_t* dev, int handle, int enabled)
 {
 	if (init_count == 0 || handle < 0 || handle >= sensor_count)
 		return -EINVAL;
+
+	/*
+	 * The Intel sensor hub seems to have trouble enabling sensors before
+	 * a sampling rate has been configured, and setting the sampling rate
+	 * after it's been enabled does not seem to revive affected sensors.
+	 * The issue does not show up with an up to date ISH firmware but as the
+	 * updater is a Windows only tool and is not widely available, implement
+	 * a workaround for this behavior. We set the initial sampling rate to
+	 * 10 events per second when the sensor is enabled for the first time.
+	 */
+	if (enabled && sensor_get_quirks(handle) & QUIRKS_INITIAL_RATE) {
+		ALOGI("Forcing initial sampling rate\n");
+		sensor_activate(handle, 1);
+		sensor_set_delay(handle, 100000000L);	/* Start with 100 ms */
+		sensor_activate(handle, 0);
+
+		/* Clear flag for this sensor as do this only once */
+		sensor_info[handle].quirks ^= QUIRKS_INITIAL_RATE;
+	}
 
 	return sensor_activate(handle, enabled);
 }

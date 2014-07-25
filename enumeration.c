@@ -214,8 +214,6 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 {
 	char base_dir[PATH_MAX];
 	DIR *dir;
-	char sysfs_dir[PATH_MAX];
-	struct sensor *sensor;
 	struct dirent *d;
 	unsigned int i;
         int c;
@@ -257,8 +255,6 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 {
 	char scan_elem_dir[PATH_MAX];
 	DIR *dir;
-	char sysfs_dir[PATH_MAX];
-	struct sensor *sensor;
 	struct dirent *d;
 	unsigned int i;
 

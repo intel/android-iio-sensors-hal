@@ -123,8 +123,6 @@ inline float convert_from_vtf_format(int size, int exponent, unsigned int value)
 
 static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 {
-	uint16_t u16;
-	uint32_t u32;
 	uint64_t u64;
 	int i;
 	int zeroed_bits = type->storagebits - type->realbits;

@@ -1,0 +1,536 @@
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <dlfcn.h>
+#include <pthread.h>
+#include <errno.h>
+
+#include <hardware/sensors.h>
+#include <utils/Log.h>
+
+int usage(void)
+{
+	fprintf(stderr, "sens start hal.so\n");
+	fprintf(stderr, "sens [activate | deactivate] sensor_id\n");
+	fprintf(stderr, "sens set_delay sensor_id delay\n");
+	fprintf(stderr, "sens poll\n");
+	return 1;
+}
+
+static struct sensors_module_t *hmi;
+
+static const char* types[] = {
+	"metadata",
+	"accelerometer",
+	"magnetometer",
+	"orientation",
+	"gyroscope",
+	"light",
+	"pressure",
+	"temperature",
+	"proximity",
+	"gravity",
+	"linear acceleration",
+	"rotation vector",
+	"relative humitidy",
+	"ambient temperature",
+	"uncalibrated magnetometer",
+	"game rotation vector",
+	"uncalibrated gyrocope",
+	"significant motion",
+	"step detector",
+	"step counter",
+	"geomagnetic rotation vector",
+};
+
+static const char *type_str(int type)
+{
+	if (type < 0 || type > (int)sizeof(types)/sizeof(char *))
+		return "unknown";
+	return types[type];
+}
+
+
+static struct sensors_module_t *hmi;
+static struct hw_device_t *dev;
+static FILE *client;
+static pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+
+static void print_event(struct sensors_event_t *e)
+{
+	FILE *f;
+
+	pthread_mutex_lock(&client_mutex);
+
+	if (!client) {
+		pthread_mutex_unlock(&client_mutex);
+		return;
+	}
+	f = client;
+
+	fprintf(f, "event: version=%d sensor=%d type=%s timestamp=%lld\n",
+		e->version, e->sensor, type_str(e->type), (long long)e->timestamp);
+
+	switch (e->type) {
+	case SENSOR_TYPE_META_DATA:
+		break;
+	case SENSOR_TYPE_ACCELEROMETER:
+	case SENSOR_TYPE_LINEAR_ACCELERATION:
+	case SENSOR_TYPE_GRAVITY:
+		fprintf(f, "event: x=%10.2f y=%10.2f z=%10.2f status=%d\n",
+			e->acceleration.x, e->acceleration.y, e->acceleration.z,
+			e->acceleration.status);
+		break;
+	case SENSOR_TYPE_MAGNETIC_FIELD:
+		fprintf(f, "event: x=%10.2f y=%10.2f z=%10.2f status=%d\n",
+			e->magnetic.x, e->magnetic.y, e->magnetic.z,
+			e->magnetic.status);
+		break;
+	case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+		fprintf(f, "event: x=%10.2f y=%10.2f z=%10.2f bias_x=%10.2f bias_y=%10.2f bias_z=%10.2f \n",
+			e->uncalibrated_magnetic.x_uncalib,
+			e->uncalibrated_magnetic.y_uncalib,
+			e->uncalibrated_magnetic.z_uncalib,
+			e->uncalibrated_magnetic.x_bias,
+			e->uncalibrated_magnetic.y_bias,
+			e->uncalibrated_magnetic.z_bias);
+		break;
+	case SENSOR_TYPE_ORIENTATION:
+		fprintf(f, "event: azimuth=%10.2f pitch=%10.2f roll=%10.2f status=%d\n",
+			e->orientation.azimuth, e->orientation.pitch, e->orientation.roll,
+			e->orientation.status);
+		break;
+	case SENSOR_TYPE_GYROSCOPE:
+		fprintf(f, "event: x=%10.2f y=%10.2f z=%10.2f status=%d\n",
+			e->gyro.x, e->gyro.y, e->gyro.z, e->gyro.status);
+		break;
+	case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+		fprintf(f, "event: x=%10.2f y=%10.2f z=%10.2f bias_x=%10.2f bias_y=%10.2f bias_z=%10.2f \n",
+			e->uncalibrated_gyro.x_uncalib,
+			e->uncalibrated_gyro.y_uncalib,
+			e->uncalibrated_gyro.z_uncalib,
+			e->uncalibrated_gyro.x_bias,
+			e->uncalibrated_gyro.y_bias,
+			e->uncalibrated_gyro.z_bias);
+		break;
+	case SENSOR_TYPE_LIGHT:
+		fprintf(f, "event: light=%10.2f\n", e->light);
+		break;
+	case SENSOR_TYPE_PRESSURE:
+		fprintf(f, "event: pressure=%10.2f\n", e->pressure);
+		break;
+	case SENSOR_TYPE_TEMPERATURE:
+	case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		fprintf(f, "event: temperature=%10.2f\n", e->temperature);
+		break;
+	case SENSOR_TYPE_PROXIMITY:
+		fprintf(f, "event: distance=%10.2f\n", e->distance);
+		break;
+	case SENSOR_TYPE_ROTATION_VECTOR:
+	case SENSOR_TYPE_GAME_ROTATION_VECTOR:
+	case SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR:
+		fprintf(f, "event: rot_x=%10.2f rot_y=%10.2f rot_z=%10.2f cos=%10.2f estimated_accuracy=%10.2f\n",
+			e->data[0], e->data[1], e->data[2], e->data[3], e->data[4]);
+		break;
+	case SENSOR_TYPE_RELATIVE_HUMIDITY:
+		fprintf(f, "event: humidity=%10.2f\n", e->relative_humidity);
+		break;
+	case SENSOR_TYPE_SIGNIFICANT_MOTION:
+		fprintf(f, "event: significant_motion=%10.2f\n", e->data[0]);
+		break;
+	case SENSOR_TYPE_STEP_DETECTOR:
+		fprintf(f, "event: step_detector=%10.2f\n", e->data[0]);
+		break;
+	case SENSOR_TYPE_STEP_COUNTER:
+		fprintf(f, "event: step_detector=%llu\n",
+			(unsigned long long)e->u64.step_counter);
+		break;
+	}
+
+	fprintf(f, "\n");
+	fflush(f);
+
+	pthread_mutex_unlock(&client_mutex);
+}
+
+static void run_sensors_poll_v0(void)
+{
+	struct sensors_poll_device_t *poll_dev = (struct sensors_poll_device_t *)dev;
+
+	while (1) {
+		sensors_event_t events[256];
+		int i, count;
+
+		count = poll_dev->poll(poll_dev, events, sizeof(events)/sizeof(sensors_event_t));
+
+		for(i = 0; i < count; i++)
+			print_event(&events[i]);
+	}
+}
+
+static void *run_sensors_thread(void *arg)
+{
+	switch (dev->version) {
+	case SENSORS_DEVICE_API_VERSION_0_1:
+	default:
+		run_sensors_poll_v0();
+		break;
+	}
+
+	return NULL;
+}
+
+void print_sensor(const struct sensor_t *s, FILE *f)
+{
+	if (!f)
+		return;
+
+	fprintf(f, "sensor%d: name=%s vendor=%s version=%d type=%s\n",
+		s->handle, s->name, s->vendor, s->version, type_str(s->type));
+	fprintf(f, "sensor%d: maxRange=%10.2f resolution=%10.2f power=%10.2f\n",
+		s->handle, s->maxRange, s->resolution, s->power);
+	fprintf(f, "sensor%d: minDelay=%d fifoReservedEventCount=%d fifoMaxEventCount=%d\n",
+		s->handle, s->minDelay, s->fifoReservedEventCount,
+		s->fifoMaxEventCount);
+
+}
+
+static int sensor_set_delay(int handle, int64_t delay)
+{
+	switch (dev->version) {
+	default:
+	case SENSORS_DEVICE_API_VERSION_0_1:
+	{
+		struct sensors_poll_device_t *poll_dev = (struct sensors_poll_device_t *)dev;
+
+		return poll_dev->setDelay(poll_dev, handle, delay);
+	}
+	}
+}
+
+
+static int sensor_activate(int handle, int enable)
+{
+	switch (dev->version) {
+	default:
+	case SENSORS_DEVICE_API_VERSION_0_1:
+	{
+		struct sensors_poll_device_t *poll_dev = (struct sensors_poll_device_t *)dev;
+
+		return poll_dev->activate(poll_dev, handle, enable);
+	}
+	}
+}
+
+#define CLIENT_ERR(f, fmt...)			\
+	{ if (f) { fprintf(f, fmt); fprintf(f, "\n"); } ALOGE(fmt); }
+
+static int dispatch_cmd(char *cmd, int cmd_len, FILE *f)
+{
+	char *argv[16], *tmp;
+	int argc = 0, handle;
+
+	tmp = strtok(cmd, " ");
+	while (tmp) {
+		argv[argc++] = tmp;
+		tmp = strtok(NULL, " ");
+	}
+	if (!argc)
+		argv[argc++] = tmp;
+
+	if (argc < 1) {
+		CLIENT_ERR(f, "invalid cmd: %s", cmd);
+		return -1;
+	}
+
+	if (!strcmp(argv[0], "ls")) {
+		struct sensor_t const* list;
+		int i, count = hmi->get_sensors_list(hmi, &list);
+
+		for(i = 0; i < count; i++)
+			print_sensor(&list[i], f);;
+
+		return 0;
+	} else if (!strcmp(argv[0], "activate")) {
+
+		if (argc < 2) {
+			CLIENT_ERR(f, "activate: no sensor handle");
+			return -1;
+		}
+
+		handle = atoi(argv[1]);
+
+		return sensor_activate(handle, 1);
+
+	} else if (!strcmp(argv[0], "deactivate")) {
+
+		if (argc < 2) {
+			CLIENT_ERR(f, "activate: no sensor handle");
+			return -1;
+		}
+
+		handle = atoi(argv[1]);
+
+		return sensor_activate(handle, 0);
+
+	} else if (!strcmp(argv[0], "set_delay")) {
+		int64_t delay;
+
+		if (argc < 3) {
+			CLIENT_ERR(f, "setDelay: no sensor handle and/or delay");
+			return -1;
+		}
+
+		handle=atoi(argv[1]);
+		delay=atoll(argv[2]);
+
+		return sensor_set_delay(handle, delay);
+
+	} else if (!strcmp(argv[0], "poll")) {
+
+		pthread_mutex_lock(&client_mutex);
+		client = f;
+		pthread_mutex_unlock(&client_mutex);
+
+		return 1;
+	} else if (!strcmp(argv[0], "stop")) {
+		exit(1);
+	} else {
+		CLIENT_ERR(f, "invalid command: %s", cmd);
+		return -1;
+	}
+
+}
+
+#ifdef ANDROID
+#define NAME_PREFIX "/dev/socket/"
+#else
+#define NAME_PREFIX "/tmp/"
+#endif
+
+#define SENS_SERVER_NAME NAME_PREFIX "sens-server"
+
+struct sockaddr_un server_addr = {
+	.sun_family = AF_UNIX,
+	.sun_path = SENS_SERVER_NAME,
+};
+
+static int start_server(void)
+{
+	int sock = socket(AF_UNIX, SOCK_SEQPACKET, 0), conn;
+	int err;
+
+	unlink(SENS_SERVER_NAME);
+
+	if (sock < 0) {
+		ALOGE("failed to create socket: %s", strerror(errno));
+		exit(1);
+	}
+
+	err = bind(sock, (struct sockaddr *)&server_addr, sizeof(server_addr));
+	if (err) {
+		ALOGE("failed to bind socket: %s", strerror(errno));
+		exit(1);
+	}
+
+	listen(sock, 1);
+
+	while (1) {
+		char data_buff[1024], cmsg_buffer[1024];
+		struct iovec recv_buff = {
+			.iov_base = data_buff,
+			.iov_len = sizeof(data_buff),
+		};
+		struct sockaddr_un from;
+		struct msghdr msg = {
+			.msg_name = &from,
+			.msg_namelen = sizeof(from),
+			.msg_iov = &recv_buff,
+			.msg_iovlen = 1,
+			.msg_control = cmsg_buffer,
+			.msg_controllen = sizeof(cmsg_buffer),
+		};
+		FILE *f =NULL;
+
+		conn = accept(sock, NULL, NULL);
+		if (conn < 0) {
+			ALOGE("failed to accept connection: %s", strerror(errno));
+			continue;
+		}
+
+		while (1) {
+			struct cmsghdr *cmsg;
+
+			err = recvmsg(conn, &msg, 0);
+			if (err < 0) {
+				ALOGE("error in recvmsg: %s", strerror(errno));
+				break;
+			}
+
+			if (err == 0)
+				break;
+
+			for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+			     cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+				if (cmsg->cmsg_level == SOL_SOCKET
+				    && cmsg->cmsg_type == SCM_RIGHTS) {
+					int *fd = (int *)CMSG_DATA(cmsg);
+					f = fdopen(*fd, "w");
+					break;
+				}
+			}
+
+			err = dispatch_cmd(data_buff, err, f);
+			if (err < 0) {
+				ALOGE("error dispatching command: %d", err);
+				break;
+			}
+
+			/* send ack */
+			if (!err)
+				write(conn, data_buff, 1);
+		}
+
+		pthread_mutex_lock(&client_mutex);
+		client = NULL;
+		pthread_mutex_unlock(&client_mutex);
+
+		fclose(f); close(conn);
+	}
+}
+
+static int start_hal(const char *hal_path)
+{
+	void *hal;
+	pid_t child;
+	int err;
+	pthread_t sensors_thread;
+
+
+	hal = dlopen(hal_path, RTLD_NOW);
+	if (!hal) {
+		fprintf(stderr, "unable to load HAL %s: %s\n", hal_path,
+			dlerror());
+		return 2;
+	}
+
+	hmi = dlsym(hal, HAL_MODULE_INFO_SYM_AS_STR);
+	if (!hmi) {
+		fprintf(stderr, "unable to find %s entry point in HAL\n",
+			HAL_MODULE_INFO_SYM_AS_STR);
+		return 3;
+	}
+
+	printf("HAL loaded: name %s vendor %s version %d.%d id %s\n",
+	       hmi->common.name, hmi->common.author,
+	       hmi->common.version_major, hmi->common.version_minor,
+	       hmi->common.id);
+
+	child = fork();
+	if (child) {
+		usleep(100);
+		return 0;
+	}
+
+	if (setsid() == (pid_t)-1) {
+		fprintf(stderr, "failed to send process to background\n");
+		exit(1);
+	}
+
+	close(0); close(1); close(2);
+
+	ALOGI("Initializing HAL");
+
+	err = hmi->common.methods->open((struct hw_module_t *)hmi,
+					SENSORS_HARDWARE_POLL, &dev);
+
+	if (err) {
+		ALOGE("failed to initialize HAL: %d\n", err);
+		exit(1);
+	}
+
+	if (pthread_create(&sensors_thread, NULL, run_sensors_thread, NULL)) {
+		ALOGE("failed to create sensor thread");
+		exit(1);
+	}
+
+	return start_server();
+}
+
+int main(int argc, char **argv)
+{
+	char cmd[1024];
+	int sock, i;
+	struct iovec recv_buff = {
+		.iov_base = cmd,
+		.iov_len = sizeof(cmd),
+	};
+	struct cmsg_fd {
+		struct cmsghdr hdr;
+		int fd;
+	}  cmsg_buff = {
+		.hdr = {
+			.cmsg_level = SOL_SOCKET,
+			.cmsg_type = SCM_RIGHTS,
+			.cmsg_len = CMSG_LEN(sizeof(int)),
+		},
+		.fd = 1,
+	};
+	struct msghdr msg = {
+		.msg_name = NULL,
+		.msg_namelen = 0,
+		.msg_iov = &recv_buff,
+		.msg_iovlen = 1,
+		.msg_control = &cmsg_buff,
+		.msg_controllen = sizeof(cmsg_buff),
+	};
+
+
+	if (argc < 2) {
+		usage();
+		return 1;
+	}
+
+	if (!strcmp(argv[1], "start")) {
+		if (argc < 3)
+			return usage();
+
+		return start_hal(argv[2]);
+	}
+
+	strcpy(cmd, argv[1]); strcat(cmd, " ");
+	for(i = 2; i < argc; i++) {
+		strcat(cmd, argv[i]); strcat(cmd, " ");
+	}
+
+	sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
+	if (!sock) {
+		fprintf(stderr, "failed to create socket: %s\n", strerror(errno));
+		return 3;
+	}
+
+	if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) < 0) {
+		fprintf(stderr, "failed to connect to server: %s\n", strerror(errno));
+		return 5;
+	}
+
+	if (sendmsg(sock, &msg, 0) < 0) {
+		fprintf(stderr, "failed sending command to server: %s\n", strerror(errno));
+		return 6;
+	}
+
+	if (read(sock, cmd, 1) < 0) {
+		fprintf(stderr, "failed getting ack from server: %s\n", strerror(errno));
+		return 7;
+	}
+
+	close(sock);
+
+	return 0;
+}

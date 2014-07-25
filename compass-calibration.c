@@ -127,7 +127,7 @@ static void calc_evector(double mat[3][3], double eig, double vec[3][1])
 
 static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3][3], double* bfield)
 {
-    int i,j;
+    int i;
     double h[DS_SIZE][9];
     double w[DS_SIZE][1];
     double h_trans[9][DS_SIZE];
