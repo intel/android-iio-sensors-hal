@@ -215,6 +215,9 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			/* Only keep two decimals for these readings */
 			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
 
+			/* ... fall through ... */
+
+		case SENSOR_TYPE_PROXIMITY:
 			/*
 			 * These are on change sensors ; drop the sample if it
 			 * has the same value as the previously reported one.
