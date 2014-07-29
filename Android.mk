@@ -36,13 +36,11 @@ LOCAL_SRC_FILES := $(src_files)
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
-src_path := .
-src_files := $(src_path)/sens.c
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
 LOCAL_MODULE := sens
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
-LOCAL_SRC_FILES := $(src_files)
+LOCAL_SRC_FILES := sens.c
 LOCAL_MODULE_TAGS := eng
 include $(BUILD_EXECUTABLE)
 endif
