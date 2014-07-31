@@ -7,8 +7,9 @@
 
 #include "common.h"
 
-#define QUIRKS_ALREADY_DECODED	0x01  /* Sensor quirks have been read	    */
-#define QUIRKS_INITIAL_RATE	0x02  /* Force initial sensor sampling rate */
+#define QUIRK_ALREADY_DECODED	0x01  /* Sensor quirks have been read	    */
+#define QUIRK_INITIAL_RATE	0x02  /* Force initial sensor sampling rate */
+#define QUIRK_FIELD_ORDERING	0x04
 #define QUIRK_TERSE_DRIVER	0x08  /* Force duplicate events generation  */
 #define QUIRK_NOISY		0x10  /* High noise level on readings	    */
 

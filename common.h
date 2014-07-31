@@ -34,8 +34,6 @@
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
-#define FLAG_FIELD_ORDERING	0x01
-
 #ifdef __LP64__
 	typedef uint64_t flag_t;
 #else
@@ -175,10 +173,9 @@ struct sensor_info_t
 
 	/* Note: we may have to explicitely serialize access to some fields */
 
-	uint32_t flags;
 
 	/*
-	 * If the FLAG_FIELD_ORDERING bit is set in flags, the contents of
+	 * If the QUIRK_FIELD_ORDERING bit is set in quirks, the contents of
 	 * this array are used in the finalization stage to swap sample fields
 	 * before transmitting them to Android ; they form a mapping between
 	 * the indices of the input and output arrays: ex: 0123 is identity for

@@ -212,7 +212,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor_info[s].order))
-		sensor_info[s].flags |= FLAG_FIELD_ORDERING;
+		sensor_info[s].quirks |= QUIRK_FIELD_ORDERING;
 
 	sensor_count++;
 }

@@ -7,10 +7,11 @@
 #include <utils/Log.h>
 #include <cutils/properties.h>
 #include <hardware/sensors.h>
+#include "calibration.h"
 #include "common.h"
+#include "description.h"
 #include "transform.h"
 #include "utils.h"
-#include "calibration.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -193,7 +194,7 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 	int sensor_type	= sensor_catalog[i].type;
 
 	/* Swap fields if we have a custom channel ordering on this sensor */
-	if (sensor_info[s].flags & FLAG_FIELD_ORDERING)
+	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
 		reorder_fields(data->data, sensor_info[s].order);
 
 	switch (sensor_type) {
@@ -255,7 +256,7 @@ static int finalize_sample_ISH(int s, struct sensors_event_t* data)
 	float pitch, roll, yaw;
 
 	/* Swap fields if we have a custom channel ordering on this sensor */
-	if (sensor_info[s].flags & FLAG_FIELD_ORDERING)
+	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
 		reorder_fields(data->data, sensor_info[s].order);
 
 	if (sensor_type == SENSOR_TYPE_ORIENTATION) {

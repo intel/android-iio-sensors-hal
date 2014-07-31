@@ -215,12 +215,12 @@ uint32_t sensor_get_quirks (int s)
 	char quirks_buf[MAX_NAME_SIZE];
 
 	/* Read and decode quirks property on first reference */
-	if (!(sensor_info[s].quirks & QUIRKS_ALREADY_DECODED)) {
+	if (!(sensor_info[s].quirks & QUIRK_ALREADY_DECODED)) {
 		quirks_buf[0] = '\0';
 		sensor_get_st_prop(s, "quirks", quirks_buf);
 
 		if (strstr(quirks_buf, "init-rate"))
-			sensor_info[s].quirks |= QUIRKS_INITIAL_RATE;
+			sensor_info[s].quirks |= QUIRK_INITIAL_RATE;
 
 		if (strstr(quirks_buf, "terse"))
 			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
@@ -228,7 +228,7 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "noisy"))
 			sensor_info[s].quirks |= QUIRK_NOISY;
 
-		sensor_info[s].quirks |= QUIRKS_ALREADY_DECODED;
+		sensor_info[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
 	return sensor_info[s].quirks;
