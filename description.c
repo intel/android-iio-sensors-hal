@@ -260,3 +260,88 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 
 	return 1;	/* OK to use modified ordering map */
 }
+
+char* sensor_get_string_type(int s)
+{
+	int catalog_index;
+	int sensor_type;
+
+	catalog_index = sensor_info[s].catalog_index;
+	sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+			return SENSOR_STRING_TYPE_ACCELEROMETER;
+
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			return SENSOR_STRING_TYPE_MAGNETIC_FIELD;
+
+		case SENSOR_TYPE_ORIENTATION:
+			return SENSOR_STRING_TYPE_ORIENTATION;
+
+		case SENSOR_TYPE_GYROSCOPE:
+			return SENSOR_STRING_TYPE_GYROSCOPE;
+
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			return SENSOR_STRING_TYPE_GYROSCOPE_UNCALIBRATED;
+
+		case SENSOR_TYPE_LIGHT:
+			return SENSOR_STRING_TYPE_LIGHT;
+
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+			return SENSOR_STRING_TYPE_AMBIENT_TEMPERATURE;
+
+		case SENSOR_TYPE_TEMPERATURE:
+			return SENSOR_STRING_TYPE_TEMPERATURE;
+
+		case SENSOR_TYPE_PROXIMITY:
+			return SENSOR_STRING_TYPE_PROXIMITY;
+
+		case SENSOR_TYPE_PRESSURE:
+			return SENSOR_STRING_TYPE_PRESSURE;
+
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:
+			return SENSOR_STRING_TYPE_RELATIVE_HUMIDITY;
+
+		default:
+			return "";
+		}
+}
+
+flag_t sensor_get_flags (int s)
+{
+	int catalog_index;
+	int sensor_type;
+
+	flag_t flags = 0x0;
+	catalog_index = sensor_info[s].catalog_index;
+	sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_ORIENTATION:
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+		case SENSOR_TYPE_PRESSURE:
+			flags |= SENSOR_FLAG_CONTINUOUS_MODE;
+			break;
+
+		case SENSOR_TYPE_LIGHT:
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		case SENSOR_TYPE_TEMPERATURE:
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:
+			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
+			break;
+
+
+		case SENSOR_TYPE_PROXIMITY:
+			flags |= SENSOR_FLAG_WAKE_UP;
+			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
+			break;
+
+		default:
+			ALOGI("Unknown sensor");
+		}
+	return flags;
+}

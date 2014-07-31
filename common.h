@@ -36,6 +36,12 @@
 
 #define FLAG_FIELD_ORDERING	0x01
 
+#ifdef __LP64__
+	typedef uint64_t flag_t;
+#else
+	typedef uint32_t flag_t;
+#endif
+
 struct channel_descriptor_t
 {
 	const char *name;	/* channel name ; ex: x */

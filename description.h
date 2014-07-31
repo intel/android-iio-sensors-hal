@@ -24,4 +24,7 @@ int		sensor_get_fl_prop (int s, const char* sel, float* val);
 
 int		sensor_get_order	(int s, unsigned char map[MAX_CHANNELS]);
 
+char* sensor_get_string_type(int s);
+flag_t sensor_get_flags (int s);
+
 #endif

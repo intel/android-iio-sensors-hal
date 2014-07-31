@@ -173,6 +173,13 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].maxRange		= sensor_get_max_range(s);
 	sensor_desc[s].resolution	= sensor_get_resolution(s);
 	sensor_desc[s].power		= sensor_get_power(s);
+	sensor_desc[s].stringType = sensor_get_string_type(s);
+
+	/* None of our supported sensors requires a special permission.
+	*  If this will be the case we should implement a sensor_get_perm
+	*/
+	sensor_desc[s].requiredPermission = "";
+	sensor_desc[s].flags = sensor_get_flags(s);
 
 	if (sensor_info[s].internal_name[0] == '\0') {
 		/*
