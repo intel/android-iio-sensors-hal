@@ -33,6 +33,10 @@
  * ro.iio.anglvel.transform = ISH
  * ro.iio.anglvel.quirks = init-rate
  *
+ * The "terse" quirk indicates that the underlying driver only sends events
+ * when the sensor reports a change. The HAL then periodically generates
+ * duplicate events so the sensor behaves as a continously firing one.
+ *
  * This one is used specifically to pass a calibration scale to ALS drivers:
  *
  * ro.iio.illuminance.name = CPLM3218x Ambient Light Sensor
@@ -213,6 +217,10 @@ uint32_t sensor_get_quirks (int s)
 
 		if (strstr(quirks_buf, "init-rate"))
 			sensor_info[s].quirks |= QUIRKS_INITIAL_RATE;
+
+		if (strstr(quirks_buf, "terse"))
+			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+		;
 
 		sensor_info[s].quirks |= QUIRKS_ALREADY_DECODED;
 	}

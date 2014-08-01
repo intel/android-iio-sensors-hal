@@ -139,7 +139,11 @@ struct sensor_info_t
 	 */
 	int64_t report_ts;
 
+	/* Buffer containing the last generated sensor report for this sensor */
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
+
+	/* Whether or not the above buffer contains data from a device report */
+	int report_initialized;
 
 	struct sample_ops_t ops;
 
