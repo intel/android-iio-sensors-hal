@@ -610,7 +610,6 @@ static int integrate_device_report(int dev_num)
 	int len;
 	int s,c;
 	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
-	unsigned char previous_report[MAX_SENSOR_REPORT_SIZE];
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
