@@ -755,7 +755,7 @@ static void synthetize_duplicate_samples (void)
 			continue;
 
 		/* If the sensor can generate duplicates, leave it alone */
-		if (!(sensor_info[s].quirks &  QUIRK_TERSE_DRIVER))
+		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
 			continue;
 
 		/* If we haven't seen a sample, there's nothing to duplicate */

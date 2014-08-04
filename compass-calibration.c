@@ -11,7 +11,7 @@
 #include <utils/Log.h>
 #include "calibration.h"
 #include "matrix-ops.h"
-
+#include "description.h"
 
 #ifdef DBG_RAW_DATA
 #define MAX_RAW_DATA_COUNT 2000
@@ -398,6 +398,17 @@ static void compass_compute_cal (struct sensors_event_t* event, struct sensor_in
     event->magnetic.z = event->data[2] = result[2][0];
 }
 
+static inline float get_error_threshold (struct sensor_info_t* info)
+{
+    if (info->calibrated)
+            return MAX_SQR_ERR;
+
+    if (info->quirks & QUIRK_NOISY)
+            return FIRST_MAX_SQR_ERR * 2;
+
+    return FIRST_MAX_SQR_ERR;
+}
+
 static int compass_ready (struct sensor_info_t* info)
 {
     mat_input_t mat;
@@ -409,7 +420,7 @@ static int compass_ready (struct sensor_info_t* info)
     if (cal_data->sample_count < DS_SIZE)
         return info->calibrated;
 
-    max_sqr_err = info->calibrated ? MAX_SQR_ERR : FIRST_MAX_SQR_ERR;
+    max_sqr_err = get_error_threshold(info);
 
     /* enough points have been collected, do the ellipsoid calibration */
     for (i = 0; i < DS_SIZE; i++) {

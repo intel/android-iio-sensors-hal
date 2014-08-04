@@ -37,6 +37,10 @@
  * when the sensor reports a change. The HAL then periodically generates
  * duplicate events so the sensor behaves as a continously firing one.
  *
+ * The "noisy" quirk indicates that the underlying driver has a unusually high
+ * level of noise in its readings, and that the HAL has to accomodate it
+ * somehow, e.g. in the magnetometer calibration code path.
+ *
  * This one is used specifically to pass a calibration scale to ALS drivers:
  *
  * ro.iio.illuminance.name = CPLM3218x Ambient Light Sensor
@@ -220,7 +224,9 @@ uint32_t sensor_get_quirks (int s)
 
 		if (strstr(quirks_buf, "terse"))
 			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
-		;
+
+		if (strstr(quirks_buf, "noisy"))
+			sensor_info[s].quirks |= QUIRK_NOISY;
 
 		sensor_info[s].quirks |= QUIRKS_ALREADY_DECODED;
 	}
