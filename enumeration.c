@@ -499,58 +499,6 @@ static void orientation_sensor_check(void)
 			}
 }
 
-static void uncalibrated_gyro_check (void)
-{
-	unsigned int has_gyr = 0;
-	unsigned int dev_num;
-	int i, c;
-	unsigned int is_poll_sensor;
-
-	int cal_idx = 0;
-	int uncal_idx = 0;
-
-	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
-	for (i=0; i < sensor_count; i++)
-		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
-		{
-			has_gyr=1;
-			dev_num = sensor_info[i].dev_num;
-			is_poll_sensor = !sensor_info[i].num_channels;
-			cal_idx = i;
-			break;
-		}
-
-	/*
-	 * If we have a gyro we can add the uncalibrated sensor of the same type and
-	 * on the same dev_num. We will save indexes for easy finding and also save the
-	 * channel specific information.
-	 */
-	if (has_gyr)
-		for (i=0; i<CATALOG_SIZE; i++)
-			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-				add_sensor(dev_num, i, is_poll_sensor);
-
-				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
-
-				/* Similar to build_sensor_report_maps */
-				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
-				{
-					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
-						&(sensor_info[cal_idx].channel[c].type_spec),
-						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
-					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
-					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
-					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
-				}
-				strncpy(sensor_info[uncal_idx].trigger_name,
-					sensor_info[cal_idx].trigger_name,
-					MAX_NAME_SIZE);
-				sensor_info[uncal_idx].pair_idx = cal_idx;
-				sensor_info[cal_idx].pair_idx = uncal_idx;
-				break;
-			}
-}
-
 static int is_continuous (int s)
 {
 	/* Is sensor s of the continous trigger type kind? */
@@ -705,6 +653,55 @@ static void setup_trigger_names (void)
 		}
 }
 
+static void uncalibrated_gyro_check (void)
+{
+	unsigned int has_gyr = 0;
+	unsigned int dev_num;
+	int i, c;
+	unsigned int is_poll_sensor;
+
+	int cal_idx = 0;
+	int uncal_idx = 0;
+	int catalog_size = CATALOG_SIZE; /* Avoid GCC sign comparison warning */
+
+	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
+	for (i=0; i < sensor_count; i++)
+		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
+		{
+			has_gyr=1;
+			dev_num = sensor_info[i].dev_num;
+			is_poll_sensor = !sensor_info[i].num_channels;
+			cal_idx = i;
+			break;
+		}
+
+	/*
+	 * If we have a gyro we can add the uncalibrated sensor of the same type and
+	 * on the same dev_num. We will save indexes for easy finding and also save the
+	 * channel specific information.
+	 */
+	if (has_gyr)
+		for (i=0; i<catalog_size; i++)
+			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+				add_sensor(dev_num, i, is_poll_sensor);
+
+				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
+
+				/* Similar to build_sensor_report_maps */
+				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
+				{
+					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
+						&(sensor_info[cal_idx].channel[c].type_spec),
+						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
+					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
+					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
+					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
+				}
+				sensor_info[uncal_idx].pair_idx = cal_idx;
+				sensor_info[cal_idx].pair_idx = uncal_idx;
+				break;
+			}
+}
 
 void enumerate_sensors (void)
 {
@@ -749,8 +746,10 @@ void enumerate_sensors (void)
 	/* Make sure Android fall backs to its own orientation sensor */
 	orientation_sensor_check();
 
-	/* Create the uncalibrated counterpart to the compensated gyroscope;
-	 * This is is a new sensor type in Android 4.4 */
+	/*
+	 * Create the uncalibrated counterpart to the compensated gyroscope.
+	 * This is is a new sensor type in Android 4.4.
+	 */
 	uncalibrated_gyro_check();
 }
 
