@@ -36,8 +36,10 @@
 
 #ifdef __LP64__
 	typedef uint64_t flag_t;
+	typedef int64_t max_delay_t;
 #else
 	typedef uint32_t flag_t;
+	typedef int32_t max_delay_t;
 #endif
 
 struct channel_descriptor_t
@@ -186,6 +188,7 @@ struct sensor_info_t
 
 /* Reference a few commonly used variables... */
 extern int				sensor_count;
+extern struct sensor_t      sensor_desc[MAX_SENSORS];
 extern struct sensor_info_t		sensor_info[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
 
