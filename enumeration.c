@@ -399,6 +399,71 @@ static void uncalibrated_gyro_check (void)
 			}
 }
 
+static int is_continuous (int s)
+{
+	/* Is sensor s of the continous trigger type kind? */
+
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_ORIENTATION:
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_PRESSURE:
+		case SENSOR_TYPE_GRAVITY:
+		case SENSOR_TYPE_LINEAR_ACCELERATION:
+		case SENSOR_TYPE_ROTATION_VECTOR:
+		case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+		case SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR:
+			return 1;
+
+		default:
+			return 0;
+	}
+}
+
+
+static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
+				 int sensor_name_len)
+{
+	/*
+	 * A new trigger has been enumerated for this sensor. Check if it makes
+	 * sense to use it over the currently selected one, and select it if it
+	 * is so. The format is something like sensor_name-dev0.
+	 */
+
+	const char *suffix = trigger_name + sensor_name_len + 1;
+
+	/* dev is the default, and lowest priority; no need to update */
+	if (!memcmp(suffix, "dev", 3))
+		return;
+
+	/*
+	 * Anything else is higher priority. However if we already found an
+	 * any-motion trigger, don't select anything else.
+	 */
+
+	if (!memcmp(sensor_info[s].trigger_name + sensor_name_len + 1,
+		    "any-motion-", 11))
+		return;
+
+	/*
+	 * If we're switching to an any-motion trigger, force the sensor to
+	 * automatic intermediate event generation mode, at least if it is of a
+	 * continuously firing sensor type.
+	 */
+
+	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s))
+		sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+
+	/* Update the trigger name to use for this sensor */
+	strcpy(sensor_info[s].trigger_name, trigger_name);
+}
+
+
 static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 {
 	/*
@@ -413,6 +478,7 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 	int dev_num;
 	int len;
 	char* cursor;
+	int sensor_name_len;
 
 	/*
 	 * First determine the iio device number this trigger refers to. We
@@ -438,13 +504,16 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 
 	/* See if that matches a sensor */
 	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].dev_num == dev_num &&
-			!strncmp(name, sensor_info[s].internal_name,
-				strlen(sensor_info[s].internal_name))) {
-				/* Update sensor structure and return */
-				strcpy(sensor_info[s].trigger_name, name);
-				return;
-			}
+		if (sensor_info[s].dev_num == dev_num) {
+
+			sensor_name_len = strlen(sensor_info[s].internal_name);
+
+			if (!strncmp(name,
+				     sensor_info[s].internal_name,
+				     sensor_name_len))
+				/* Switch to new trigger if appropriate */
+				propose_new_trigger(s, name, sensor_name_len);
+		}
 }
 
 
