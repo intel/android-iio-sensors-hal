@@ -331,6 +331,10 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     if (cal_data == NULL)
         return -1;
 
+    /* Discard the point if not valid */
+    if (data[0] == 0 && data[1] == 0 && data[2] == 0)
+        return -1;
+
 #ifdef DBG_RAW_DATA
     if (raw_data && raw_data_count < MAX_RAW_DATA_COUNT) {
         fprintf(raw_data, "%f %f %f\n", (double)data[0], (double)data[1],
