@@ -50,7 +50,9 @@ static const char* types[] = {
 
 static const char *type_str(int type)
 {
-	if (type < 0 || type > (int)sizeof(types)/sizeof(char *))
+	int type_count = sizeof(types)/sizeof(char *);
+
+	if (type < 0 || type >= type_count)
 		return "unknown";
 	return types[type];
 }

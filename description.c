@@ -33,6 +33,14 @@
  * ro.iio.anglvel.transform = ISH
  * ro.iio.anglvel.quirks = init-rate
  *
+ * The "terse" quirk indicates that the underlying driver only sends events
+ * when the sensor reports a change. The HAL then periodically generates
+ * duplicate events so the sensor behaves as a continously firing one.
+ *
+ * The "noisy" quirk indicates that the underlying driver has a unusually high
+ * level of noise in its readings, and that the HAL has to accomodate it
+ * somehow, e.g. in the magnetometer calibration code path.
+ *
  * This one is used specifically to pass a calibration scale to ALS drivers:
  *
  * ro.iio.illuminance.name = CPLM3218x Ambient Light Sensor
@@ -207,14 +215,20 @@ uint32_t sensor_get_quirks (int s)
 	char quirks_buf[MAX_NAME_SIZE];
 
 	/* Read and decode quirks property on first reference */
-	if (!(sensor_info[s].quirks & QUIRKS_ALREADY_DECODED)) {
+	if (!(sensor_info[s].quirks & QUIRK_ALREADY_DECODED)) {
 		quirks_buf[0] = '\0';
 		sensor_get_st_prop(s, "quirks", quirks_buf);
 
 		if (strstr(quirks_buf, "init-rate"))
-			sensor_info[s].quirks |= QUIRKS_INITIAL_RATE;
+			sensor_info[s].quirks |= QUIRK_INITIAL_RATE;
 
-		sensor_info[s].quirks |= QUIRKS_ALREADY_DECODED;
+		if (strstr(quirks_buf, "terse"))
+			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+
+		if (strstr(quirks_buf, "noisy"))
+			sensor_info[s].quirks |= QUIRK_NOISY;
+
+		sensor_info[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
 	return sensor_info[s].quirks;
@@ -245,4 +259,89 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 		}
 
 	return 1;	/* OK to use modified ordering map */
+}
+
+char* sensor_get_string_type(int s)
+{
+	int catalog_index;
+	int sensor_type;
+
+	catalog_index = sensor_info[s].catalog_index;
+	sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+			return SENSOR_STRING_TYPE_ACCELEROMETER;
+
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			return SENSOR_STRING_TYPE_MAGNETIC_FIELD;
+
+		case SENSOR_TYPE_ORIENTATION:
+			return SENSOR_STRING_TYPE_ORIENTATION;
+
+		case SENSOR_TYPE_GYROSCOPE:
+			return SENSOR_STRING_TYPE_GYROSCOPE;
+
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			return SENSOR_STRING_TYPE_GYROSCOPE_UNCALIBRATED;
+
+		case SENSOR_TYPE_LIGHT:
+			return SENSOR_STRING_TYPE_LIGHT;
+
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+			return SENSOR_STRING_TYPE_AMBIENT_TEMPERATURE;
+
+		case SENSOR_TYPE_TEMPERATURE:
+			return SENSOR_STRING_TYPE_TEMPERATURE;
+
+		case SENSOR_TYPE_PROXIMITY:
+			return SENSOR_STRING_TYPE_PROXIMITY;
+
+		case SENSOR_TYPE_PRESSURE:
+			return SENSOR_STRING_TYPE_PRESSURE;
+
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:
+			return SENSOR_STRING_TYPE_RELATIVE_HUMIDITY;
+
+		default:
+			return "";
+		}
+}
+
+flag_t sensor_get_flags (int s)
+{
+	int catalog_index;
+	int sensor_type;
+
+	flag_t flags = 0x0;
+	catalog_index = sensor_info[s].catalog_index;
+	sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_ORIENTATION:
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+		case SENSOR_TYPE_PRESSURE:
+			flags |= SENSOR_FLAG_CONTINUOUS_MODE;
+			break;
+
+		case SENSOR_TYPE_LIGHT:
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		case SENSOR_TYPE_TEMPERATURE:
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:
+			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
+			break;
+
+
+		case SENSOR_TYPE_PROXIMITY:
+			flags |= SENSOR_FLAG_WAKE_UP;
+			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
+			break;
+
+		default:
+			ALOGI("Unknown sensor");
+		}
+	return flags;
 }

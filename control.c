@@ -397,7 +397,7 @@ static void* acquisition_routine (void* param)
 			goto exit;
 
 
-		period = 1000000000LL / sensor_info[s].sampling_rate;
+		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
 
 		time_add(&target_time, &entry_time, period);
 
@@ -488,7 +488,6 @@ static void stop_acquisition_thread (int s)
 int sensor_activate(int s, int enabled)
 {
 	char device_name[PATH_MAX];
-	char trigger_name[MAX_NAME_SIZE + 16];
 	struct epoll_event ev = {0};
 	int dev_fd;
 	int ret;
@@ -529,11 +528,9 @@ int sensor_activate(int s, int enabled)
 
 		/* If there's at least one sensor enabled on this iio device */
 		if (trig_sensors_per_dev[dev_num]) {
-			sprintf(trigger_name, "%s-dev%d",
-					sensor_info[s].internal_name, dev_num);
 
 			/* Start sampling */
-			setup_trigger(dev_num, trigger_name);
+			setup_trigger(dev_num, sensor_info[s].trigger_name);
 			enable_buffer(dev_num, 1);
 		}
 	}
@@ -613,6 +610,7 @@ static int integrate_device_report(int dev_num)
 	int len;
 	int s,c;
 	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
+	unsigned char previous_report[MAX_SENSOR_REPORT_SIZE];
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
@@ -643,6 +641,8 @@ static int integrate_device_report(int dev_num)
 
 	ALOGV("Read %d bytes from iio device %d\n", len, dev_num);
 
+	/* Map device report to sensor reports */
+
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
 		    sensor_info[s].enable_count) {
@@ -669,6 +669,7 @@ static int integrate_device_report(int dev_num)
 
 			sensor_info[s].report_ts = ts;
 			sensor_info[s].report_pending = 1;
+			sensor_info[s].report_initialized = 1;
 		}
 
 	return 0;
@@ -732,6 +733,57 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 }
 
 
+static void synthetize_duplicate_samples (void)
+{
+	/*
+	 * Some sensor types (ex: gyroscope) are defined as continuously firing
+	 * by Android, despite the fact that we can be dealing with iio drivers
+	 * that only report events for new samples. For these we generate
+	 * reports periodically, duplicating the last data we got from the
+	 * driver. This is not necessary for polling sensors.
+	 */
+
+	int s;
+	int64_t current_ts;
+	int64_t target_ts;
+	int64_t period;
+
+	for (s=0; s<sensor_count; s++) {
+
+		/* Ignore disabled sensors */
+		if (!sensor_info[s].enable_count)
+			continue;
+
+		/* If the sensor can generate duplicates, leave it alone */
+		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
+			continue;
+
+		/* If we haven't seen a sample, there's nothing to duplicate */
+		if (!sensor_info[s].report_initialized)
+			continue;
+
+		/* If a sample was recently buffered, leave it alone too */
+		if (sensor_info[s].report_pending)
+			continue;
+
+		/* We also need a valid sampling rate to be configured */
+		if (!sensor_info[s].sampling_rate)
+			continue;
+
+		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
+
+		current_ts = get_timestamp();
+		target_ts = sensor_info[s].report_ts + period;
+
+		if (target_ts <= current_ts) {
+			/* Mark the sensor for event generation */
+			sensor_info[s].report_ts = current_ts;
+			sensor_info[s].report_pending = 1;
+		}
+	}
+}
+
+
 static void integrate_thread_report (uint32_t tag)
 {
 	int s = tag - THREAD_REPORT_TAG_BASE;
@@ -748,6 +800,50 @@ static void integrate_thread_report (uint32_t tag)
 		sensor_info[s].report_ts = get_timestamp();
 		sensor_info[s].report_pending = 1;
 	}
+}
+
+
+static int get_poll_wait_timeout (void)
+{
+	/*
+	 * Compute an appropriate timeout value, in ms, for the epoll_wait
+	 * call that's going to await for iio device reports and incoming
+	 * reports from our sensor sysfs data reader threads.
+	 */
+
+	int s;
+	int64_t target_ts = INT64_MAX;
+	int64_t ms_to_wait;
+	int64_t period;
+
+	/*
+	 * Check if have have to deal with "terse" drivers that only send events
+	 * when there is motion, despite the fact that the associated Android
+	 * sensor type is continuous rather than on-change. In that case we have
+	 * to duplicate events. Check deadline for the nearest upcoming event.
+	 */
+	for (s=0; s<sensor_count; s++)
+		if (sensor_info[s].enable_count &&
+		    (sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+		    sensor_info[s].sampling_rate) {
+			period = (int64_t) (1000000000.0 /
+						sensor_info[s].sampling_rate);
+
+			if (sensor_info[s].report_ts + period < target_ts)
+				target_ts = sensor_info[s].report_ts + period;
+		}
+
+	/* If we don't have such a driver to deal with */
+	if (target_ts == INT64_MAX)
+		return -1; /* Infinite wait */
+
+	ms_to_wait = (target_ts - get_timestamp()) / 1000000;
+
+	/* If the target timestamp is already behind us, don't wait */
+	if (ms_to_wait < 1)
+		return 0;
+
+	return ms_to_wait;
 }
 
 
@@ -813,12 +909,15 @@ await_event:
 
 	ALOGV("Awaiting sensor data\n");
 
-	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, -1);
+	nfds = epoll_wait(poll_fd, ev, MAX_DEVICES, get_poll_wait_timeout());
 
 	if (nfds == -1) {
-		ALOGI("epoll_wait returned -1 (%s)\n", strerror(errno));
+		ALOGE("epoll_wait returned -1 (%s)\n", strerror(errno));
 		goto await_event;
 	}
+
+	/* Synthetize duplicate samples if needed */
+	synthetize_duplicate_samples();
 
 	ALOGV("%d fds signalled\n", nfds);
 

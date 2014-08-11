@@ -8,11 +8,11 @@
 #define MAX_DEVICES	8	/* Check iio devices 0 to MAX_DEVICES-1 */
 #define MAX_SENSORS	10	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
+#define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
-#define DEV_FILE_PATH	"/dev/iio:device%d"
-
-#define BASE_PATH	"/sys/bus/iio/devices/iio:device%d/"
-
+#define DEV_FILE_PATH		"/dev/iio:device%d"
+#define BASE_PATH		"/sys/bus/iio/devices/iio:device%d/"
+#define TRIGGER_FILE_PATH	"/sys/bus/iio/devices/trigger%d/name"
 
 #define CHANNEL_PATH		BASE_PATH "scan_elements/"
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
@@ -34,7 +34,11 @@
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 
-#define FLAG_FIELD_ORDERING	0x01
+#ifdef __LP64__
+	typedef uint64_t flag_t;
+#else
+	typedef uint32_t flag_t;
+#endif
 
 struct channel_descriptor_t
 {
@@ -96,7 +100,7 @@ struct sensor_info_t
 	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer */
 	char internal_name[MAX_NAME_SIZE];	/* ex: accel_3d */
 	char vendor_name[MAX_NAME_SIZE];	/* ex: Intel */
-
+	char trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1 */
 	float max_range;
 	float resolution;
 	float power;
@@ -139,7 +143,11 @@ struct sensor_info_t
 	 */
 	int64_t report_ts;
 
+	/* Buffer containing the last generated sensor report for this sensor */
 	unsigned char report_buffer[MAX_SENSOR_REPORT_SIZE];
+
+	/* Whether or not the above buffer contains data from a device report */
+	int report_initialized;
 
 	struct sample_ops_t ops;
 
@@ -165,10 +173,9 @@ struct sensor_info_t
 
 	/* Note: we may have to explicitely serialize access to some fields */
 
-	uint32_t flags;
 
 	/*
-	 * If the FLAG_FIELD_ORDERING bit is set in flags, the contents of
+	 * If the QUIRK_FIELD_ORDERING bit is set in quirks, the contents of
 	 * this array are used in the finalization stage to swap sample fields
 	 * before transmitting them to Android ; they form a mapping between
 	 * the indices of the input and output arrays: ex: 0123 is identity for
