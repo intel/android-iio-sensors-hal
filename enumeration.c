@@ -390,6 +390,9 @@ static void uncalibrated_gyro_check (void)
 					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
 					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
 				}
+				strncpy(sensor_info[uncal_idx].trigger_name,
+					sensor_info[cal_idx].trigger_name,
+					MAX_NAME_SIZE);
 				sensor_info[uncal_idx].pair_idx = cal_idx;
 				sensor_info[cal_idx].pair_idx = uncal_idx;
 				break;
