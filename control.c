@@ -558,6 +558,12 @@ int sensor_activate(int s, int enabled)
 				close(dev_fd);
 				device_fd[dev_num] = -1;
 			}
+
+		/* If we recorded a trail of samples for filtering, delete it */
+		if (sensor_info[s].history) {
+			free(sensor_info[s].history);
+			sensor_info[s].history = NULL;
+		}
 		return 0;
 	}
 

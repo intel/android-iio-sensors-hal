@@ -184,6 +184,12 @@ struct sensor_info_t
 	 * a sample containing 4 fields.
 	 */
 	unsigned char order[MAX_CHANNELS];
+
+	/* A few variables used for data filtering */
+	float *history;		/* Working buffer containing recorded samples */
+	int history_size;	/* Number of recorded samples		      */
+	int history_entries;	/* How many of these are initialized	      */
+	int history_index;	/* Index of sample to evict next time	      */
 };
 
 /* Reference a few commonly used variables... */
