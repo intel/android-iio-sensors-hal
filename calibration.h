@@ -9,7 +9,7 @@
 
 /* compass defines */
 #define COMPASS_CALIBRATION_PATH "/data/compass.conf"
-#define DS_SIZE 48
+#define DS_SIZE 32
 #define EPSILON 0.000000001
 
 
