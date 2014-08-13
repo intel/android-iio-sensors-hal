@@ -558,6 +558,12 @@ int sensor_activate(int s, int enabled)
 				close(dev_fd);
 				device_fd[dev_num] = -1;
 			}
+
+		/* If we recorded a trail of samples for filtering, delete it */
+		if (sensor_info[s].history) {
+			free(sensor_info[s].history);
+			sensor_info[s].history = NULL;
+		}
 		return 0;
 	}
 
@@ -610,7 +616,6 @@ static int integrate_device_report(int dev_num)
 	int len;
 	int s,c;
 	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
-	unsigned char previous_report[MAX_SENSOR_REPORT_SIZE];
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
@@ -839,9 +844,14 @@ static int get_poll_wait_timeout (void)
 
 	ms_to_wait = (target_ts - get_timestamp()) / 1000000;
 
-	/* If the target timestamp is already behind us, don't wait */
-	if (ms_to_wait < 1)
-		return 0;
+	/*
+	 * If the target timestamp is very close or already behind us, wait
+	 * nonetheless for a millisecond in order to a) avoid busy loops, and
+	 * b) give a chance for the driver to report data before we repeat the
+	 * last received sample.
+	 */
+	if (ms_to_wait <= 0)
+		return 1;
 
 	return ms_to_wait;
 }

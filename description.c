@@ -6,6 +6,7 @@
 #include <utils/Log.h>
 #include <cutils/properties.h>
 #include <hardware/sensors.h>
+#include "common.h"
 #include "enumeration.h"
 #include "description.h"
 
@@ -344,4 +345,51 @@ flag_t sensor_get_flags (int s)
 			ALOGI("Unknown sensor");
 		}
 	return flags;
+}
+
+max_delay_t sensor_get_max_delay (int s)
+{
+	char avail_sysfs_path[PATH_MAX];
+	int dev_num	= sensor_info[s].dev_num;
+	char freqs_buf[100];
+	char* cursor;
+	float min_supported_rate = 1000;
+	float sr;
+
+	/* continuous: maximum sampling period allowed in microseconds.
+	 * on-change, one-shot, special : 0
+	 */
+
+	if (sensor_desc[s].flags)
+		return 0;
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0)
+		return 0;
+
+	cursor = freqs_buf;
+	while (*cursor && cursor[0]) {
+
+		/* Decode a single value */
+		sr = strtod(cursor, NULL);
+
+		if (sr < min_supported_rate)
+			min_supported_rate = sr;
+
+		/* Skip digits */
+		while (cursor[0] && !isspace(cursor[0]))
+			cursor++;
+
+		/* Skip spaces */
+		while (cursor[0] && isspace(cursor[0]))
+			cursor++;
+	}
+
+	/* return 0 for wrong values */
+	if (min_supported_rate < 0.1)
+		return 0;
+
+	/* Return microseconds */
+	return (max_delay_t)(1000000.0 / min_supported_rate);
 }

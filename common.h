@@ -36,8 +36,10 @@
 
 #ifdef __LP64__
 	typedef uint64_t flag_t;
+	typedef int64_t max_delay_t;
 #else
 	typedef uint32_t flag_t;
+	typedef int32_t max_delay_t;
 #endif
 
 struct channel_descriptor_t
@@ -182,10 +184,17 @@ struct sensor_info_t
 	 * a sample containing 4 fields.
 	 */
 	unsigned char order[MAX_CHANNELS];
+
+	/* A few variables used for data filtering */
+	float *history;		/* Working buffer containing recorded samples */
+	int history_size;	/* Number of recorded samples		      */
+	int history_entries;	/* How many of these are initialized	      */
+	int history_index;	/* Index of sample to evict next time	      */
 };
 
 /* Reference a few commonly used variables... */
 extern int				sensor_count;
+extern struct sensor_t      sensor_desc[MAX_SENSORS];
 extern struct sensor_info_t		sensor_info[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
 

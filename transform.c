@@ -188,6 +188,62 @@ static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
 }
 
 
+static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
+		     int num_fields)
+{
+	int i;
+	float total;
+	int f;
+	int sampling_rate = (int) si->sampling_rate;
+
+	/* We're recording 1s worth of samples ; need suitable sampling rate */
+	if (sampling_rate < 1)
+		return;
+
+	/* Reset history if a new sampling rate is detected */
+	if (si->history_size != sampling_rate) {
+		si->history_size = sampling_rate;
+		si->history_entries = 0;
+		si->history_index = 0;
+		si->history = (float*) realloc(si->history,
+				si->history_size * num_fields * sizeof(float));
+	}
+
+	if (!si->history)
+		return;	/* Unlikely, but still... */
+
+	/* Populate beginning of array as we go */
+	if (si->history_entries < si->history_size) {
+		for (f=0; f<num_fields; f++)
+			si->history[si->history_entries * num_fields + f] =
+				data->data[f];
+
+		si->history_entries++;
+	}
+
+	/* Once we get enough data, start filtering */
+	if (si->history_entries == si->history_size) {
+
+		/* For now simply compute a mobile mean */
+		for (f=0; f<num_fields; f++) {
+			total = 0;
+
+			for (i=0; i<si->history_size; i++)
+				total += si->history[i * num_fields + f];
+
+			si->history[si->history_index * num_fields + f] =
+				data->data[f];
+
+			/* Output filtered data */
+			data->data[f] = total / si->history_size;
+		}
+
+		/* Update our rolling index (next evicted cell) */
+		si->history_index = (si->history_index + 1) % si->history_size;
+	}
+}
+
+
 static int finalize_sample_default(int s, struct sensors_event_t* data)
 {
 	int i		= sensor_info[s].catalog_index;
@@ -203,6 +259,8 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			calibrate_compass (data, &sensor_info[s], get_timestamp());
+			if (sensor_info[s].quirks & QUIRK_NOISY)
+				denoise(&sensor_info[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
