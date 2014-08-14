@@ -13,7 +13,7 @@
 
 void gyro_cal_init(struct sensor_info_t* info)
 {
-	info->calibrated = 0;
+	info->cal_level = 0;
 
 	struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
 
@@ -65,7 +65,7 @@ static void gyro_collect(float x, float y, float z, struct sensor_info_t* info)
 		fabs(max[0] - min[0]) < GYRO_MAX_ERR &&
 		fabs(max[1] - min[1]) < GYRO_MAX_ERR &&
 		fabs(max[2] - min[2]) < GYRO_MAX_ERR) {
-		info->calibrated = 1;
+		info->cal_level = 1;
 		gyro_data->bias[0] = (max[0] + min[0]) / 2;
 		gyro_data->bias[1] = (max[1] + min[1]) / 2;
 		gyro_data->bias[2] = (max[2] + min[2]) / 2;
@@ -74,7 +74,7 @@ static void gyro_collect(float x, float y, float z, struct sensor_info_t* info)
 
 void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 {
-	if (!info->calibrated) {
+	if (!info->cal_level) {
 		gyro_collect(event->data[0], event->data[1], event->data[2], info);
 		return;
 	}

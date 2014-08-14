@@ -153,7 +153,7 @@ struct sensor_info_t
 
 	struct sample_ops_t ops;
 
-	int calibrated;
+	int cal_level; /* 0 means not calibrated */
 	void* cal_data;
 
 	float prev_val; /* Previously reported value, for on-change sensors */
