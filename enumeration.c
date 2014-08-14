@@ -615,7 +615,7 @@ void delete_enumeration_data (void)
 			if (sensor_info[i].cal_data != NULL) {
 				free(sensor_info[i].cal_data);
 				sensor_info[i].cal_data = NULL;
-				sensor_info[i].calibrated = 0;
+				sensor_info[i].cal_level = 0;
 			}
 			break;
 		default:

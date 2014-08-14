@@ -11,18 +11,14 @@
 #define COMPASS_CALIBRATION_PATH "/data/compass.conf"
 #define DS_SIZE 32
 #define EPSILON 0.000000001
+#define CAL_STEPS 4
 
-
-/* If no cal data is present - first calibration will
-   use a more relaxed set of values to get an initial
-   calibration faster */
-#define FIRST_MIN_DIFF 0.5f
-#define FIRST_MAX_SQR_ERR 5.0f
-#define FIRST_LOOKBACK_COUNT 4
-
-#define MIN_DIFF 1.0f
-#define MAX_SQR_ERR 3.5f
-#define LOOKBACK_COUNT 6
+/* We'll have multiple calibration levels
+*  so that we can provide an estimation as fast as possible
+*/
+static const float min_diffs[CAL_STEPS] =  { 0.2, 0.4, 0.6, 1.0 };
+static const float max_sqr_errs[CAL_STEPS] = { 10.0, 8.0, 5.0, 3.5 };
+static const unsigned int lookback_counts[CAL_STEPS] = { 3, 4, 5, 6 };
 
 
 #ifdef DBG_RAW_DATA
