@@ -242,22 +242,19 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	int i;
 	int count = sensor_catalog[sensor_info[s].catalog_index].num_channels;
 
-	memset(map, 0, MAX_CHANNELS);
-
 	if  (sensor_get_st_prop(s, "order", buf))
 		return 0; /* No order property */
 
 	/* Assume ASCII characters, in the '0'..'9' range */
 
 	for (i=0; i<count; i++)
-		map[i] = buf[i] - '0';
-
-	/* Check that our indices are in range */
-	for (i=0; i<count; i++)
-		if (map[i] >= count) {
+		if (buf[i] - '0' >= count) {
 			ALOGE("Order index out of range for sensor %d\n", s);
 			return 0;
 		}
+
+	for (i=0; i<count; i++)
+		map[i] = buf[i] - '0';
 
 	return 1;	/* OK to use modified ordering map */
 }

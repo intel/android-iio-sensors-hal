@@ -52,6 +52,100 @@ struct sensor_info_t sensor_info[MAX_SENSORS];	/* Internal descriptors      */
 int sensor_count;				/* Detected sensors 	     */
 
 
+static void setup_properties_from_pld(int s, int panel, int rotation,
+				      int num_channels)
+{
+	/*
+	 * Generate suitable order and opt_scale directives from the PLD panel
+	 * and rotation codes we got. This can later be superseded by the usual
+	 * properties if necessary. Eventually we'll need to replace these
+	 * mechanisms by a less convoluted one, such as a 3x3 placement matrix.
+	 */
+
+	int x = 1;
+	int y = 1;
+	int z = 1;
+	int xy_swap = 0;
+	int angle = rotation * 45;
+
+	/* Only deal with 3 axis chips for now */
+	if (num_channels < 3)
+		return;
+
+	if (panel == 5) {
+		/* Chip placed on the back panel ; negate x and z */
+		x = -x;
+		z = -z;
+	}
+
+	switch (angle) {
+		case 90: /* 90° clockwise: negate y then swap x,y */
+			xy_swap = 1;
+			y = -y;
+			break;
+
+		case 180: /* Upside down: negate x and y */
+			x = -x;
+			y = -y;
+			break;
+
+		case 270: /* 90° counter clockwise: negate x then swap x,y */
+			x = -x;
+			xy_swap = 1;
+			break;
+	}
+
+	if (xy_swap) {
+		sensor_info[s].order[0] = 1;
+		sensor_info[s].order[1] = 0;
+		sensor_info[s].order[2] = 2;
+		sensor_info[s].quirks |= QUIRK_FIELD_ORDERING;
+	}
+
+	sensor_info[s].channel[0].opt_scale = x;
+	sensor_info[s].channel[1].opt_scale = y;
+	sensor_info[s].channel[2].opt_scale = z;
+}
+
+static void decode_placement_information (int dev_num, int num_channels, int s)
+{
+	/*
+	 * See if we have optional "physical location of device" ACPI tags.
+	 * We're only interested in panel and rotation specifiers.
+	 */
+
+	char sysfs_path[PATH_MAX];
+	int panel;
+	int rotation;
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/panel", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &panel))
+		return;	/* Attribute not found */
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/rotation", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &rotation))
+		return; /* Attribute not found */
+
+	ALOGI("Found PLD for S%d: panel=%d, rotation=%d\n", s, panel, rotation);
+
+	if (panel != 4 && panel != 5) { /* 4 = front ; 5 = back */
+		ALOGW("Unhandled panel spec\n");
+		return;
+	}
+
+	/* Only deal with 90° rotations for now */
+	if (rotation < 0 || rotation > 7 || (rotation & 1)) {
+		ALOGW("Unhandled rotation spec\n");
+		return;
+	}
+
+	/* Map that to field ordering and scaling mechanisms */
+	setup_properties_from_pld(s, panel, rotation, num_channels);
+}
+
+
 static void add_sensor (int dev_num, int catalog_index, int use_polling)
 {
 	int s;
@@ -139,6 +233,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                 }
         }
 
+        /* Set default scaling - if num_channels is zero, we have one channel */
+
+	sensor_info[s].channel[0].opt_scale = 1;
+
+	for (c = 1; c < num_channels; c++)
+		sensor_info[s].channel[c].opt_scale = 1;
+
+	/* Read ACPI _PLD attributes for this sensor, if there are any */
+	decode_placement_information(dev_num, num_channels, s);
+
         /*
          * See if we have optional correction scaling factors for each of the
          * channels of this sensor. These would be expressed using properties
@@ -147,23 +251,17 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
          * for all types of sensors, and whatever transform is selected, on top
          * of any previous conversions.
          */
-        num_channels = sensor_catalog[catalog_index].num_channels;
 
         if (num_channels) {
 		for (c = 0; c < num_channels; c++) {
-			opt_scale = 1;
-
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
 			sprintf(suffix, "%s.opt_scale", ch_name);
-			sensor_get_fl_prop(s, suffix, &opt_scale);
-
-			sensor_info[s].channel[c].opt_scale = opt_scale;
+			if (!sensor_get_fl_prop(s, suffix, &opt_scale))
+				sensor_info[s].channel[c].opt_scale = opt_scale;
 		}
-        } else {
-		opt_scale = 1;
-		sensor_get_fl_prop(s, "opt_scale", &opt_scale);
-		sensor_info[s].channel[0].opt_scale = opt_scale;
-        }
+        } else
+		if (!sensor_get_fl_prop(s, "opt_scale", &opt_scale))
+			sensor_info[s].channel[0].opt_scale = opt_scale;
 
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
