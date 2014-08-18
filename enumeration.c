@@ -84,11 +84,12 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].dev_num		= dev_num;
 	sensor_info[s].catalog_index	= catalog_index;
 
+        num_channels = sensor_catalog[catalog_index].num_channels;
+
         if (use_polling)
                 sensor_info[s].num_channels = 0;
         else
-                sensor_info[s].num_channels =
-                                sensor_catalog[catalog_index].num_channels;
+                sensor_info[s].num_channels = num_channels;
 
 	prefix = sensor_catalog[catalog_index].tag;
 
@@ -122,7 +123,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                 sensor_info[s].scale = 1;
 
                 /* Read channel specific scale if any*/
-                for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++)
+                for (c = 0; c < num_channels; c++)
                 {
                         sprintf(sysfs_path, BASE_PATH "%s", dev_num,
                            sensor_catalog[catalog_index].channel[c].scale_path);
@@ -192,13 +193,13 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE ||
-		sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE ||
+		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
 
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_MAGNETIC_FIELD) {
+	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
 		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
