@@ -340,7 +340,7 @@ static void* acquisition_routine (void* param)
 	 * Bionic does not provide pthread_cancel / pthread_testcancel...
 	 */
 
-	int s = (int) param;
+	int s = (int) (size_t) param;
 	int num_fields;
 	struct sensors_event_t data = {0};
 	int c;
@@ -456,7 +456,7 @@ static void start_acquisition_thread (int s)
 	ret = pthread_create(	&sensor_info[s].acquisition_thread,
 				NULL,
 				acquisition_routine,
-				(void*) s);
+				(void*) (size_t) s);
 }
 
 
