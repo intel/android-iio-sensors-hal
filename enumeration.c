@@ -107,39 +107,88 @@ static void setup_properties_from_pld(int s, int panel, int rotation,
 	sensor_info[s].channel[2].opt_scale = z;
 }
 
-static void decode_placement_information (int dev_num, int num_channels, int s)
+
+static int is_valid_pld (int panel, int rotation)
 {
-	/*
-	 * See if we have optional "physical location of device" ACPI tags.
-	 * We're only interested in panel and rotation specifiers.
-	 */
-
-	char sysfs_path[PATH_MAX];
-	int panel;
-	int rotation;
-
-	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/panel", dev_num);
-
-	if (sysfs_read_int(sysfs_path, &panel))
-		return;	/* Attribute not found */
-
-	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/rotation", dev_num);
-
-	if (sysfs_read_int(sysfs_path, &rotation))
-		return; /* Attribute not found */
-
-	ALOGI("Found PLD for S%d: panel=%d, rotation=%d\n", s, panel, rotation);
-
 	if (panel != 4 && panel != 5) { /* 4 = front ; 5 = back */
-		ALOGW("Unhandled panel spec\n");
-		return;
+		ALOGW("Unhandled PLD panel spec: %d\n", panel);
+		return 0;
 	}
 
 	/* Only deal with 90° rotations for now */
 	if (rotation < 0 || rotation > 7 || (rotation & 1)) {
-		ALOGW("Unhandled rotation spec\n");
-		return;
+		ALOGW("Unhandled PLD rotation spec: %d\n", rotation);
+		return 0;
 	}
+
+	return 1;
+}
+
+
+static int read_pld_from_properties (int s, int* panel, int* rotation)
+{
+	int p, r;
+
+	if (sensor_get_prop(s, "panel", &p))
+		return -1;
+
+	if (sensor_get_prop(s, "rotation", &r))
+		return -1;
+
+	if (!is_valid_pld(p, r))
+		return -1;
+
+	*panel = p;
+	*rotation = r;
+
+	ALOGI("S%d PLD from properties: panel=%d, rotation=%d\n", s, p, r);
+
+	return 0;
+}
+
+
+static int read_pld_from_sysfs (int s, int dev_num, int* panel, int* rotation)
+{
+	char sysfs_path[PATH_MAX];
+	int p,r;
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/panel", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &p))
+		return -1;
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/rotation", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &r))
+		return -1;
+
+	if (!is_valid_pld(p, r))
+		return -1;
+
+	*panel = p;
+	*rotation = r;
+
+	ALOGI("S%d PLD from sysfs: panel=%d, rotation=%d\n", s, p, r);
+
+	return 0;
+}
+
+
+static void decode_placement_information (int dev_num, int num_channels, int s)
+{
+	/*
+	 * See if we have optional "physical location of device" ACPI tags.
+	 * We're only interested in panel and rotation specifiers. Use the
+	 * .panel and .rotation properties in priority, and the actual ACPI
+	 * values as a second source.
+	 */
+
+	int panel;
+	int rotation;
+
+	if (read_pld_from_properties(s, &panel, &rotation) &&
+		read_pld_from_sysfs(s, dev_num, &panel, &rotation))
+			return; /* No PLD data available */
 
 	/* Map that to field ordering and scaling mechanisms */
 	setup_properties_from_pld(s, panel, rotation, num_channels);

@@ -21,7 +21,8 @@ float	sensor_get_resolution	(int handle);
 float	sensor_get_power	(int handle);
 float	sensor_get_illumincalib (int handle);
 
-int		sensor_get_fl_prop (int s, const char* sel, float* val);
+int		sensor_get_prop		(int s, const char* sel, int* val);
+int		sensor_get_fl_prop	(int s, const char* sel, float* val);
 
 int		sensor_get_order	(int s, unsigned char map[MAX_CHANNELS]);
 
