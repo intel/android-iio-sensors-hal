@@ -563,6 +563,7 @@ int sensor_activate(int s, int enabled)
 		if (sensor_info[s].history) {
 			free(sensor_info[s].history);
 			sensor_info[s].history = NULL;
+			sensor_info[s].history_size = 0;
 		}
 		return 0;
 	}
