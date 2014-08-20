@@ -254,6 +254,8 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
+			if (sensor_info[s].quirks & QUIRK_NOISY)
+				denoise(&sensor_info[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
@@ -265,6 +267,8 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 		case SENSOR_TYPE_GYROSCOPE:
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			calibrate_gyro(data, &sensor_info[s]);
+			if (sensor_info[s].quirks & QUIRK_NOISY)
+				denoise(&sensor_info[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_LIGHT:
