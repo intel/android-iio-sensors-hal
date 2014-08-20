@@ -44,6 +44,10 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
 
+/* ACPI PLD (physical location of device) definitions, as used with sensors */
+
+#define PANEL_FRONT	4
+#define PANEL_BACK	5
 
 /* We equate sensor handles to indices in these tables */
 
@@ -72,7 +76,7 @@ static void setup_properties_from_pld(int s, int panel, int rotation,
 	if (num_channels < 3)
 		return;
 
-	if (panel == 5) {
+	if (panel == PANEL_BACK) {
 		/* Chip placed on the back panel ; negate x and z */
 		x = -x;
 		z = -z;
@@ -110,7 +114,7 @@ static void setup_properties_from_pld(int s, int panel, int rotation,
 
 static int is_valid_pld (int panel, int rotation)
 {
-	if (panel != 4 && panel != 5) { /* 4 = front ; 5 = back */
+	if (panel != PANEL_FRONT && panel != PANEL_BACK) {
 		ALOGW("Unhandled PLD panel spec: %d\n", panel);
 		return 0;
 	}
