@@ -195,14 +195,21 @@ static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
 	float total;
 	int f;
 	int sampling_rate = (int) si->sampling_rate;
+	int history_size;
 
-	/* We're recording 1s worth of samples ; need suitable sampling rate */
-	if (sampling_rate < 1)
+	/* Don't denoise anything if we have less than two samples per second */
+	if (sampling_rate < 2)
 		return;
 
-	/* Reset history if a new sampling rate is detected */
-	if (si->history_size != sampling_rate) {
-		si->history_size = sampling_rate;
+	/* Restrict window size in case of a very high sampling rate */
+	if (sampling_rate > 100)
+		history_size = 100;
+	else
+		history_size = sampling_rate;
+
+	/* Reset history if we're operating on an incorrect window size */
+	if (si->history_size != history_size) {
+		si->history_size = history_size;
 		si->history_entries = 0;
 		si->history_index = 0;
 		si->history = (float*) realloc(si->history,
@@ -212,34 +219,26 @@ static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
 	if (!si->history)
 		return;	/* Unlikely, but still... */
 
-	/* Populate beginning of array as we go */
-	if (si->history_entries < si->history_size) {
-		for (f=0; f<num_fields; f++)
-			si->history[si->history_entries * num_fields + f] =
-				data->data[f];
-
+	/* Update initialized samples count */
+	if (si->history_entries < si->history_size)
 		si->history_entries++;
-	}
 
-	/* Once we get enough data, start filtering */
-	if (si->history_entries == si->history_size) {
+	/* Record new sample */
+	for (f=0; f < num_fields; f++)
+		si->history[si->history_index * num_fields + f] = data->data[f];
 
-		/* For now simply compute a mobile mean */
-		for (f=0; f<num_fields; f++) {
-			total = 0;
+	/* Update our rolling index (next evicted cell) */
+	si->history_index = (si->history_index + 1) % si->history_size;
 
-			for (i=0; i<si->history_size; i++)
+	/* For now simply compute a mobile mean for each field */
+	for (f=0; f < num_fields; f++) {
+		total = 0;
+
+		for (i=0; i < si->history_entries; i++)
 				total += si->history[i * num_fields + f];
 
-			si->history[si->history_index * num_fields + f] =
-				data->data[f];
-
-			/* Output filtered data */
-			data->data[f] = total / si->history_size;
-		}
-
-		/* Update our rolling index (next evicted cell) */
-		si->history_index = (si->history_index + 1) % si->history_size;
+		/* Output filtered data */
+		data->data[f] = total / si->history_entries;
 	}
 }
 
