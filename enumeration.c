@@ -542,25 +542,19 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 		return;
 
 	/*
-	 * Anything else is higher priority. However if we already found an
-	 * any-motion trigger, don't select anything else.
-	 */
-
-	if (!memcmp(sensor_info[s].trigger_name + sensor_name_len + 1,
-		    "any-motion-", 11))
-		return;
-
-	/*
-	 * If we're switching to an any-motion trigger, force the sensor to
+	 * If we found any-motion trigger, record it and force the sensor to
 	 * automatic intermediate event generation mode, at least if it is of a
 	 * continuously firing sensor type.
 	 */
 
-	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s))
-		sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s)) {
+		/* Update the any-motion trigger name to use for this sensor */
+		strcpy(sensor_info[s].motion_trigger_name, trigger_name);
+		return;
+	}
 
-	/* Update the trigger name to use for this sensor */
-	strcpy(sensor_info[s].trigger_name, trigger_name);
+	/* Update the initial trigger name to use for this sensor */
+	strcpy(sensor_info[s].init_trigger_name, trigger_name);
 }
 
 
@@ -628,8 +622,9 @@ static void setup_trigger_names (void)
 
 	/* By default, use the name-dev convention that most drivers use */
 	for (s=0; s<sensor_count; s++)
-		snprintf(sensor_info[s].trigger_name, MAX_NAME_SIZE, "%s-dev%d",
-			sensor_info[s].internal_name, sensor_info[s].dev_num);
+		snprintf(sensor_info[s].init_trigger_name,
+			 MAX_NAME_SIZE, "%s-dev%d",
+			 sensor_info[s].internal_name, sensor_info[s].dev_num);
 
 	/* Now have a look to /sys/bus/iio/devices/triggerX entries */
 
@@ -642,14 +637,19 @@ static void setup_trigger_names (void)
 		if (ret < 0)
 			break;
 
+		/* Record initial and any-motion triggers names */
 		update_sensor_matching_trigger_name(buf);
 	}
 
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].num_channels) {
-			ALOGI(	"Sensor %d (%s) using iio trigger %s\n", s,
+			ALOGI(	"Sensor %d (%s) default trigger: %s\n", s,
 				sensor_info[s].friendly_name,
-				sensor_info[s].trigger_name);
+				sensor_info[s].init_trigger_name);
+			if (sensor_info[s].motion_trigger_name[0])
+				ALOGI(	"Sensor %d (%s) motion trigger: %s\n",
+				s, sensor_info[s].friendly_name,
+				sensor_info[s].motion_trigger_name);
 		}
 }
 
@@ -699,6 +699,12 @@ static void uncalibrated_gyro_check (void)
 				}
 				sensor_info[uncal_idx].pair_idx = cal_idx;
 				sensor_info[cal_idx].pair_idx = uncal_idx;
+				strncpy(sensor_info[uncal_idx].init_trigger_name,
+					sensor_info[cal_idx].init_trigger_name,
+					MAX_NAME_SIZE);
+				strncpy(sensor_info[uncal_idx].motion_trigger_name,
+					sensor_info[cal_idx].motion_trigger_name,
+					MAX_NAME_SIZE);
 				break;
 			}
 }

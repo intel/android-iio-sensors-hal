@@ -99,13 +99,24 @@ struct sample_ops_t
 
 struct sensor_info_t
 {
-	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer */
-	char internal_name[MAX_NAME_SIZE];	/* ex: accel_3d */
-	char vendor_name[MAX_NAME_SIZE];	/* ex: Intel */
-	char trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1 */
+	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer	     */
+	char internal_name[MAX_NAME_SIZE];	/* ex: accel_3d	             */
+	char vendor_name[MAX_NAME_SIZE];	/* ex: Intel 		     */
+	char init_trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1	     */
+	char motion_trigger_name[MAX_NAME_SIZE];/* ex: accel-any-motion-dev1 */
 	float max_range;
 	float resolution;
 	float power;
+
+	/*
+	 * Currently active trigger - either a pointer to the initial (default)
+	 * trigger name buffer, or a pointer to the motion trigger name buffer,
+	 * or something else (typically NULL or a pointer to some static "\n".
+	 * This is used to determine if the conditions are met to switch from
+	 * the default trigger to the motion trigger for a sensor, or rather for
+	 * the interrupt-driven sensors associated to a given iio device.
+	 */
+	const char* selected_trigger;
 
 	float offset;	/* (cooked = raw + offset) * scale */
 	float scale;    /*default: 1. when set to 0, use channel specific value*/

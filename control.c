@@ -52,13 +52,19 @@ static int enable_buffer(int dev_num, int enabled)
 }
 
 
-static int setup_trigger(int dev_num, const char* trigger_val)
+static void setup_trigger (int s, const char* trigger_val)
 {
 	char sysfs_path[PATH_MAX];
 
-	sprintf(sysfs_path, TRIGGER_PATH, dev_num);
+	sprintf(sysfs_path, TRIGGER_PATH, sensor_info[s].dev_num);
 
-	return sysfs_write_str(sysfs_path, trigger_val);
+	if (trigger_val[0] != '\n')
+		ALOGI("Setting S%d (%s) trigger to %s\n", s,
+			sensor_info[s].friendly_name, trigger_val);
+
+	sysfs_write_str(sysfs_path, trigger_val);
+
+	sensor_info[s].selected_trigger = trigger_val;
 }
 
 
@@ -157,7 +163,7 @@ void build_sensor_report_maps(int dev_num)
 
 		/* Stop sampling - if we are recovering from hal restart */
                 enable_buffer(dev_num, 0);
-                setup_trigger(dev_num, "\n");
+                setup_trigger(s, "\n");
 
 		/* Turn on channels we're aware of */
 		for (c=0;c<sensor_info[s].num_channels; c++) {
@@ -524,13 +530,13 @@ int sensor_activate(int s, int enabled)
 
 		/* Stop sampling */
 		enable_buffer(dev_num, 0);
-		setup_trigger(dev_num, "\n");
+		setup_trigger(s, "\n");
 
 		/* If there's at least one sensor enabled on this iio device */
 		if (trig_sensors_per_dev[dev_num]) {
 
 			/* Start sampling */
-			setup_trigger(dev_num, sensor_info[s].trigger_name);
+			setup_trigger(s, sensor_info[s].init_trigger_name);
 			enable_buffer(dev_num, 1);
 		}
 	}
@@ -565,6 +571,7 @@ int sensor_activate(int s, int enabled)
 			sensor_info[s].history = NULL;
 			sensor_info[s].history_size = 0;
 		}
+
 		return 0;
 	}
 
@@ -609,6 +616,70 @@ int sensor_activate(int s, int enabled)
 		start_acquisition_thread(s);
 
 	return 0;
+}
+
+
+static void enable_motion_trigger (int dev_num)
+{
+	/*
+	 * In the ideal case, we enumerate two triggers per iio device ; the
+	 * default (periodically firing) trigger, and another one (the motion
+	 * trigger) that only fires up when motion is detected. This second one
+	 * allows for lesser energy consumption, but requires periodic sample
+	 * duplication at the HAL level for sensors that Android defines as
+	 * continuous. This "duplicate last sample" logic can only be engaged
+	 * once we got a first sample for the driver, so we start with the
+	 * default trigger when an iio device is first opened, then adjust the
+	 * trigger when we got events for all active sensors. Unfortunately in
+	 * the general case several sensors can be associated to a given iio
+	 * device, they can independently be controlled, and we have to adjust
+	 * the trigger in use at the iio device level depending on whether or
+	 * not appropriate conditions are met at the sensor level.
+	 */
+
+	int s;
+	int i;
+	int active_sensors = trig_sensors_per_dev[dev_num];
+	int candidate[MAX_SENSORS];
+	int candidate_count = 0;
+
+	if  (!active_sensors)
+		return;
+
+	/* Check that all active sensors are ready to switch */
+
+	for (s=0; s<MAX_SENSORS; s++)
+		if (sensor_info[s].dev_num == dev_num &&
+		    sensor_info[s].enable_count &&
+		    sensor_info[s].num_channels &&
+		    (!sensor_info[s].motion_trigger_name[0] ||
+		     !sensor_info[s].report_initialized)
+		    )
+			return; /* Nope */
+
+	/* Record which particular sensors need to switch */
+
+	for (s=0; s<MAX_SENSORS; s++)
+		if (sensor_info[s].dev_num == dev_num &&
+		    sensor_info[s].enable_count &&
+		    sensor_info[s].num_channels &&
+		    sensor_info[s].selected_trigger !=
+			sensor_info[s].motion_trigger_name)
+				candidate[candidate_count++] = s;
+
+	if (!candidate_count)
+		return;
+
+	/* Now engage the motion trigger for sensors which aren't using it */
+
+	enable_buffer(dev_num, 0);
+
+	for (i=0; i<candidate_count; i++) {
+		s = candidate[i];
+		setup_trigger(s, sensor_info[s].motion_trigger_name);
+	}
+
+	enable_buffer(dev_num, 1);
 }
 
 
@@ -677,6 +748,9 @@ static int integrate_device_report(int dev_num)
 			sensor_info[s].report_pending = 1;
 			sensor_info[s].report_initialized = 1;
 		}
+
+	/* Tentatively switch to an any-motion trigger if conditions are met */
+	enable_motion_trigger(dev_num);
 
 	return 0;
 }
@@ -761,7 +835,9 @@ static void synthetize_duplicate_samples (void)
 			continue;
 
 		/* If the sensor can generate duplicates, leave it alone */
-		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
+		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+			sensor_info[s].selected_trigger !=
+			sensor_info[s].motion_trigger_name)
 			continue;
 
 		/* If we haven't seen a sample, there's nothing to duplicate */
@@ -830,8 +906,10 @@ static int get_poll_wait_timeout (void)
 	 */
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
-		    (sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
-		    sensor_info[s].sampling_rate) {
+		    ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) ||
+		      sensor_info[s].selected_trigger ==
+		      sensor_info[s].motion_trigger_name) &&
+		     sensor_info[s].sampling_rate) {
 			period = (int64_t) (1000000000.0 /
 						sensor_info[s].sampling_rate);
 
