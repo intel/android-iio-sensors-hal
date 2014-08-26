@@ -28,7 +28,7 @@ static const unsigned int lookback_counts[CAL_STEPS] = { 3, 4, 5, 6 };
 
 /* gyro defines */
 #define GYRO_MAX_ERR 0.05f
-#define GYRO_DS_SIZE 8
+#define GYRO_DS_SIZE 100
 
 struct compass_cal {
     /* hard iron offsets */
