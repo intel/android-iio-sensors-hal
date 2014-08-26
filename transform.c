@@ -189,8 +189,14 @@ static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
 
 
 static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
-		     int num_fields)
+		     int num_fields, int max_samples)
 {
+	/*
+	 * Smooth out incoming data using a moving average over a number of
+	 * samples. We accumulate one second worth of samples, or max_samples,
+	 * depending on which is lower.
+	 */
+
 	int i;
 	float total;
 	int f;
@@ -201,9 +207,9 @@ static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
 	if (sampling_rate < 2)
 		return;
 
-	/* Restrict window size in case of a very high sampling rate */
-	if (sampling_rate > 100)
-		history_size = 100;
+	/* Restrict window size to the min of sampling_rate and max_samples */
+	if (sampling_rate > max_samples)
+		history_size = max_samples;
 	else
 		history_size = sampling_rate;
 
@@ -255,20 +261,20 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3);
+				denoise(&sensor_info[s], data, 3, 20);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			calibrate_compass (data, &sensor_info[s], get_timestamp());
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3);
+				denoise(&sensor_info[s], data, 3, 100);
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			calibrate_gyro(data, &sensor_info[s]);
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3);
+				denoise(&sensor_info[s], data, 3, 20);
 			break;
 
 		case SENSOR_TYPE_LIGHT:
