@@ -10,96 +10,104 @@
 #include "common.h"
 #include "calibration.h"
 
+static void reset (struct gyro_cal* cal_data)
+{
+	cal_data->count = 0;
 
-void gyro_cal_init(struct sensor_info_t* info)
+	cal_data->bias_x = cal_data->bias_y = cal_data->bias_z = 0;
+
+	cal_data->min_x  = cal_data->min_y  = cal_data->min_z  = 1.0;
+	cal_data->max_x  = cal_data->max_y  = cal_data->max_z  =-1.0;
+}
+
+
+void gyro_cal_init (struct sensor_info_t* info)
 {
 	info->cal_level = 0;
 
-	struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
-
-	if (gyro_data == NULL)
-		return;
-
-	gyro_data->start = 0;
-	gyro_data->count = 0;
-	gyro_data->bias[0] = gyro_data->bias[1] = gyro_data->bias[2] = 0;
+	if (info->cal_data)
+		reset((struct gyro_cal*) info->cal_data);
 }
 
-/* Collect points - circular queue for the last GYRO_DS_SIZE
-   elements. If the points are sufficiently close compute bias */
-static void gyro_collect(float x, float y, float z, struct sensor_info_t* info)
+
+static int gyro_collect (float x, float y, float z, struct gyro_cal* cal_data)
 {
-	int offset, k;
-	float min[3], max[3];
+	/* Analyze gyroscope data */
 
-	struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
+	if (fabs(x) >= 1 || fabs(y) >= 1 || fabs(z) >= 1) {
 
-	if (gyro_data == NULL)
-		return;
+		/* We're supposed to be standing still ; start over */
+		reset(cal_data);
 
-	int pos = (gyro_data->start + gyro_data->count) % GYRO_DS_SIZE;
-	gyro_data->sample[pos][0] = x;
-	gyro_data->sample[pos][1] = y;
-	gyro_data->sample[pos][2] = z;
-
-	if (gyro_data->count < GYRO_DS_SIZE)
-		gyro_data->count++;
-	else
-		gyro_data->start = (gyro_data->start + 1) % GYRO_DS_SIZE;
-
-	for (k = 0; k < 3; k++)
-		min[k] = max[k] = gyro_data->sample[gyro_data->start][k];
-
-	/* Search for min-max values */
-	for (offset = 1; offset < gyro_data->count; offset++) {
-		int pos2 = (gyro_data->start + offset) % GYRO_DS_SIZE;
-		for (k = 0; k < 3; k++) {
-			if (min[k] > gyro_data->sample[pos2][k])
-				min[k] = gyro_data->sample[pos2][k];
-			else if (max[k] < gyro_data->sample[pos2][k])
-				max[k] = gyro_data->sample[pos2][k];
-		}
+		return 0; /* Uncalibrated */
 	}
 
-	if (gyro_data->count == GYRO_DS_SIZE &&
-		fabs(max[0] - min[0]) < GYRO_MAX_ERR &&
-		fabs(max[1] - min[1]) < GYRO_MAX_ERR &&
-		fabs(max[2] - min[2]) < GYRO_MAX_ERR) {
-		info->cal_level = 1;
-		gyro_data->bias[0] = (max[0] + min[0]) / 2;
-		gyro_data->bias[1] = (max[1] + min[1]) / 2;
-		gyro_data->bias[2] = (max[2] + min[2]) / 2;
+	if (cal_data->count < GYRO_DS_SIZE) {
+
+		if (x < cal_data->min_x)
+			cal_data->min_x = x;
+
+		if (y < cal_data->min_y)
+			cal_data->min_y = y;
+
+		if (z < cal_data->min_z)
+			cal_data->min_z = z;
+
+		if (x > cal_data->max_x)
+			cal_data->max_x = x;
+
+		if (y > cal_data->max_y)
+			cal_data->max_y = y;
+
+		if (z > cal_data->max_z)
+			cal_data->max_z = z;
+
+		if (fabs(cal_data->max_x - cal_data->min_x) <= GYRO_MAX_ERR &&
+		    fabs(cal_data->max_y - cal_data->min_y) <= GYRO_MAX_ERR &&
+		    fabs(cal_data->max_z - cal_data->min_z) <= GYRO_MAX_ERR)
+			cal_data->count++; /* One more conformant sample */
+		else
+			reset(cal_data); /* Out of spec sample ; start over */
+
+		return 0; /* Still uncalibrated */
 	}
+
+	/* We got enough stable samples to estimate gyroscope bias */
+	cal_data->bias_x = (cal_data->max_x + cal_data->min_x) / 2;
+	cal_data->bias_y = (cal_data->max_y + cal_data->min_y) / 2;
+	cal_data->bias_z = (cal_data->max_z + cal_data->min_z) / 2;
+
+	return 1; /* Calibrated! */
 }
 
 void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 {
-	if (!info->cal_level) {
-		gyro_collect(event->data[0], event->data[1], event->data[2], info);
-		return;
-	}
+	struct gyro_cal* cal_data = (struct gyro_cal*) info->cal_data;
 
-	struct gyro_cal* gyro_data = (struct gyro_cal*) info->cal_data;
-
-	if (gyro_data == NULL)
+	if (cal_data == NULL)
 		return;
+
+	/* Attempt gyroscope calibration if we have not reached this state */
+	if (info->cal_level == 0)
+		info->cal_level = gyro_collect(event->data[0], event->data[1],
+					       event->data[2], cal_data);
 
 	switch (event->type) {
 		case SENSOR_TYPE_GYROSCOPE:
 			/* For the gyroscope apply the bias */
-			event->data[0] = event->data[0] - gyro_data->bias[0];
-			event->data[1] = event->data[1] - gyro_data->bias[1];
-			event->data[2] = event->data[2] - gyro_data->bias[2];
+			event->data[0] = event->data[0] - cal_data->bias_x;
+			event->data[1] = event->data[1] - cal_data->bias_y;
+			event->data[2] = event->data[2] - cal_data->bias_z;
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-			/* For the uncalibrated gyroscope don't apply the bias but save it */
-			event->uncalibrated_gyro.bias[0] = gyro_data->bias[0];
-			event->uncalibrated_gyro.bias[1] = gyro_data->bias[1];
-			event->uncalibrated_gyro.bias[2] = gyro_data->bias[2];
-			break;
-
-		default:
+			/*
+			 * For the uncalibrated gyroscope don't apply the bias,
+			 * but tell he Android framework what we think it is.
+			 */
+			event->uncalibrated_gyro.bias[0] = cal_data->bias_x;
+			event->uncalibrated_gyro.bias[1] = cal_data->bias_y;
+			event->uncalibrated_gyro.bias[2] = cal_data->bias_z;
 			break;
 	}
 }
