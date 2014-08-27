@@ -454,12 +454,33 @@ static int compass_ready (struct sensor_info_t* info)
 void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
 {
     long current_time_ms = current_time / 1000000;
+    int cal_level;
+
+    /* Calibration is continuous */
     compass_collect (event, info, current_time_ms);
-    if (compass_ready(info)) {
-        compass_compute_cal (event, info);
-        event->magnetic.status = SENSOR_STATUS_ACCURACY_HIGH;
-    } else {
-        event->magnetic.status = SENSOR_STATUS_ACCURACY_LOW;
+
+    cal_level = compass_ready(info);
+
+    switch (cal_level) {
+
+        case 0:
+            event->magnetic.status = SENSOR_STATUS_UNRELIABLE;
+            break;
+
+        case 1:
+            compass_compute_cal (event, info);
+            event->magnetic.status = SENSOR_STATUS_ACCURACY_LOW;
+            break;
+
+        case 2:
+            compass_compute_cal (event, info);
+            event->magnetic.status = SENSOR_STATUS_ACCURACY_MEDIUM;
+            break;
+
+        default:
+            compass_compute_cal (event, info);
+            event->magnetic.status = SENSOR_STATUS_ACCURACY_HIGH;
+            break;
     }
 }
 
