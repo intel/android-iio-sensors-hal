@@ -260,6 +260,8 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_ACCELEROMETER:
+			/* Always consider the accelerometer accurate */
+			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
 			if (sensor_info[s].quirks & QUIRK_NOISY)
 				denoise(&sensor_info[s], data, 3, 20);
 			break;
