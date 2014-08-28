@@ -659,6 +659,7 @@ static void uncalibrated_gyro_check (void)
 	unsigned int dev_num;
 	int i, c;
 	unsigned int is_poll_sensor;
+	char buf[MAX_NAME_SIZE];
 
 	int cal_idx = 0;
 	int uncal_idx = 0;
@@ -705,6 +706,12 @@ static void uncalibrated_gyro_check (void)
 				strncpy(sensor_info[uncal_idx].motion_trigger_name,
 					sensor_info[cal_idx].motion_trigger_name,
 					MAX_NAME_SIZE);
+
+				/* Add "Uncalibrated " prefix to sensor name */
+				strcpy(buf, sensor_info[cal_idx].friendly_name);
+				snprintf(sensor_info[uncal_idx].friendly_name,
+					 MAX_NAME_SIZE,
+					 "%s %s", "Uncalibrated", buf);
 				break;
 			}
 }
