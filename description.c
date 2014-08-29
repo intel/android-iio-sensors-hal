@@ -70,14 +70,37 @@
  * 'panel' and 'rotation' specifiers can be used to express ACPI PLD placement
  * information ; if found they will be used in priority over the actual ACPI
  * data. That is intended as a way to verify values during development.
+ *
+ * It's possible to use the contents of the iio device name as a way to
+ * discriminate between sensors. Several sensors of the same type can coexist:
+ * e.g. ro.iio.temp.bmg160.name = BMG160 Thermometer will be used in priority
+ * over ro.iio.temp.name = BMC150 Thermometer if the sensor for which we query
+ * properties values happen to have its iio device name set to bmg160.
  */
 
 static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 {
 	char prop_name[PROP_NAME_MAX];
 	char prop_val[PROP_VALUE_MAX];
+	char extended_sel[PROP_VALUE_MAX];
+
 	int i			= sensor_info[s].catalog_index;
 	const char *prefix	= sensor_catalog[i].tag;
+
+	/* First try most specialized form, like ro.iio.anglvel.bmg160.name */
+
+	snprintf(extended_sel, PROP_NAME_MAX, "%s.%s",
+		 sensor_info[s].internal_name, sel);
+
+	snprintf(prop_name, PROP_NAME_MAX, PROP_BASE, prefix, extended_sel);
+
+	if (property_get(prop_name, prop_val, "")) {
+		strncpy(val, prop_val, MAX_NAME_SIZE-1);
+		val[MAX_NAME_SIZE-1] = '\0';
+		return 0;
+	}
+
+	/* Fall back to simple form, like ro.iio.anglvel.name */
 
 	sprintf(prop_name, PROP_BASE, prefix, sel);
 
