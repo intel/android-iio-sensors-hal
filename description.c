@@ -51,7 +51,7 @@
  * ro.iio.illuminance.power = .001
  * ro.iio.illuminance.illumincalib = 7400
  *
- * Finally there's a 'opt_scale' specifier, documented as follows:
+ * There's a 'opt_scale' specifier, documented as follows:
  *
  *  This adds support for a scaling factor that can be expressed
  *  using properties, for all sensors, on a channel basis. That
@@ -66,6 +66,10 @@
  *  For sensors using a single channel - and only those - the channel
  *  name is implicitly void and a syntax such as ro.iio.illuminance.
  *  opt_scale = 3 has to be used.
+ *
+ * 'panel' and 'rotation' specifiers can be used to express ACPI PLD placement
+ * information ; if found they will be used in priority over the actual ACPI
+ * data. That is intended as a way to verify values during development.
  */
 
 static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
@@ -84,6 +88,18 @@ static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 	}
 
 	return -1;
+}
+
+
+int sensor_get_prop (int s, const char* sel, int* val)
+{
+	char buf[MAX_NAME_SIZE];
+
+	if (sensor_get_st_prop(s, sel, buf))
+		return -1;
+
+	*val = atoi(buf);
+	return 0;
 }
 
 
@@ -242,22 +258,19 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	int i;
 	int count = sensor_catalog[sensor_info[s].catalog_index].num_channels;
 
-	memset(map, 0, MAX_CHANNELS);
-
 	if  (sensor_get_st_prop(s, "order", buf))
 		return 0; /* No order property */
 
 	/* Assume ASCII characters, in the '0'..'9' range */
 
 	for (i=0; i<count; i++)
-		map[i] = buf[i] - '0';
-
-	/* Check that our indices are in range */
-	for (i=0; i<count; i++)
-		if (map[i] >= count) {
+		if (buf[i] - '0' >= count) {
 			ALOGE("Order index out of range for sensor %d\n", s);
 			return 0;
 		}
+
+	for (i=0; i<count; i++)
+		map[i] = buf[i] - '0';
 
 	return 1;	/* OK to use modified ordering map */
 }

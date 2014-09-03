@@ -44,12 +44,159 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
 
+/* ACPI PLD (physical location of device) definitions, as used with sensors */
+
+#define PANEL_FRONT	4
+#define PANEL_BACK	5
 
 /* We equate sensor handles to indices in these tables */
 
 struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
 struct sensor_info_t sensor_info[MAX_SENSORS];	/* Internal descriptors      */
 int sensor_count;				/* Detected sensors 	     */
+
+
+static void setup_properties_from_pld(int s, int panel, int rotation,
+				      int num_channels)
+{
+	/*
+	 * Generate suitable order and opt_scale directives from the PLD panel
+	 * and rotation codes we got. This can later be superseded by the usual
+	 * properties if necessary. Eventually we'll need to replace these
+	 * mechanisms by a less convoluted one, such as a 3x3 placement matrix.
+	 */
+
+	int x = 1;
+	int y = 1;
+	int z = 1;
+	int xy_swap = 0;
+	int angle = rotation * 45;
+
+	/* Only deal with 3 axis chips for now */
+	if (num_channels < 3)
+		return;
+
+	if (panel == PANEL_BACK) {
+		/* Chip placed on the back panel ; negate x and z */
+		x = -x;
+		z = -z;
+	}
+
+	switch (angle) {
+		case 90: /* 90° clockwise: negate y then swap x,y */
+			xy_swap = 1;
+			y = -y;
+			break;
+
+		case 180: /* Upside down: negate x and y */
+			x = -x;
+			y = -y;
+			break;
+
+		case 270: /* 90° counter clockwise: negate x then swap x,y */
+			x = -x;
+			xy_swap = 1;
+			break;
+	}
+
+	if (xy_swap) {
+		sensor_info[s].order[0] = 1;
+		sensor_info[s].order[1] = 0;
+		sensor_info[s].order[2] = 2;
+		sensor_info[s].quirks |= QUIRK_FIELD_ORDERING;
+	}
+
+	sensor_info[s].channel[0].opt_scale = x;
+	sensor_info[s].channel[1].opt_scale = y;
+	sensor_info[s].channel[2].opt_scale = z;
+}
+
+
+static int is_valid_pld (int panel, int rotation)
+{
+	if (panel != PANEL_FRONT && panel != PANEL_BACK) {
+		ALOGW("Unhandled PLD panel spec: %d\n", panel);
+		return 0;
+	}
+
+	/* Only deal with 90° rotations for now */
+	if (rotation < 0 || rotation > 7 || (rotation & 1)) {
+		ALOGW("Unhandled PLD rotation spec: %d\n", rotation);
+		return 0;
+	}
+
+	return 1;
+}
+
+
+static int read_pld_from_properties (int s, int* panel, int* rotation)
+{
+	int p, r;
+
+	if (sensor_get_prop(s, "panel", &p))
+		return -1;
+
+	if (sensor_get_prop(s, "rotation", &r))
+		return -1;
+
+	if (!is_valid_pld(p, r))
+		return -1;
+
+	*panel = p;
+	*rotation = r;
+
+	ALOGI("S%d PLD from properties: panel=%d, rotation=%d\n", s, p, r);
+
+	return 0;
+}
+
+
+static int read_pld_from_sysfs (int s, int dev_num, int* panel, int* rotation)
+{
+	char sysfs_path[PATH_MAX];
+	int p,r;
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/panel", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &p))
+		return -1;
+
+	sprintf(sysfs_path, BASE_PATH "../firmware_node/pld/rotation", dev_num);
+
+	if (sysfs_read_int(sysfs_path, &r))
+		return -1;
+
+	if (!is_valid_pld(p, r))
+		return -1;
+
+	*panel = p;
+	*rotation = r;
+
+	ALOGI("S%d PLD from sysfs: panel=%d, rotation=%d\n", s, p, r);
+
+	return 0;
+}
+
+
+static void decode_placement_information (int dev_num, int num_channels, int s)
+{
+	/*
+	 * See if we have optional "physical location of device" ACPI tags.
+	 * We're only interested in panel and rotation specifiers. Use the
+	 * .panel and .rotation properties in priority, and the actual ACPI
+	 * values as a second source.
+	 */
+
+	int panel;
+	int rotation;
+
+	if (read_pld_from_properties(s, &panel, &rotation) &&
+		read_pld_from_sysfs(s, dev_num, &panel, &rotation))
+			return; /* No PLD data available */
+
+	/* Map that to field ordering and scaling mechanisms */
+	setup_properties_from_pld(s, panel, rotation, num_channels);
+}
 
 
 static void add_sensor (int dev_num, int catalog_index, int use_polling)
@@ -84,11 +231,12 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].dev_num		= dev_num;
 	sensor_info[s].catalog_index	= catalog_index;
 
+        num_channels = sensor_catalog[catalog_index].num_channels;
+
         if (use_polling)
                 sensor_info[s].num_channels = 0;
         else
-                sensor_info[s].num_channels =
-                                sensor_catalog[catalog_index].num_channels;
+                sensor_info[s].num_channels = num_channels;
 
 	prefix = sensor_catalog[catalog_index].tag;
 
@@ -122,7 +270,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                 sensor_info[s].scale = 1;
 
                 /* Read channel specific scale if any*/
-                for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++)
+                for (c = 0; c < num_channels; c++)
                 {
                         sprintf(sysfs_path, BASE_PATH "%s", dev_num,
                            sensor_catalog[catalog_index].channel[c].scale_path);
@@ -138,6 +286,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                 }
         }
 
+        /* Set default scaling - if num_channels is zero, we have one channel */
+
+	sensor_info[s].channel[0].opt_scale = 1;
+
+	for (c = 1; c < num_channels; c++)
+		sensor_info[s].channel[c].opt_scale = 1;
+
+	/* Read ACPI _PLD attributes for this sensor, if there are any */
+	decode_placement_information(dev_num, num_channels, s);
+
         /*
          * See if we have optional correction scaling factors for each of the
          * channels of this sensor. These would be expressed using properties
@@ -146,23 +304,17 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
          * for all types of sensors, and whatever transform is selected, on top
          * of any previous conversions.
          */
-        num_channels = sensor_catalog[catalog_index].num_channels;
 
         if (num_channels) {
 		for (c = 0; c < num_channels; c++) {
-			opt_scale = 1;
-
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
 			sprintf(suffix, "%s.opt_scale", ch_name);
-			sensor_get_fl_prop(s, suffix, &opt_scale);
-
-			sensor_info[s].channel[c].opt_scale = opt_scale;
+			if (!sensor_get_fl_prop(s, suffix, &opt_scale))
+				sensor_info[s].channel[c].opt_scale = opt_scale;
 		}
-        } else {
-		opt_scale = 1;
-		sensor_get_fl_prop(s, "opt_scale", &opt_scale);
-		sensor_info[s].channel[0].opt_scale = opt_scale;
-        }
+        } else
+		if (!sensor_get_fl_prop(s, "opt_scale", &opt_scale))
+			sensor_info[s].channel[0].opt_scale = opt_scale;
 
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
@@ -192,13 +344,13 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE ||
-		sensor_catalog[catalog_index].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE ||
+		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
 
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_MAGNETIC_FIELD) {
+	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
 		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
@@ -347,58 +499,6 @@ static void orientation_sensor_check(void)
 			}
 }
 
-static void uncalibrated_gyro_check (void)
-{
-	unsigned int has_gyr = 0;
-	unsigned int dev_num;
-	int i, c;
-	unsigned int is_poll_sensor;
-
-	int cal_idx = 0;
-	int uncal_idx = 0;
-
-	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
-	for (i=0; i < sensor_count; i++)
-		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
-		{
-			has_gyr=1;
-			dev_num = sensor_info[i].dev_num;
-			is_poll_sensor = !sensor_info[i].num_channels;
-			cal_idx = i;
-			break;
-		}
-
-	/*
-	 * If we have a gyro we can add the uncalibrated sensor of the same type and
-	 * on the same dev_num. We will save indexes for easy finding and also save the
-	 * channel specific information.
-	 */
-	if (has_gyr)
-		for (i=0; i<CATALOG_SIZE; i++)
-			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-				add_sensor(dev_num, i, is_poll_sensor);
-
-				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
-
-				/* Similar to build_sensor_report_maps */
-				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
-				{
-					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
-						&(sensor_info[cal_idx].channel[c].type_spec),
-						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
-					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
-					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
-					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
-				}
-				strncpy(sensor_info[uncal_idx].trigger_name,
-					sensor_info[cal_idx].trigger_name,
-					MAX_NAME_SIZE);
-				sensor_info[uncal_idx].pair_idx = cal_idx;
-				sensor_info[cal_idx].pair_idx = uncal_idx;
-				break;
-			}
-}
-
 static int is_continuous (int s)
 {
 	/* Is sensor s of the continous trigger type kind? */
@@ -442,25 +542,19 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 		return;
 
 	/*
-	 * Anything else is higher priority. However if we already found an
-	 * any-motion trigger, don't select anything else.
-	 */
-
-	if (!memcmp(sensor_info[s].trigger_name + sensor_name_len + 1,
-		    "any-motion-", 11))
-		return;
-
-	/*
-	 * If we're switching to an any-motion trigger, force the sensor to
+	 * If we found any-motion trigger, record it and force the sensor to
 	 * automatic intermediate event generation mode, at least if it is of a
 	 * continuously firing sensor type.
 	 */
 
-	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s))
-		sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s)) {
+		/* Update the any-motion trigger name to use for this sensor */
+		strcpy(sensor_info[s].motion_trigger_name, trigger_name);
+		return;
+	}
 
-	/* Update the trigger name to use for this sensor */
-	strcpy(sensor_info[s].trigger_name, trigger_name);
+	/* Update the initial trigger name to use for this sensor */
+	strcpy(sensor_info[s].init_trigger_name, trigger_name);
 }
 
 
@@ -528,8 +622,9 @@ static void setup_trigger_names (void)
 
 	/* By default, use the name-dev convention that most drivers use */
 	for (s=0; s<sensor_count; s++)
-		snprintf(sensor_info[s].trigger_name, MAX_NAME_SIZE, "%s-dev%d",
-			sensor_info[s].internal_name, sensor_info[s].dev_num);
+		snprintf(sensor_info[s].init_trigger_name,
+			 MAX_NAME_SIZE, "%s-dev%d",
+			 sensor_info[s].internal_name, sensor_info[s].dev_num);
 
 	/* Now have a look to /sys/bus/iio/devices/triggerX entries */
 
@@ -542,17 +637,77 @@ static void setup_trigger_names (void)
 		if (ret < 0)
 			break;
 
+		/* Record initial and any-motion triggers names */
 		update_sensor_matching_trigger_name(buf);
 	}
 
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].num_channels) {
-			ALOGI(	"Sensor %d (%s) using iio trigger %s\n", s,
+			ALOGI(	"Sensor %d (%s) default trigger: %s\n", s,
 				sensor_info[s].friendly_name,
-				sensor_info[s].trigger_name);
+				sensor_info[s].init_trigger_name);
+			if (sensor_info[s].motion_trigger_name[0])
+				ALOGI(	"Sensor %d (%s) motion trigger: %s\n",
+				s, sensor_info[s].friendly_name,
+				sensor_info[s].motion_trigger_name);
 		}
 }
 
+static void uncalibrated_gyro_check (void)
+{
+	unsigned int has_gyr = 0;
+	unsigned int dev_num;
+	int i, c;
+	unsigned int is_poll_sensor;
+
+	int cal_idx = 0;
+	int uncal_idx = 0;
+	int catalog_size = CATALOG_SIZE; /* Avoid GCC sign comparison warning */
+
+	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
+	for (i=0; i < sensor_count; i++)
+		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
+		{
+			has_gyr=1;
+			dev_num = sensor_info[i].dev_num;
+			is_poll_sensor = !sensor_info[i].num_channels;
+			cal_idx = i;
+			break;
+		}
+
+	/*
+	 * If we have a gyro we can add the uncalibrated sensor of the same type and
+	 * on the same dev_num. We will save indexes for easy finding and also save the
+	 * channel specific information.
+	 */
+	if (has_gyr)
+		for (i=0; i<catalog_size; i++)
+			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+				add_sensor(dev_num, i, is_poll_sensor);
+
+				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
+
+				/* Similar to build_sensor_report_maps */
+				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
+				{
+					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
+						&(sensor_info[cal_idx].channel[c].type_spec),
+						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
+					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
+					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
+					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
+				}
+				sensor_info[uncal_idx].pair_idx = cal_idx;
+				sensor_info[cal_idx].pair_idx = uncal_idx;
+				strncpy(sensor_info[uncal_idx].init_trigger_name,
+					sensor_info[cal_idx].init_trigger_name,
+					MAX_NAME_SIZE);
+				strncpy(sensor_info[uncal_idx].motion_trigger_name,
+					sensor_info[cal_idx].motion_trigger_name,
+					MAX_NAME_SIZE);
+				break;
+			}
+}
 
 void enumerate_sensors (void)
 {
@@ -597,8 +752,10 @@ void enumerate_sensors (void)
 	/* Make sure Android fall backs to its own orientation sensor */
 	orientation_sensor_check();
 
-	/* Create the uncalibrated counterpart to the compensated gyroscope;
-	 * This is is a new sensor type in Android 4.4 */
+	/*
+	 * Create the uncalibrated counterpart to the compensated gyroscope.
+	 * This is is a new sensor type in Android 4.4.
+	 */
 	uncalibrated_gyro_check();
 }
 
