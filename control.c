@@ -1049,7 +1049,8 @@ int sensor_set_delay(int s, int64_t ns)
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	float max_supported_rate = 0;
+	int32_t min_delay = sensor_desc[s].minDelay;
+	float max_supported_rate = (min_delay != 0 && min_delay != -1) ? (1000000.0f / min_delay) : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -1068,6 +1069,11 @@ int sensor_set_delay(int s, int64_t ns)
 	 */
 	if (new_sampling_rate < 1)
 		new_sampling_rate = 1;
+
+	if (max_supported_rate &&
+		new_sampling_rate > max_supported_rate) {
+		new_sampling_rate = max_supported_rate;
+	}
 
 	sensor_info[s].sampling_rate = new_sampling_rate;
 
@@ -1122,9 +1128,6 @@ int sensor_set_delay(int s, int64_t ns)
 
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
-
-			if (sr > max_supported_rate)
-				max_supported_rate = sr;
 
 			/* If this matches the selected rate, we're happy */
 			if (new_sampling_rate == sr)

@@ -333,6 +333,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].requiredPermission = "";
 	sensor_desc[s].flags = sensor_get_flags(s);
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
+	sensor_desc[s].minDelay = sensor_get_min_delay(s);
 
 	if (sensor_info[s].internal_name[0] == '\0') {
 		/*
