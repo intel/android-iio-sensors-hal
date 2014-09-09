@@ -333,6 +333,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].requiredPermission = "";
 	sensor_desc[s].flags = sensor_get_flags(s);
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
+	sensor_desc[s].minDelay = sensor_get_min_delay(s);
 
 	if (sensor_info[s].internal_name[0] == '\0') {
 		/*
@@ -659,6 +660,7 @@ static void uncalibrated_gyro_check (void)
 	unsigned int dev_num;
 	int i, c;
 	unsigned int is_poll_sensor;
+	char buf[MAX_NAME_SIZE];
 
 	int cal_idx = 0;
 	int uncal_idx = 0;
@@ -705,6 +707,12 @@ static void uncalibrated_gyro_check (void)
 				strncpy(sensor_info[uncal_idx].motion_trigger_name,
 					sensor_info[cal_idx].motion_trigger_name,
 					MAX_NAME_SIZE);
+
+				/* Add "Uncalibrated " prefix to sensor name */
+				strcpy(buf, sensor_info[cal_idx].friendly_name);
+				snprintf(sensor_info[uncal_idx].friendly_name,
+					 MAX_NAME_SIZE,
+					 "%s %s", "Uncalibrated", buf);
 				break;
 			}
 }

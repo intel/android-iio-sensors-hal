@@ -406,3 +406,65 @@ max_delay_t sensor_get_max_delay (int s)
 	/* Return microseconds */
 	return (max_delay_t)(1000000.0 / min_supported_rate);
 }
+
+/* this value depends on the reporting mode:
+ *
+ *   continuous: minimum sample period allowed in microseconds
+ *   on-change : 0
+ *   one-shot  :-1
+ *   special   : 0, unless otherwise noted
+ */
+int32_t sensor_get_min_delay(int s)
+{
+	char avail_sysfs_path[PATH_MAX];
+	int dev_num	= sensor_info[s].dev_num;
+	char freqs_buf[100];
+	char* cursor;
+	float max_supported_rate = 0;
+	float sr;
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type = sensor_catalog[catalog_index].type;
+
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
+		/* If poll mode sensor */
+		if (!sensor_info[s].num_channels) {
+			switch (sensor_type) {
+				case SENSOR_TYPE_ACCELEROMETER:
+					max_supported_rate = 125; /* 125 Hz */
+					break;
+				case SENSOR_TYPE_GYROSCOPE:
+				case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+					max_supported_rate = 200; /* 200 Hz */
+					break;
+				case SENSOR_TYPE_MAGNETIC_FIELD:
+					max_supported_rate = 10; /* 10 Hz */
+					break;
+				default:
+					max_supported_rate = 0;
+			}
+		}
+	} else {
+		cursor = freqs_buf;
+		while (*cursor && cursor[0]) {
+
+			/* Decode a single value */
+			sr = strtod(cursor, NULL);
+
+			if (sr > max_supported_rate)
+				max_supported_rate = sr;
+
+			/* Skip digits */
+			while (cursor[0] && !isspace(cursor[0]))
+				cursor++;
+
+			/* Skip spaces */
+			while (cursor[0] && isspace(cursor[0]))
+				cursor++;
+		}
+	}
+
+	return (int32_t)(1000000.0 / max_supported_rate);
+}
