@@ -781,7 +781,7 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 	data->version	= sizeof(sensors_event_t);
 	data->sensor	= s;
 	data->type	= sensor_type;
-	data->timestamp = sensor_info[s].report_ts;
+	data->timestamp = get_timestamp();
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
 
@@ -923,14 +923,9 @@ static int get_poll_wait_timeout (void)
 
 	ms_to_wait = (target_ts - get_timestamp()) / 1000000;
 
-	/*
-	 * If the target timestamp is very close or already behind us, wait
-	 * nonetheless for a millisecond in order to a) avoid busy loops, and
-	 * b) give a chance for the driver to report data before we repeat the
-	 * last received sample.
-	 */
-	if (ms_to_wait <= 0)
-		return 1;
+	/* If the target timestamp is already behind us, don't wait */
+	if (ms_to_wait < 1)
+		return 0;
 
 	return ms_to_wait;
 }
