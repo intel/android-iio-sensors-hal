@@ -453,7 +453,7 @@ int32_t sensor_get_min_delay(int s)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			if (sr > max_supported_rate)
+			if (sr > max_supported_rate && sr <= MAX_EVENTS)
 				max_supported_rate = sr;
 
 			/* Skip digits */
