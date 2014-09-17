@@ -384,6 +384,9 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
 static void compass_compute_cal (struct sensors_event_t* event, struct sensor_info_t* info)
 {
     struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    float sqr_norm = 0;
+    float sanity_norm = 0;
+    float scale = 1;
 
     if (!info->cal_level || cal_data == NULL)
         return;
@@ -396,6 +399,21 @@ static void compass_compute_cal (struct sensors_event_t* event, struct sensor_in
 
     substract(3, 1, raw, cal_data->offset, diff);
     multiply (3, 3, 1, cal_data->w_invert, diff, result);
+
+    sqr_norm = (result[0][0] * result[0][0] +
+                result[1][0] * result[1][0] +
+                result[2][0] * result[2][0]);
+
+    sanity_norm = (sqr_norm < MAGNETIC_LOW) ?  MAGNETIC_LOW : sanity_norm;
+    sanity_norm = (sqr_norm > MAGNETIC_HIGH) ? MAGNETIC_HIGH : sanity_norm;
+
+    if (sanity_norm) {
+        scale = sanity_norm / sqr_norm;
+        scale = sqrt(scale);
+        result[0][0] = result[0][0] * scale;
+        result[1][0] = result[1][0] * scale;
+        result[2][0] = result[2][0] * scale;
+    }
 
     event->magnetic.x = event->data[0] = result[0][0];
     event->magnetic.y = event->data[1] = result[1][0];
