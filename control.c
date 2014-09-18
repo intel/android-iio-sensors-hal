@@ -781,7 +781,7 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 	data->version	= sizeof(sensors_event_t);
 	data->sensor	= s;
 	data->type	= sensor_type;
-	data->timestamp = get_timestamp();
+	data->timestamp = sensor_info[s].report_ts;
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
 
