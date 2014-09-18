@@ -40,7 +40,6 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  *  */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
-
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
@@ -500,6 +499,9 @@ int sensor_activate(int s, int enabled)
 	int dev_num = sensor_info[s].dev_num;
 	int is_poll_sensor = !sensor_info[s].num_channels;
 
+	/* Prepare the report timestamp field for the first event, see set_report_ts method */
+	sensor_info[s].report_ts = 0;
+
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
 	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
 	 * Activate gyro calibrated     - Calibrated has handler
@@ -663,6 +665,7 @@ static void enable_motion_trigger (int dev_num)
 		if (sensor_info[s].dev_num == dev_num &&
 		    sensor_info[s].enable_count &&
 		    sensor_info[s].num_channels &&
+		    !(sensor_info[s].quirks & QUIRK_CONTINUOUS_DRIVER) &&
 		    sensor_info[s].selected_trigger !=
 			sensor_info[s].motion_trigger_name)
 				candidate[candidate_count++] = s;
@@ -682,6 +685,18 @@ static void enable_motion_trigger (int dev_num)
 	enable_buffer(dev_num, 1);
 }
 
+void set_report_ts(int s, int64_t ts)
+{
+	int64_t maxTs, period;
+
+	if (sensor_info[s].report_ts && sensor_info[s].sampling_rate) {
+		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
+		maxTs = sensor_info[s].report_ts + period;
+		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
+	} else {
+		sensor_info[s].report_ts = ts;
+	}
+}
 
 static int integrate_device_report(int dev_num)
 {
@@ -744,7 +759,7 @@ static int integrate_device_report(int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
-			sensor_info[s].report_ts = ts;
+			set_report_ts(s, ts);
 			sensor_info[s].report_pending = 1;
 			sensor_info[s].report_initialized = 1;
 		}
@@ -859,7 +874,7 @@ static void synthetize_duplicate_samples (void)
 
 		if (target_ts <= current_ts) {
 			/* Mark the sensor for event generation */
-			sensor_info[s].report_ts = current_ts;
+			set_report_ts(s, current_ts);
 			sensor_info[s].report_pending = 1;
 		}
 	}
@@ -879,7 +894,7 @@ static void integrate_thread_report (uint32_t tag)
 		   expected_len);
 
 	if (len == expected_len) {
-		sensor_info[s].report_ts = get_timestamp();
+		set_report_ts(s, get_timestamp());
 		sensor_info[s].report_pending = 1;
 	}
 }
@@ -945,6 +960,9 @@ int sensor_poll(struct sensors_event_t* data, int count)
 
 return_available_sensor_reports:
 
+	/* Synthetize duplicate samples if needed */
+	synthetize_duplicate_samples();
+
 	returned_events = 0;
 
 	/* Check our sensor collection for available reports */
@@ -1002,9 +1020,6 @@ await_event:
 		ALOGE("epoll_wait returned -1 (%s)\n", strerror(errno));
 		goto await_event;
 	}
-
-	/* Synthetize duplicate samples if needed */
-	synthetize_duplicate_samples();
 
 	ALOGV("%d fds signalled\n", nfds);
 

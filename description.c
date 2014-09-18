@@ -262,7 +262,11 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "init-rate"))
 			sensor_info[s].quirks |= QUIRK_INITIAL_RATE;
 
-		if (strstr(quirks_buf, "terse"))
+		if (strstr(quirks_buf, "continuous")) {
+			sensor_info[s].quirks |= QUIRK_CONTINUOUS_DRIVER;
+		}
+
+		if (strstr(quirks_buf, "terse") && !(sensor_info[s].quirks & QUIRK_CONTINUOUS_DRIVER))
 			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
 
 		if (strstr(quirks_buf, "noisy"))
