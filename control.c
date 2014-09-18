@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <time.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
@@ -44,15 +45,38 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  * order to try to get a frequency closer to the advertised one
  */
 #define OVERHEAD_THRESHOLD 0.97
+#define ENABLE_BUFFER_RETRIES 10
+#define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
+	int ret, retries, millisec;
+	struct timespec req = {0};
+
+	retries = ENABLE_BUFFER_RETRIES;
+	millisec = ENABLE_BUFFER_RETRY_DELAY_MS;
+	req.tv_sec = 0;
+	req.tv_nsec = millisec * 1000000L;
 
 	sprintf(sysfs_path, ENABLE_PATH, dev_num);
 
-	/* Low level, non-multiplexed, enable/disable routine */
-	return sysfs_write_int(sysfs_path, enabled);
+	while (retries--) {
+		/* Low level, non-multiplexed, enable/disable routine */
+		ret = sysfs_write_int(sysfs_path, enabled);
+		if (ret > 0)
+			break;
+
+		ALOGE("Failed enabling buffer, retrying");
+		nanosleep(&req, (struct timespec *)NULL);
+	}
+
+	if (ret < 0) {
+		ALOGE("Could not enable buffer\n");
+		return -EIO;
+	}
+
+	return 0;
 }
 
 
