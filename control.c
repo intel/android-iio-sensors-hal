@@ -939,6 +939,7 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	struct epoll_event ev[MAX_DEVICES];
 	int returned_events;
 	int event_count;
+	int uncal_start;
 
 	/* Get one or more events from our collection of sensors */
 
@@ -963,17 +964,19 @@ return_available_sensor_reports:
 
 					memcpy(&data[returned_events + event_count], &data[returned_events],
 							sizeof(struct sensors_event_t) * event_count);
+
+					uncal_start = returned_events + event_count;
 					for (i = 0; i < event_count; i++) {
-						data[returned_events + i].type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
-						data[returned_events + i].sensor = sensor_info[s].pair_idx;
+						data[uncal_start + i].type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+						data[uncal_start + i].sensor = sensor_info[s].pair_idx;
 
-						data[returned_events + i].data[0] = data[returned_events + i].data[0] + gyro_data->bias_x;
-						data[returned_events + i].data[1] = data[returned_events + i].data[1] + gyro_data->bias_y;
-						data[returned_events + i].data[2] = data[returned_events + i].data[2] + gyro_data->bias_z;
+						data[uncal_start + i].data[0] = data[returned_events + i].data[0] + gyro_data->bias_x;
+						data[uncal_start + i].data[1] = data[returned_events + i].data[1] + gyro_data->bias_y;
+						data[uncal_start + i].data[2] = data[returned_events + i].data[2] + gyro_data->bias_z;
 
-						data[returned_events + i].uncalibrated_gyro.bias[0] = gyro_data->bias_x;
-						data[returned_events + i].uncalibrated_gyro.bias[1] = gyro_data->bias_y;
-						data[returned_events + i].uncalibrated_gyro.bias[2] = gyro_data->bias_z;
+						data[uncal_start + i].uncalibrated_gyro.bias[0] = gyro_data->bias_x;
+						data[uncal_start + i].uncalibrated_gyro.bias[1] = gyro_data->bias_y;
+						data[uncal_start + i].uncalibrated_gyro.bias[2] = gyro_data->bias_z;
 					}
 					event_count <<= 1;
 			}

@@ -13,6 +13,9 @@
 #define EPSILON 0.000000001
 #define CAL_STEPS 4
 
+#define MAGNETIC_LOW 960 /* 31 micro tesla squared */
+#define MAGNETIC_HIGH 3600 /* 60 micro tesla squared */
+
 /* We'll have multiple calibration levels
 *  so that we can provide an estimation as fast as possible
 */
