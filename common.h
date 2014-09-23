@@ -202,6 +202,7 @@ struct sensor_info_t
 
 	/* A few variables used for data filtering */
 	float *history;		/* Working buffer containing recorded samples */
+	float *history_sum;	/* The current sum of the history elements    */
 	int history_size;	/* Number of recorded samples		      */
 	int history_entries;	/* How many of these are initialized	      */
 	int history_index;	/* Index of sample to evict next time	      */
