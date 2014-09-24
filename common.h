@@ -168,6 +168,9 @@ struct sensor_info_t
 	int cal_level; /* 0 means not calibrated */
 	void* cal_data;
 
+	/* Filtering data for noisy sensors */
+	void* filter;
+
 	float prev_val; /* Previously reported value, for on-change sensors */
 
 	/*

@@ -12,6 +12,7 @@
 #include "description.h"
 #include "transform.h"
 #include "utils.h"
+#include "filtering.h"
 
 /*----------------------------------------------------------------------------*/
 
@@ -277,7 +278,7 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
 				calibrate_gyro(data, &sensor_info[s]);
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3, 20);
+				denoise_median(data, &sensor_info[s]);
 			break;
 
 		case SENSOR_TYPE_LIGHT:
