@@ -27,7 +27,7 @@
 
 #define PROP_BASE	"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
-#define MAX_EVENTS 1000	/* 1000 hz */
+#define MAX_EVENTS 800		/* 800 hz */
 #define MAX_TYPE_SPEC_LEN 32	/* Channel type spec len; ex: "le:u10/16>>0" */
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
 
@@ -167,6 +167,9 @@ struct sensor_info_t
 
 	int cal_level; /* 0 means not calibrated */
 	void* cal_data;
+
+	/* Filtering data for noisy sensors */
+	void* filter;
 
 	float prev_val; /* Previously reported value, for on-change sensors */
 

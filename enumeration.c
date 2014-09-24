@@ -14,6 +14,7 @@
 #include "description.h"
 #include "control.h"
 #include "calibration.h"
+#include "filtering.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -349,6 +350,17 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
+		struct filter* f_data = (struct filter*) calloc(1, sizeof(struct filter));
+		f_data->x_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
+		f_data->y_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
+		f_data->z_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
+		f_data->x_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
+		f_data->y_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
+		f_data->z_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
+		f_data->x_buff->size = SAMPLE_SIZE;
+		f_data->y_buff->size = SAMPLE_SIZE;
+		f_data->z_buff->size = SAMPLE_SIZE;
+		sensor_info[s].filter = f_data;
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
@@ -775,6 +787,12 @@ void delete_enumeration_data (void)
 	for (i = 0; i < sensor_count; i++)
 	switch (sensor_catalog[sensor_info[i].catalog_index].type) {
 		case SENSOR_TYPE_MAGNETIC_FIELD:
+			if (sensor_info[i].cal_data != NULL) {
+				free(sensor_info[i].cal_data);
+				sensor_info[i].cal_data = NULL;
+				sensor_info[i].cal_level = 0;
+			}
+			break;
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:
 			if (sensor_info[i].cal_data != NULL) {
@@ -783,6 +801,16 @@ void delete_enumeration_data (void)
 				sensor_info[i].cal_level = 0;
 			}
 			break;
+			if (sensor_info[i].filter != NULL) {
+				free(((struct filter*)sensor_info[i].filter)->x_buff->buff);
+				free(((struct filter*)sensor_info[i].filter)->y_buff->buff);
+				free(((struct filter*)sensor_info[i].filter)->z_buff->buff);
+				free(((struct filter*)sensor_info[i].filter)->x_buff);
+				free(((struct filter*)sensor_info[i].filter)->y_buff);
+				free(((struct filter*)sensor_info[i].filter)->z_buff);
+				free(sensor_info[i].filter);
+				sensor_info[i].filter = NULL;
+			}
 		default:
 			break;
 	}

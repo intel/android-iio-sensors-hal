@@ -12,6 +12,7 @@
 #define QUIRK_FIELD_ORDERING	0x04  /* Do field remapping for this sensor   */
 #define QUIRK_TERSE_DRIVER	0x08  /* Force duplicate events generation    */
 #define QUIRK_NOISY		0x10  /* High noise level on readings	      */
+#define QUIRK_CONTINUOUS_DRIVER	0x20  /* Force the continuous driver mode     */
 
 char*	sensor_get_name		(int handle);
 char*	sensor_get_vendor	(int handle);
