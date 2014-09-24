@@ -650,6 +650,26 @@ int sensor_activate(int s, int enabled)
 }
 
 
+static int is_fast_accelerometer (int s)
+{
+	/*
+	 * Some games don't react well to accelerometers using any-motion
+	 * triggers. Even very low thresholds seem to trip them, and they tend
+	 * to request fairly high event rates. Favor continuous triggers if the
+	 * sensor is an accelerometer and uses a sampling rate of at least 25.
+	 */
+	int catalog_index = sensor_info[s].catalog_index;
+
+	if (sensor_catalog[catalog_index].type != SENSOR_TYPE_ACCELEROMETER)
+		return 0;
+
+	if (sensor_info[s].sampling_rate < 25)
+		return 0;
+
+	return 1;
+}
+
+
 static void enable_motion_trigger (int dev_num)
 {
 	/*
@@ -684,7 +704,8 @@ static void enable_motion_trigger (int dev_num)
 		    sensor_info[s].enable_count &&
 		    sensor_info[s].num_channels &&
 		    (!sensor_info[s].motion_trigger_name[0] ||
-		     !sensor_info[s].report_initialized)
+		     !sensor_info[s].report_initialized ||
+		     is_fast_accelerometer(s))
 		    )
 			return; /* Nope */
 
@@ -1214,6 +1235,11 @@ int sensor_set_delay(int s, int64_t ns)
 		enable_buffer(dev_num, 0);
 
 	sysfs_write_float(sysfs_path, new_sampling_rate);
+
+	/* Switch back to continuous sampling for accelerometer based games */
+	if (is_fast_accelerometer(s) && sensor_info[s].selected_trigger !=
+					sensor_info[s].init_trigger_name)
+		setup_trigger(s, sensor_info[s].init_trigger_name);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
