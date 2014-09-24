@@ -40,6 +40,11 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  *  */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
+/* When polling try to compensate for the iio overhead in
+ * order to try to get a frequency closer to the advertised one
+ */
+#define OVERHEAD_THRESHOLD 0.97
+
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
@@ -403,7 +408,7 @@ static void* acquisition_routine (void* param)
 
 
 		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
-
+		period = period * OVERHEAD_THRESHOLD;
 		time_add(&target_time, &entry_time, period);
 
 		/*
