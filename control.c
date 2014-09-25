@@ -1112,8 +1112,11 @@ int sensor_set_delay(int s, int64_t ns)
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	int32_t min_delay = sensor_desc[s].minDelay;
-	float max_supported_rate = (min_delay != 0 && min_delay != -1) ? (1000000.0f / min_delay) : 0;
+	int32_t min_delay_us = sensor_desc[s].minDelay;
+	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
+	float min_supported_rate = max_delay_us ? (1000000.0f / max_delay_us) : 1;
+	float max_supported_rate = 
+		(min_delay_us && min_delay_us != -1) ? (1000000.0f / min_delay_us) : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -1130,8 +1133,8 @@ int sensor_set_delay(int s, int64_t ns)
 	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
 	 * avoid setting up the stage for divisions by zero.
 	 */
-	if (new_sampling_rate < 1)
-		new_sampling_rate = 1;
+	if (new_sampling_rate < min_supported_rate)
+		new_sampling_rate = min_supported_rate;
 
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
