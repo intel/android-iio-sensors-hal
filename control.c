@@ -32,6 +32,7 @@ static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 static pthread_cond_t  thread_release_cond	[MAX_SENSORS];
 static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
 
+
 /*
  * We associate tags to each of our poll set entries. These tags have the
  * following values:
@@ -1029,7 +1030,7 @@ return_available_sensor_reports:
 	returned_events = 0;
 
 	/* Check our sensor collection for available reports */
-	for (s=0; s<sensor_count && returned_events < count; s++)
+	for (s=0; s<sensor_count && returned_events < count; s++) {
 		if (sensor_info[s].report_pending) {
 			event_count = 0;
 			/* Lower flag */
@@ -1069,7 +1070,19 @@ return_available_sensor_reports:
 			 * value for a 'on change' sensor, silently drop it.
 			 */
 		}
-
+		while (sensor_info[s].meta_data_pending) {
+			/* See sensors.h on these */
+			data[returned_events].version = META_DATA_VERSION;
+			data[returned_events].sensor = 0;
+			data[returned_events].type = SENSOR_TYPE_META_DATA;
+			data[returned_events].reserved0 = 0;
+			data[returned_events].timestamp = 0;
+			data[returned_events].meta_data.sensor = s;
+			data[returned_events].meta_data.what = META_DATA_FLUSH_COMPLETE;
+			returned_events++;
+			sensor_info[s].meta_data_pending--;
+		}
+	}
 	if (returned_events)
 		return returned_events;
 
@@ -1263,6 +1276,16 @@ int sensor_set_delay(int s, int64_t ns)
 	return 0;
 }
 
+int sensor_flush (int s)
+{
+	/* If one shot or not enabled return -EINVAL */
+	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE ||
+		sensor_info[s].enable_count == 0)
+		return -EINVAL;
+
+	sensor_info[s].meta_data_pending++;
+	return 0;
+}
 
 int allocate_control_data (void)
 {

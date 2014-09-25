@@ -151,6 +151,11 @@ struct sensor_info_t
 	int report_pending;
 
 	/*
+	 * This flag is set if we have a meta data event pending
+	 */
+	volatile int meta_data_pending;
+
+	/*
 	 * Timestamp closely matching the date of sampling, preferably retrieved
 	 * from a iio channel alongside sample data. Value zero indicates that
 	 * we couldn't get such a closely correlated timestamp, and that one

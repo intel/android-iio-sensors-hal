@@ -58,7 +58,18 @@ static int poll(struct sensors_poll_device_t* dev, sensors_event_t* data,
 	return sensor_poll(data, count);
 }
 
+static int batch (struct sensors_poll_device_1* dev,
+            int sensor_handle, int flags, int64_t sampling_period_ns,
+            int64_t max_report_latency_ns)
+{
+	return set_delay ((struct sensors_poll_device_t*)dev,
+		sensor_handle, sampling_period_ns);
+}
 
+static int flush(struct sensors_poll_device_1* dev, int handle)
+{
+	return sensor_flush (handle);
+}
 static int close_module(hw_device_t *device)
 {
 	if (init_count == 0)
@@ -79,7 +90,7 @@ static int close_module(hw_device_t *device)
 static int initialize_module(const struct hw_module_t *module, const char *id,
 				struct hw_device_t** device)
 {
-	static struct sensors_poll_device_t poll_device;
+	static struct sensors_poll_device_1 poll_device;
 
 	if (strcmp(id, SENSORS_HARDWARE_POLL))
                 return -EINVAL;
@@ -92,6 +103,8 @@ static int initialize_module(const struct hw_module_t *module, const char *id,
 	poll_device.activate		= activate;
 	poll_device.setDelay		= set_delay;
 	poll_device.poll		= poll;
+	poll_device.batch		= batch;
+	poll_device.flush		= flush;
 
 	*device = &poll_device.common;
 
