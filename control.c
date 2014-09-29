@@ -983,10 +983,9 @@ static int get_poll_wait_timeout (void)
 	 */
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
-		    ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) ||
-		      sensor_info[s].selected_trigger ==
-		      sensor_info[s].motion_trigger_name) &&
-		     sensor_info[s].sampling_rate) {
+		    sensor_info[s].selected_trigger ==
+		    sensor_info[s].motion_trigger_name &&
+		    sensor_info[s].sampling_rate) {
 			period = (int64_t) (1000000000.0 /
 						sensor_info[s].sampling_rate);
 
