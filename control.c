@@ -911,9 +911,8 @@ static void synthetize_duplicate_samples (void)
 		if (!sensor_info[s].enable_count)
 			continue;
 
-		/* If the sensor can generate duplicates, leave it alone */
-		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
-			sensor_info[s].selected_trigger !=
+		/* If the sensor is continuously firing, leave it alone */
+		if (	sensor_info[s].selected_trigger !=
 			sensor_info[s].motion_trigger_name)
 			continue;
 
