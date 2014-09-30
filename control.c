@@ -29,9 +29,9 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
 /* We use pthread condition variables to get worker threads out of sleep */
-static pthread_cond_t  thread_release_cond	[MAX_SENSORS];
-static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
-
+static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
+static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
+static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 
 /*
  * We associate tags to each of our poll set entries. These tags have the
@@ -42,10 +42,6 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  *  */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
-/* When polling try to compensate for the iio overhead in
- * order to try to get a frequency closer to the advertised one
- */
-#define OVERHEAD_THRESHOLD 0.97
 #define ENABLE_BUFFER_RETRIES 10
 #define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
@@ -349,14 +345,6 @@ static int get_field_count (int s)
 }
 
 
-static void time_add(struct timespec *out, struct timespec *in, int64_t ns)
-{
-	int64_t target_ts = 1000000000LL * in->tv_sec + in->tv_nsec + ns;
-
-	out->tv_sec = target_ts / 1000000000;
-	out->tv_nsec = target_ts % 1000000000;
-}
-
 
 static void* acquisition_routine (void* param)
 {
@@ -370,29 +358,29 @@ static void* acquisition_routine (void* param)
 	 */
 
 	int s = (int) (size_t) param;
-	int num_fields;
+	int num_fields, sample_size;
 	struct sensors_event_t data = {0};
 	int c;
 	int ret;
-	struct timespec entry_time;
 	struct timespec target_time;
-	int64_t period;
+	int64_t timestamp, period;
 
-	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), minDelay(%d), maxDelay(%d)\n",
-		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
-		sensor_desc[s].minDelay, sensor_desc[s].maxDelay);
+	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), ts(%lld)\n", s,
+		sensor_info[s].friendly_name, sensor_info[s].sampling_rate, sensor_info[s].report_ts);
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
 		return NULL;
 	}
 
-	if (!sensor_info[s].sampling_rate) {
-		ALOGE("Zero rate in acquisition routine for sensor %d\n", s);
+	if (sensor_info[s].sampling_rate <= 0) {
+		ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+			s, sensor_info[s].sampling_rate);
 		return NULL;
 	}
 
 	num_fields = get_field_count(s);
+	sample_size = num_fields * sizeof(float);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be
@@ -402,22 +390,18 @@ static void* acquisition_routine (void* param)
 	 */
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
-	while (1) {
-		/* Pinpoint the moment we start sampling */
-		clock_gettime(CLOCK_REALTIME, &entry_time);
+	/* Pinpoint the moment we start sampling */
+	timestamp = get_timestamp();
 
-		ALOGV("Acquiring sample data for sensor %d through sysfs\n", s);
+	/* Check and honor termination requests */
+	while (sensor_info[s].thread_data_fd[1] != -1) {
 
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
-
 			/* Check and honor termination requests */
 			if (sensor_info[s].thread_data_fd[1] == -1)
 				goto exit;
-
-			ALOGV("\tfield %d: %f\n", c, data.data[c]);
-
 		}
 
 		/* If the sample looks good */
@@ -425,18 +409,27 @@ static void* acquisition_routine (void* param)
 
 			/* Pipe it for transmission to poll loop */
 			ret = write(	sensor_info[s].thread_data_fd[1],
-					data.data,
-					num_fields * sizeof(float));
+					data.data, sample_size);
+			if (ret != sample_size)
+				ALOGE("S%d acquisition thread: tried to write %d, ret: %d\n",
+					s, sample_size, ret);
 		}
 
 		/* Check and honor termination requests */
 		if (sensor_info[s].thread_data_fd[1] == -1)
 			goto exit;
 
+		/* Recalculate period asumming sensor_info[s].sampling_rate
+		 * can be changed dynamically during the thread run */
+		if (sensor_info[s].sampling_rate <= 0) {
+			ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+				s, sensor_info[s].sampling_rate);
+			goto exit;
+		}
 
-		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
-		period = period * OVERHEAD_THRESHOLD;
-		time_add(&target_time, &entry_time, period);
+		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
+		timestamp += period;
+		set_timestamp(&target_time, timestamp);
 
 		/*
 		 * Wait until the sampling time elapses, or a rate change is
@@ -445,10 +438,6 @@ static void* acquisition_routine (void* param)
 		ret = pthread_cond_timedwait(	&thread_release_cond[s],
 						&thread_release_mutex[s],
 						&target_time);
-
-		/* Check and honor termination requests */
-		if (sensor_info[s].thread_data_fd[1] == -1)
-				goto exit;
 	}
 
 exit:
@@ -469,7 +458,9 @@ static void start_acquisition_thread (int s)
 	ALOGV("Initializing acquisition context for sensor %d\n", s);
 
 	/* Create condition variable and mutex for quick thread release */
-	ret = pthread_cond_init(&thread_release_cond[s], NULL);
+	ret = pthread_condattr_init(&thread_cond_attr[s]);
+	ret = pthread_condattr_setclock(&thread_cond_attr[s], POLLING_CLOCK);
+	ret = pthread_cond_init(&thread_release_cond[s], &thread_cond_attr[s]);
 	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
 	/* Create a pipe for inter thread communication */
@@ -1148,12 +1139,16 @@ int sensor_set_delay(int s, int64_t ns)
 	int n;
 	float sr;
 
-	if (!ns) {
-		ALOGE("Rejecting zero delay request on sensor %d\n", s);
+	if (ns <= 0) {
+		ALOGE("Rejecting non-positive delay request on sensor %d, required delay: %lld\n", s, ns);
 		return -EINVAL;
 	}
 
 	new_sampling_rate = 1000000000LL/ns;
+
+	ALOGV("Entering set delay S%d (%s): old rate(%f), new rate(%f)\n",
+		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
+		new_sampling_rate);
 
 	/*
 	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
