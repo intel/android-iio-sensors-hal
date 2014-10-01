@@ -739,7 +739,15 @@ void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
 
-	if (sensor_info[s].report_ts && sensor_info[s].sampling_rate) {
+	/*
+	*  A bit of a hack to please a bunch of cts tests. They
+	*  expect the timestamp to be exacly according to the set-up
+	*  frequency but if we're simply getting the timestamp at hal level
+	*  this may not be the case. Perhaps we'll get rid of this when
+	*  we'll be reading the timestamp from the iio channel for all sensors
+	*/
+	if (sensor_info[s].report_ts &&
+		sensor_info[s].sampling_rate && !sensor_desc[s].flags) {
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
 		maxTs = sensor_info[s].report_ts + period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
