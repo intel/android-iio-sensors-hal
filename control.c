@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <fcntl.h>
 #include <pthread.h>
+#include <time.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
@@ -44,15 +45,38 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  * order to try to get a frequency closer to the advertised one
  */
 #define OVERHEAD_THRESHOLD 0.97
+#define ENABLE_BUFFER_RETRIES 10
+#define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
+	int ret, retries, millisec;
+	struct timespec req = {0};
+
+	retries = ENABLE_BUFFER_RETRIES;
+	millisec = ENABLE_BUFFER_RETRY_DELAY_MS;
+	req.tv_sec = 0;
+	req.tv_nsec = millisec * 1000000L;
 
 	sprintf(sysfs_path, ENABLE_PATH, dev_num);
 
-	/* Low level, non-multiplexed, enable/disable routine */
-	return sysfs_write_int(sysfs_path, enabled);
+	while (retries--) {
+		/* Low level, non-multiplexed, enable/disable routine */
+		ret = sysfs_write_int(sysfs_path, enabled);
+		if (ret > 0)
+			break;
+
+		ALOGE("Failed enabling buffer, retrying");
+		nanosleep(&req, (struct timespec *)NULL);
+	}
+
+	if (ret < 0) {
+		ALOGE("Could not enable buffer\n");
+		return -EIO;
+	}
+
+	return 0;
 }
 
 
@@ -577,6 +601,10 @@ int sensor_activate(int s, int enabled)
 			free(sensor_info[s].history);
 			sensor_info[s].history = NULL;
 			sensor_info[s].history_size = 0;
+			if (sensor_info[s].history_sum) {
+				free(sensor_info[s].history_sum);
+				sensor_info[s].history_sum = NULL;
+			}
 		}
 
 		return 0;
@@ -626,6 +654,26 @@ int sensor_activate(int s, int enabled)
 }
 
 
+static int is_fast_accelerometer (int s)
+{
+	/*
+	 * Some games don't react well to accelerometers using any-motion
+	 * triggers. Even very low thresholds seem to trip them, and they tend
+	 * to request fairly high event rates. Favor continuous triggers if the
+	 * sensor is an accelerometer and uses a sampling rate of at least 25.
+	 */
+	int catalog_index = sensor_info[s].catalog_index;
+
+	if (sensor_catalog[catalog_index].type != SENSOR_TYPE_ACCELEROMETER)
+		return 0;
+
+	if (sensor_info[s].sampling_rate < 25)
+		return 0;
+
+	return 1;
+}
+
+
 static void enable_motion_trigger (int dev_num)
 {
 	/*
@@ -660,7 +708,8 @@ static void enable_motion_trigger (int dev_num)
 		    sensor_info[s].enable_count &&
 		    sensor_info[s].num_channels &&
 		    (!sensor_info[s].motion_trigger_name[0] ||
-		     !sensor_info[s].report_initialized)
+		     !sensor_info[s].report_initialized ||
+		     is_fast_accelerometer(s))
 		    )
 			return; /* Nope */
 
@@ -694,7 +743,15 @@ void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
 
-	if (sensor_info[s].report_ts && sensor_info[s].sampling_rate) {
+	/*
+	*  A bit of a hack to please a bunch of cts tests. They
+	*  expect the timestamp to be exacly according to the set-up
+	*  frequency but if we're simply getting the timestamp at hal level
+	*  this may not be the case. Perhaps we'll get rid of this when
+	*  we'll be reading the timestamp from the iio channel for all sensors
+	*/
+	if (sensor_info[s].report_ts &&
+		sensor_info[s].sampling_rate && !sensor_desc[s].flags) {
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
 		maxTs = sensor_info[s].report_ts + period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
@@ -854,9 +911,8 @@ static void synthetize_duplicate_samples (void)
 		if (!sensor_info[s].enable_count)
 			continue;
 
-		/* If the sensor can generate duplicates, leave it alone */
-		if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
-			sensor_info[s].selected_trigger !=
+		/* If the sensor is continuously firing, leave it alone */
+		if (	sensor_info[s].selected_trigger !=
 			sensor_info[s].motion_trigger_name)
 			continue;
 
@@ -926,10 +982,9 @@ static int get_poll_wait_timeout (void)
 	 */
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
-		    ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) ||
-		      sensor_info[s].selected_trigger ==
-		      sensor_info[s].motion_trigger_name) &&
-		     sensor_info[s].sampling_rate) {
+		    sensor_info[s].selected_trigger ==
+		    sensor_info[s].motion_trigger_name &&
+		    sensor_info[s].sampling_rate) {
 			period = (int64_t) (1000000000.0 /
 						sensor_info[s].sampling_rate);
 
@@ -1067,8 +1122,11 @@ int sensor_set_delay(int s, int64_t ns)
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	int32_t min_delay = sensor_desc[s].minDelay;
-	float max_supported_rate = (min_delay != 0 && min_delay != -1) ? (1000000.0f / min_delay) : 0;
+	int32_t min_delay_us = sensor_desc[s].minDelay;
+	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
+	float min_supported_rate = max_delay_us ? (1000000.0f / max_delay_us) : 1;
+	float max_supported_rate = 
+		(min_delay_us && min_delay_us != -1) ? (1000000.0f / min_delay_us) : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -1085,8 +1143,8 @@ int sensor_set_delay(int s, int64_t ns)
 	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
 	 * avoid setting up the stage for divisions by zero.
 	 */
-	if (new_sampling_rate < 1)
-		new_sampling_rate = 1;
+	if (new_sampling_rate < min_supported_rate)
+		new_sampling_rate = min_supported_rate;
 
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
@@ -1190,6 +1248,11 @@ int sensor_set_delay(int s, int64_t ns)
 		enable_buffer(dev_num, 0);
 
 	sysfs_write_float(sysfs_path, new_sampling_rate);
+
+	/* Switch back to continuous sampling for accelerometer based games */
+	if (is_fast_accelerometer(s) && sensor_info[s].selected_trigger !=
+					sensor_info[s].init_trigger_name)
+		setup_trigger(s, sensor_info[s].init_trigger_name);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);

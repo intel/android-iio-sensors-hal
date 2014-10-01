@@ -336,6 +336,12 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
 	sensor_desc[s].minDelay = sensor_get_min_delay(s);
 
+	/* We currently do not implement batching when we'll so
+	 * these should be overriden appropriately
+	 */
+	sensor_desc[s].fifoReservedEventCount = 0;
+	sensor_desc[s].fifoMaxEventCount = 0;
+
 	if (sensor_info[s].internal_name[0] == '\0') {
 		/*
 		 * In case the kernel-mode driver doesn't expose a name for

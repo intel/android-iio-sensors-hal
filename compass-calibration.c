@@ -21,6 +21,12 @@ static int raw_data_count = 0;
 int file_no = 0;
 #endif
 
+/* We'll have multiple calibration levels
+*  so that we can provide an estimation as fast as possible
+*/
+static const float min_diffs[CAL_STEPS] =  { 0.2, 0.4, 0.6, 1.0 };
+static const float max_sqr_errs[CAL_STEPS] = { 10.0, 8.0, 5.0, 3.5 };
+static const unsigned int lookback_counts[CAL_STEPS] = { 3, 4, 5, 6 };
 
 /* reset calibration algorithm */
 static void reset_sample (struct compass_cal* data)
