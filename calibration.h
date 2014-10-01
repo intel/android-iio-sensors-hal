@@ -16,14 +16,6 @@
 #define MAGNETIC_LOW 960 /* 31 micro tesla squared */
 #define MAGNETIC_HIGH 3600 /* 60 micro tesla squared */
 
-/* We'll have multiple calibration levels
-*  so that we can provide an estimation as fast as possible
-*/
-static const float min_diffs[CAL_STEPS] =  { 0.2, 0.4, 0.6, 1.0 };
-static const float max_sqr_errs[CAL_STEPS] = { 10.0, 8.0, 5.0, 3.5 };
-static const unsigned int lookback_counts[CAL_STEPS] = { 3, 4, 5, 6 };
-
-
 #ifdef DBG_RAW_DATA
 #define RAW_DATA_FULL_PATH "/data/raw_compass_data_full_%d.txt"
 #define RAW_DATA_SELECTED_PATH "/data/raw_compass_data_selected_%d.txt"
