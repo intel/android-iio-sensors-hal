@@ -387,6 +387,41 @@ flag_t sensor_get_flags (int s)
 	return flags;
 }
 
+int get_cdd_freq(int s, int must)
+{
+	int catalog_index = sensor_info[s].catalog_index;
+	int sensor_type = sensor_catalog[catalog_index].type;
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_ACCELEROMETER:
+			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			return (must ? 200 : 200); /* must 200 Hz, should 200 Hz, CDD compliant */
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			return (must ? 10 : 50);   /* must 10 Hz, should 50 Hz, CDD compliant */
+		case SENSOR_TYPE_LIGHT:
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
+		case SENSOR_TYPE_TEMPERATURE:
+			return (must ? 1 : 2);     /* must 1 Hz, should 2Hz, not mentioned in CDD */
+		default:
+			return 0;
+	}
+}
+
+/* This value is defined only for continuous mode and on-change sensors. It is the delay between
+ * two sensor events corresponding to the lowest frequency that this sensor supports. When lower
+ * frequencies are requested through batch()/setDelay() the events will be generated at this
+ * frequency instead. It can be used by the framework or applications to estimate when the batch
+ * FIFO may be full.
+ *
+ * NOTE: 1) period_ns is in nanoseconds where as maxDelay/minDelay are in microseconds.
+ *              continuous, on-change: maximum sampling period allowed in microseconds.
+ *              one-shot, special : 0
+ *   2) maxDelay should always fit within a 32 bit signed integer. It is declared as 64 bit
+ *      on 64 bit architectures only for binary compatibility reasons.
+ * Availability: SENSORS_DEVICE_API_VERSION_1_3
+ */
 max_delay_t sensor_get_max_delay (int s)
 {
 	char avail_sysfs_path[PATH_MAX];
@@ -396,34 +431,39 @@ max_delay_t sensor_get_max_delay (int s)
 	float min_supported_rate = 1000;
 	float sr;
 
-	/* continuous: maximum sampling period allowed in microseconds.
-	 * on-change, one-shot, special : 0
+	/* continuous, on-change: maximum sampling period allowed in microseconds.
+	 * one-shot, special : 0
 	 */
-
-	if (sensor_desc[s].flags)
+	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE ||
+	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
 		return 0;
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0)
-		return 0;
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
+		/* If poll mode sensor */
+		if (!sensor_info[s].num_channels) {
+			/* The must rate */
+			min_supported_rate = get_cdd_freq(s, 1);
+		}
+	} else {
+		cursor = freqs_buf;
+		while (*cursor && cursor[0]) {
 
-	cursor = freqs_buf;
-	while (*cursor && cursor[0]) {
+			/* Decode a single value */
+			sr = strtod(cursor, NULL);
 
-		/* Decode a single value */
-		sr = strtod(cursor, NULL);
+			if (sr < min_supported_rate)
+				min_supported_rate = sr;
 
-		if (sr < min_supported_rate)
-			min_supported_rate = sr;
+			/* Skip digits */
+			while (cursor[0] && !isspace(cursor[0]))
+				cursor++;
 
-		/* Skip digits */
-		while (cursor[0] && !isspace(cursor[0]))
-			cursor++;
-
-		/* Skip spaces */
-		while (cursor[0] && isspace(cursor[0]))
-			cursor++;
+			/* Skip spaces */
+			while (cursor[0] && isspace(cursor[0]))
+				cursor++;
+		}
 	}
 
 	/* return 0 for wrong values */
@@ -449,29 +489,25 @@ int32_t sensor_get_min_delay(int s)
 	char* cursor;
 	float max_supported_rate = 0;
 	float sr;
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type = sensor_catalog[catalog_index].type;
 
+	/* continuous: minimum sampling period allowed in microseconds.
+	 * on-change, special : 0
+	 * one-shot  :-1
+	 */
+	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ON_CHANGE_MODE ||
+	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
+		return 0;
+
+	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE)
+		return -1;
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
 		/* If poll mode sensor */
 		if (!sensor_info[s].num_channels) {
-			switch (sensor_type) {
-				case SENSOR_TYPE_ACCELEROMETER:
-					max_supported_rate = 125; /* 125 Hz */
-					break;
-				case SENSOR_TYPE_GYROSCOPE:
-				case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-					max_supported_rate = 200; /* 200 Hz */
-					break;
-				case SENSOR_TYPE_MAGNETIC_FIELD:
-					max_supported_rate = 10; /* 10 Hz */
-					break;
-				default:
-					max_supported_rate = 0;
-			}
+			/* The should rate */
+			max_supported_rate = get_cdd_freq(s, 0);
 		}
 	} else {
 		cursor = freqs_buf;
@@ -493,5 +529,10 @@ int32_t sensor_get_min_delay(int s)
 		}
 	}
 
+	/* return 0 for wrong values */
+	if (max_supported_rate < 0.1)
+		return 0;
+
+	/* Return microseconds */
 	return (int32_t)(1000000.0 / max_supported_rate);
 }

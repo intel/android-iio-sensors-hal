@@ -34,6 +34,7 @@
 #define MAX_NAME_SIZE		32
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
+#define REPORTING_MODE(x)	((x) & 0x06)
 
 #ifdef __LP64__
 	typedef uint64_t flag_t;

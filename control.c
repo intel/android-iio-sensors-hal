@@ -377,7 +377,9 @@ static void* acquisition_routine (void* param)
 	struct timespec target_time;
 	int64_t period;
 
-	ALOGV("Entering data acquisition thread for sensor %d\n", s);
+	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), minDelay(%ld), maxDelay(%ld)\n",
+		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
+		sensor_desc[s].minDelay, sensor_desc[s].maxDelay);
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
@@ -750,8 +752,9 @@ void set_report_ts(int s, int64_t ts)
 	*  this may not be the case. Perhaps we'll get rid of this when
 	*  we'll be reading the timestamp from the iio channel for all sensors
 	*/
-	if (sensor_info[s].report_ts &&
-		sensor_info[s].sampling_rate && !sensor_desc[s].flags) {
+	if (sensor_info[s].report_ts && sensor_info[s].sampling_rate &&
+		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
+	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
 		maxTs = sensor_info[s].report_ts + period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
