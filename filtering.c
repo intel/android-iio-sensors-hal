@@ -2,23 +2,18 @@
 #include <hardware/sensors.h>
 #include <math.h>
 #include <pthread.h>
+#include <utils/Log.h>
 #include "common.h"
 #include "filtering.h"
 
-void add_to_buff(struct circ_buff* circ_buff, float val)
-{
-	if (circ_buff->count < circ_buff->size)
-	{
-		circ_buff->buff[circ_buff->count] = val;
-		circ_buff->count++;
-		return;
-	}
 
-	circ_buff->idx = circ_buff->idx % circ_buff->size;
-	circ_buff->buff[circ_buff->idx] = val;
-	circ_buff->idx++;
-	return;
-}
+struct filter_median
+{
+	float* buff;
+	unsigned int idx;
+	unsigned int count;
+	unsigned int sample_size;
+};
 
 static unsigned int partition(float* list, unsigned int left,
 	unsigned int right, unsigned int pivot_index)
@@ -80,29 +75,49 @@ float median(float* queue, unsigned int size)
 	return temp[left];
 }
 
-void denoise_median(struct sensors_event_t* data, struct sensor_info_t* info)
+void denoise_median_init(int s, unsigned int num_fields,
+	unsigned int max_samples)
+{
+	struct filter_median* f_data = (struct filter_median*) calloc(1, sizeof(struct filter_median));
+	f_data->buff = (float*)calloc(max_samples,
+		sizeof(float) * num_fields);
+	f_data->sample_size = max_samples;
+	f_data->count = 0;
+	f_data->idx = 0;
+	sensor_info[s].filter = f_data;
+}
+
+void denoise_median_release(int s)
+{
+	if (!sensor_info[s].filter)
+		return;
+
+	free(((struct filter_median*)sensor_info[s].filter)->buff);
+	free(sensor_info[s].filter);
+	sensor_info[s].filter = NULL;
+}
+void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
+					unsigned int num_fields)
 {
 	float x, y, z;
 	float scale;
+	unsigned int field, offset;
 
-	struct filter* f_data = (struct filter*) info->filter;
+	struct filter_median* f_data = (struct filter_median*) info->filter;
 	if (!f_data)
 		return;
 
-	x = data->data[0];
-	y = data->data[1];
-	z = data->data[2];
 
-	add_to_buff(f_data->x_buff, x);
-	add_to_buff(f_data->y_buff, y);
-	add_to_buff(f_data->z_buff, z);
+	if (f_data->count < f_data->sample_size)
+		f_data->count++;
 
-	x = median(f_data->x_buff->buff, f_data->x_buff->count);
-	y = median(f_data->y_buff->buff, f_data->y_buff->count);
-	z = median(f_data->z_buff->buff, f_data->z_buff->count);
+	for (field = 0; field < num_fields; field++) {
+		offset = f_data->sample_size * field;
+		f_data->buff[offset + f_data->idx] = data->data[field];
 
-	data->data[0] = x;
-	data->data[1] = y;
-	data->data[2] = z;
+		data->data[field] = median(f_data->buff + offset, f_data->count);
+	}
+
+	f_data->idx = (f_data->idx + 1) % f_data->sample_size;
 }
 

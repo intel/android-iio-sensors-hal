@@ -289,7 +289,7 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
 				calibrate_gyro(data, &sensor_info[s]);
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise_median(data, &sensor_info[s]);
+				denoise_median(&sensor_info[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_LIGHT:
