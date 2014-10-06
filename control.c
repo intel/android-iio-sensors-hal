@@ -378,7 +378,7 @@ static void* acquisition_routine (void* param)
 	struct timespec target_time;
 	int64_t period;
 
-	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), minDelay(%ld), maxDelay(%ld)\n",
+	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), minDelay(%d), maxDelay(%d)\n",
 		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
 		sensor_desc[s].minDelay, sensor_desc[s].maxDelay);
 

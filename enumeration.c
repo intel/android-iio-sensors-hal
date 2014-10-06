@@ -335,7 +335,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].flags = sensor_get_flags(s);
 	sensor_desc[s].minDelay = sensor_get_min_delay(s);
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
-	ALOGI("Sensor %d (%s) type(%d) minD(%ld) maxD(%ld) flags(%2.2x)\n",
+	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
 		s, sensor_info[s].friendly_name, sensor_desc[s].type,
 		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
 

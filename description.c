@@ -3,12 +3,14 @@
  */
 
 #include <stdlib.h>
+#include <ctype.h>
 #include <utils/Log.h>
 #include <cutils/properties.h>
 #include <hardware/sensors.h>
 #include "common.h"
 #include "enumeration.h"
 #include "description.h"
+#include "utils.h"
 
 #define IIO_SENSOR_HAL_VERSION	1
 
