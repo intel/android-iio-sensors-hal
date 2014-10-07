@@ -77,9 +77,10 @@ static int enable_buffer(int dev_num, int enabled)
 }
 
 
-static void setup_trigger (int s, const char* trigger_val)
+static int setup_trigger (int s, const char* trigger_val)
 {
 	char sysfs_path[PATH_MAX];
+	int ret = -1, attempts = 5;
 
 	sprintf(sysfs_path, TRIGGER_PATH, sensor_info[s].dev_num);
 
@@ -87,9 +88,17 @@ static void setup_trigger (int s, const char* trigger_val)
 		ALOGI("Setting S%d (%s) trigger to %s\n", s,
 			sensor_info[s].friendly_name, trigger_val);
 
-	sysfs_write_str(sysfs_path, trigger_val);
+	while (ret == -1 && attempts) {
+		ret = sysfs_write_str(sysfs_path, trigger_val);
+		attempts--;
+	}
 
-	sensor_info[s].selected_trigger = trigger_val;
+	if (ret != -1)
+		sensor_info[s].selected_trigger = trigger_val;
+	else
+		ALOGE("Setting S%d (%s) trigger to %s FAILED.\n", s,
+			sensor_info[s].friendly_name, trigger_val);
+	return ret;
 }
 
 
