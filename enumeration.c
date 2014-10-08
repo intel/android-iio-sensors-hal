@@ -333,8 +333,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	*/
 	sensor_desc[s].requiredPermission = "";
 	sensor_desc[s].flags = sensor_get_flags(s);
-	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
 	sensor_desc[s].minDelay = sensor_get_min_delay(s);
+	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
+	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
+		s, sensor_info[s].friendly_name, sensor_desc[s].type,
+		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
 
 	/* We currently do not implement batching when we'll so
 	 * these should be overriden appropriately
@@ -356,17 +359,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
-		struct filter* f_data = (struct filter*) calloc(1, sizeof(struct filter));
-		f_data->x_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
-		f_data->y_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
-		f_data->z_buff = (struct circ_buff*) calloc(1, sizeof (struct circ_buff));
-		f_data->x_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
-		f_data->y_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
-		f_data->z_buff->buff = (float*)calloc(SAMPLE_SIZE, sizeof(float));
-		f_data->x_buff->size = SAMPLE_SIZE;
-		f_data->y_buff->size = SAMPLE_SIZE;
-		f_data->z_buff->size = SAMPLE_SIZE;
-		sensor_info[s].filter = f_data;
+		denoise_median_init(s, 7, 3);
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
@@ -381,6 +374,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].thread_data_fd[0]  = -1;
 	sensor_info[s].thread_data_fd[1]  = -1;
 	sensor_info[s].acquisition_thread = -1;
+
+	sensor_info[s].meta_data_pending = 0;
 
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor_info[s].order))
@@ -808,14 +803,7 @@ void delete_enumeration_data (void)
 			}
 			break;
 			if (sensor_info[i].filter != NULL) {
-				free(((struct filter*)sensor_info[i].filter)->x_buff->buff);
-				free(((struct filter*)sensor_info[i].filter)->y_buff->buff);
-				free(((struct filter*)sensor_info[i].filter)->z_buff->buff);
-				free(((struct filter*)sensor_info[i].filter)->x_buff);
-				free(((struct filter*)sensor_info[i].filter)->y_buff);
-				free(((struct filter*)sensor_info[i].filter)->z_buff);
-				free(sensor_info[i].filter);
-				sensor_info[i].filter = NULL;
+				denoise_median_release(i);
 			}
 		default:
 			break;

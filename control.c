@@ -29,8 +29,9 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
 /* We use pthread condition variables to get worker threads out of sleep */
-static pthread_cond_t  thread_release_cond	[MAX_SENSORS];
-static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
+static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
+static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
+static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 
 /*
  * We associate tags to each of our poll set entries. These tags have the
@@ -41,10 +42,6 @@ static pthread_mutex_t thread_release_mutex	[MAX_SENSORS];
  *  */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
-/* When polling try to compensate for the iio overhead in
- * order to try to get a frequency closer to the advertised one
- */
-#define OVERHEAD_THRESHOLD 0.97
 #define ENABLE_BUFFER_RETRIES 10
 #define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
@@ -80,9 +77,10 @@ static int enable_buffer(int dev_num, int enabled)
 }
 
 
-static void setup_trigger (int s, const char* trigger_val)
+static int setup_trigger (int s, const char* trigger_val)
 {
 	char sysfs_path[PATH_MAX];
+	int ret = -1, attempts = 5;
 
 	sprintf(sysfs_path, TRIGGER_PATH, sensor_info[s].dev_num);
 
@@ -90,9 +88,17 @@ static void setup_trigger (int s, const char* trigger_val)
 		ALOGI("Setting S%d (%s) trigger to %s\n", s,
 			sensor_info[s].friendly_name, trigger_val);
 
-	sysfs_write_str(sysfs_path, trigger_val);
+	while (ret == -1 && attempts) {
+		ret = sysfs_write_str(sysfs_path, trigger_val);
+		attempts--;
+	}
 
-	sensor_info[s].selected_trigger = trigger_val;
+	if (ret != -1)
+		sensor_info[s].selected_trigger = trigger_val;
+	else
+		ALOGE("Setting S%d (%s) trigger to %s FAILED.\n", s,
+			sensor_info[s].friendly_name, trigger_val);
+	return ret;
 }
 
 
@@ -348,14 +354,6 @@ static int get_field_count (int s)
 }
 
 
-static void time_add(struct timespec *out, struct timespec *in, int64_t ns)
-{
-	int64_t target_ts = 1000000000LL * in->tv_sec + in->tv_nsec + ns;
-
-	out->tv_sec = target_ts / 1000000000;
-	out->tv_nsec = target_ts % 1000000000;
-}
-
 
 static void* acquisition_routine (void* param)
 {
@@ -369,27 +367,29 @@ static void* acquisition_routine (void* param)
 	 */
 
 	int s = (int) (size_t) param;
-	int num_fields;
+	int num_fields, sample_size;
 	struct sensors_event_t data = {0};
 	int c;
 	int ret;
-	struct timespec entry_time;
 	struct timespec target_time;
-	int64_t period;
+	int64_t timestamp, period;
 
-	ALOGV("Entering data acquisition thread for sensor %d\n", s);
+	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), ts(%lld)\n", s,
+		sensor_info[s].friendly_name, sensor_info[s].sampling_rate, sensor_info[s].report_ts);
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
 		return NULL;
 	}
 
-	if (!sensor_info[s].sampling_rate) {
-		ALOGE("Zero rate in acquisition routine for sensor %d\n", s);
+	if (sensor_info[s].sampling_rate <= 0) {
+		ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+			s, sensor_info[s].sampling_rate);
 		return NULL;
 	}
 
 	num_fields = get_field_count(s);
+	sample_size = num_fields * sizeof(float);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be
@@ -399,22 +399,18 @@ static void* acquisition_routine (void* param)
 	 */
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
-	while (1) {
-		/* Pinpoint the moment we start sampling */
-		clock_gettime(CLOCK_REALTIME, &entry_time);
+	/* Pinpoint the moment we start sampling */
+	timestamp = get_timestamp();
 
-		ALOGV("Acquiring sample data for sensor %d through sysfs\n", s);
+	/* Check and honor termination requests */
+	while (sensor_info[s].thread_data_fd[1] != -1) {
 
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
-
 			/* Check and honor termination requests */
 			if (sensor_info[s].thread_data_fd[1] == -1)
 				goto exit;
-
-			ALOGV("\tfield %d: %f\n", c, data.data[c]);
-
 		}
 
 		/* If the sample looks good */
@@ -422,18 +418,27 @@ static void* acquisition_routine (void* param)
 
 			/* Pipe it for transmission to poll loop */
 			ret = write(	sensor_info[s].thread_data_fd[1],
-					data.data,
-					num_fields * sizeof(float));
+					data.data, sample_size);
+			if (ret != sample_size)
+				ALOGE("S%d acquisition thread: tried to write %d, ret: %d\n",
+					s, sample_size, ret);
 		}
 
 		/* Check and honor termination requests */
 		if (sensor_info[s].thread_data_fd[1] == -1)
 			goto exit;
 
+		/* Recalculate period asumming sensor_info[s].sampling_rate
+		 * can be changed dynamically during the thread run */
+		if (sensor_info[s].sampling_rate <= 0) {
+			ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+				s, sensor_info[s].sampling_rate);
+			goto exit;
+		}
 
-		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
-		period = period * OVERHEAD_THRESHOLD;
-		time_add(&target_time, &entry_time, period);
+		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
+		timestamp += period;
+		set_timestamp(&target_time, timestamp);
 
 		/*
 		 * Wait until the sampling time elapses, or a rate change is
@@ -442,10 +447,6 @@ static void* acquisition_routine (void* param)
 		ret = pthread_cond_timedwait(	&thread_release_cond[s],
 						&thread_release_mutex[s],
 						&target_time);
-
-		/* Check and honor termination requests */
-		if (sensor_info[s].thread_data_fd[1] == -1)
-				goto exit;
 	}
 
 exit:
@@ -466,7 +467,9 @@ static void start_acquisition_thread (int s)
 	ALOGV("Initializing acquisition context for sensor %d\n", s);
 
 	/* Create condition variable and mutex for quick thread release */
-	ret = pthread_cond_init(&thread_release_cond[s], NULL);
+	ret = pthread_condattr_init(&thread_cond_attr[s]);
+	ret = pthread_condattr_setclock(&thread_cond_attr[s], POLLING_CLOCK);
+	ret = pthread_cond_init(&thread_release_cond[s], &thread_cond_attr[s]);
 	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
 	/* Create a pipe for inter thread communication */
@@ -750,8 +753,9 @@ void set_report_ts(int s, int64_t ts)
 	*  this may not be the case. Perhaps we'll get rid of this when
 	*  we'll be reading the timestamp from the iio channel for all sensors
 	*/
-	if (sensor_info[s].report_ts &&
-		sensor_info[s].sampling_rate && !sensor_desc[s].flags) {
+	if (sensor_info[s].report_ts && sensor_info[s].sampling_rate &&
+		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
+	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
 		maxTs = sensor_info[s].report_ts + period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
@@ -1026,7 +1030,7 @@ return_available_sensor_reports:
 	returned_events = 0;
 
 	/* Check our sensor collection for available reports */
-	for (s=0; s<sensor_count && returned_events < count; s++)
+	for (s=0; s<sensor_count && returned_events < count; s++) {
 		if (sensor_info[s].report_pending) {
 			event_count = 0;
 			/* Lower flag */
@@ -1066,7 +1070,19 @@ return_available_sensor_reports:
 			 * value for a 'on change' sensor, silently drop it.
 			 */
 		}
-
+		while (sensor_info[s].meta_data_pending) {
+			/* See sensors.h on these */
+			data[returned_events].version = META_DATA_VERSION;
+			data[returned_events].sensor = 0;
+			data[returned_events].type = SENSOR_TYPE_META_DATA;
+			data[returned_events].reserved0 = 0;
+			data[returned_events].timestamp = 0;
+			data[returned_events].meta_data.sensor = s;
+			data[returned_events].meta_data.what = META_DATA_FLUSH_COMPLETE;
+			returned_events++;
+			sensor_info[s].meta_data_pending--;
+		}
+	}
 	if (returned_events)
 		return returned_events;
 
@@ -1132,12 +1148,16 @@ int sensor_set_delay(int s, int64_t ns)
 	int n;
 	float sr;
 
-	if (!ns) {
-		ALOGE("Rejecting zero delay request on sensor %d\n", s);
+	if (ns <= 0) {
+		ALOGE("Rejecting non-positive delay request on sensor %d, required delay: %lld\n", s, ns);
 		return -EINVAL;
 	}
 
 	new_sampling_rate = 1000000000LL/ns;
+
+	ALOGV("Entering set delay S%d (%s): old rate(%f), new rate(%f)\n",
+		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
+		new_sampling_rate);
 
 	/*
 	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
@@ -1260,6 +1280,16 @@ int sensor_set_delay(int s, int64_t ns)
 	return 0;
 }
 
+int sensor_flush (int s)
+{
+	/* If one shot or not enabled return -EINVAL */
+	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE ||
+		sensor_info[s].enable_count == 0)
+		return -EINVAL;
+
+	sensor_info[s].meta_data_pending++;
+	return 0;
+}
 
 int allocate_control_data (void)
 {

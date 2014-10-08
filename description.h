@@ -30,6 +30,8 @@ int		sensor_get_order	(int s, unsigned char map[MAX_CHANNELS]);
 char* sensor_get_string_type(int s);
 flag_t sensor_get_flags (int s);
 
+uint32_t sensor_get_quirks (int s);
+
 int32_t sensor_get_min_delay(int s);
 max_delay_t sensor_get_max_delay (int s);
 

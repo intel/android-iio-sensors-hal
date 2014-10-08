@@ -34,6 +34,7 @@
 #define MAX_NAME_SIZE		32
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
+#define REPORTING_MODE(x)	((x) & 0x06)
 
 #ifdef __LP64__
 	typedef uint64_t flag_t;
@@ -148,6 +149,11 @@ struct sensor_info_t
 	 * contains that data.
 	 */
 	int report_pending;
+
+	/*
+	 * This flag is set if we have a meta data event pending
+	 */
+	volatile int meta_data_pending;
 
 	/*
 	 * Timestamp closely matching the date of sampling, preferably retrieved

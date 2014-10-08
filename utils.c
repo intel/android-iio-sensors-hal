@@ -256,7 +256,7 @@ int decode_type_spec(	const char type_buf[MAX_TYPE_SPEC_LEN],
 
 int64_t load_timestamp(struct timespec *ts)
 {
-	clock_gettime(CLOCK_MONOTONIC, ts);
+	clock_gettime(POLLING_CLOCK, ts);
 
 	return 1000000000LL * ts->tv_sec + ts->tv_nsec;
 }
