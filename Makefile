@@ -2,7 +2,7 @@ USE_INTEL_SENSOR_HAL := true
 include Android.mk
 
 LIBHARDWARE?=../../../../hardware/libhardware/
-CFLAGS=-DLOG_TAG=\"sens\" -I$(LIBHARDWARE)include/ -I./linux -fPIC
+CFLAGS=-DLOG_TAG=\"sens\" -I$(LIBHARDWARE)include/ -I./linux -fPIC -Wall
 LDFLAGS=-ldl -lpthread -lm -lrt
 
 all: sensors.gmin.so sens
