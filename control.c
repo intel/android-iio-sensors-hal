@@ -579,6 +579,10 @@ static void start_acquisition_thread (int s)
 
 	/* Add incoming side of pipe to our poll set, with a suitable tag */
 	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, incoming_data_fd , &ev);
+	if (ret == -1) {
+		ALOGE("Failed adding %d to poll set (%s)\n",
+			incoming_data_fd, strerror(errno));
+	}
 
 	/* Create and start worker thread */
 	ret = pthread_create(&sensor[s].acquisition_thread, NULL, acquisition_routine, (void*) (size_t) s);
@@ -843,7 +847,7 @@ static void reapply_sampling_rates (int s)
 	 * that ended up being used after arbitration.
 	 */
 
-	int i, j, base, user;
+	int i, j, base;
 
 	if (sensor[s].is_virtual) {
 		/* Take care of downwards dependencies */
@@ -1345,7 +1349,6 @@ int sensor_poll (sensors_event_t* data, int count)
 	struct epoll_event ev[MAX_DEVICES];
 	int returned_events;
 	int event_count;
-	int uncal_start;
 
 	/* Get one or more events from our collection of sensors */
 return_available_sensor_reports:

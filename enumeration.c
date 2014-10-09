@@ -707,7 +707,6 @@ static void setup_trigger_names (void)
 {
 	char filename[PATH_MAX];
 	char buf[MAX_NAME_SIZE];
-	int len;
 	int s;
 	int trigger;
 	int ret;

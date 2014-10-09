@@ -136,8 +136,6 @@ static void denoise_median_reset (sensor_info_t* info)
 
 static void denoise_median (sensor_info_t* info, sensors_event_t* data, unsigned int num_fields)
 {
-	float x, y, z;
-	float scale;
 	unsigned int field, offset;
 
 	filter_median_t* f_data = (filter_median_t*) info->filter;
@@ -170,7 +168,6 @@ static void denoise_average (sensor_info_t* si, sensors_event_t* data)
 	 * depending on which is lower.
 	 */
 
-	int i;
 	int f;
 	int sampling_rate = (int) si->sampling_rate;
 	int history_size;

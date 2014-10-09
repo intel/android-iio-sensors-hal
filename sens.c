@@ -504,7 +504,7 @@ static int start_hal(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	char cmd[1024], *tmp;
+	char cmd[1024];
 	int sock, i;
 	struct iovec buff = {
 		.iov_base = cmd,
