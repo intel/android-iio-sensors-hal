@@ -1127,6 +1127,25 @@ await_event:
 }
 
 
+static void tentative_switch_trigger (int s)
+{
+	/*
+	 * Under certain situations it may be beneficial to use an alternate
+	 * trigger:
+	 *
+	 * - for applications using the accelerometer with high sampling rates,
+	 *   prefer the continuous trigger over the any-motion one, to avoid
+	 *   jumps related to motion thresholds
+	 */
+
+	if (is_fast_accelerometer(s) &&
+		!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+			sensor_info[s].selected_trigger ==
+				sensor_info[s].motion_trigger_name)
+		setup_trigger(s, sensor_info[s].init_trigger_name);
+}
+
+
 int sensor_set_delay(int s, int64_t ns)
 {
 	/* Set the rate at which a specific sensor should report events */
@@ -1255,12 +1274,10 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
 		new_sampling_rate = max_supported_rate;
 	}
-
 
 	/* If the desired rate is already active we're all set */
 	if (new_sampling_rate == cur_sampling_rate)
@@ -1273,10 +1290,8 @@ int sensor_set_delay(int s, int64_t ns)
 
 	sysfs_write_float(sysfs_path, new_sampling_rate);
 
-	/* Switch back to continuous sampling for accelerometer based games */
-	if (is_fast_accelerometer(s) && sensor_info[s].selected_trigger !=
-					sensor_info[s].init_trigger_name)
-		setup_trigger(s, sensor_info[s].init_trigger_name);
+	/* Check if it makes sense to use an alternate trigger */
+	tentative_switch_trigger(s);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
