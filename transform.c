@@ -293,8 +293,16 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			 */
 			data->gyro.status = SENSOR_STATUS_ACCURACY_MEDIUM;
 
-			if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
-				calibrate_gyro(data, &sensor_info[s]);
+			/*
+			 * We're only trying to calibrate data from continuously
+			 * firing gyroscope drivers, as motion based ones use
+			 * movement thresholds that may lead us to incorrectly
+			 * estimate bias.
+			 */
+			if (sensor_info[s].selected_trigger !=
+				sensor_info[s].motion_trigger_name)
+					calibrate_gyro(data, &sensor_info[s]);
+
 			if (sensor_info[s].quirks & QUIRK_NOISY)
 				denoise_median(&sensor_info[s], data, 3);
 			break;
