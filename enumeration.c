@@ -642,11 +642,11 @@ static void setup_trigger_names (void)
 
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].num_channels) {
-			ALOGI(	"Sensor %d (%s) default trigger: %s\n", s,
+			ALOGI("Sensor %d (%s) default trigger: %s\n", s,
 				sensor_info[s].friendly_name,
 				sensor_info[s].init_trigger_name);
 			if (sensor_info[s].motion_trigger_name[0])
-				ALOGI(	"Sensor %d (%s) motion trigger: %s\n",
+				ALOGI("Sensor %d (%s) motion trigger: %s\n",
 				s, sensor_info[s].friendly_name,
 				sensor_info[s].motion_trigger_name);
 		}
