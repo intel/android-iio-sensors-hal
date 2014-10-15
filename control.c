@@ -920,8 +920,8 @@ static void synthetize_duplicate_samples (void)
 			continue;
 
 		/* If the sensor is continuously firing, leave it alone */
-		if (	sensor_info[s].selected_trigger !=
-			sensor_info[s].motion_trigger_name)
+		if (sensor_info[s].selected_trigger !=
+		    sensor_info[s].motion_trigger_name)
 			continue;
 
 		/* If we haven't seen a sample, there's nothing to duplicate */
@@ -983,10 +983,10 @@ static int get_poll_wait_timeout (void)
 	int64_t period;
 
 	/*
-	 * Check if have have to deal with "terse" drivers that only send events
-	 * when there is motion, despite the fact that the associated Android
-	 * sensor type is continuous rather than on-change. In that case we have
-	 * to duplicate events. Check deadline for the nearest upcoming event.
+	 * Check if we're dealing with a driver that only send events when
+	 * there is motion, despite the fact that the associated Android sensor
+	 * type is continuous rather than on-change. In that case we have to
+	 * duplicate events. Check deadline for the nearest upcoming event.
 	 */
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
