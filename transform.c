@@ -286,6 +286,13 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 
 		case SENSOR_TYPE_GYROSCOPE:
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			/*
+			 * Report medium accuracy by default ; higher accuracy
+			 * levels will be reported once, and if, we achieve
+			 * calibration.
+			 */
+			data->gyro.status = SENSOR_STATUS_ACCURACY_MEDIUM;
+
 			if (!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER))
 				calibrate_gyro(data, &sensor_info[s]);
 			if (sensor_info[s].quirks & QUIRK_NOISY)
