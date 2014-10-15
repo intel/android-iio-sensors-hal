@@ -627,6 +627,19 @@ static void setup_trigger_names (void)
 		update_sensor_matching_trigger_name(buf);
 	}
 
+	/*
+	 * Certain drivers expose only motion triggers even though they should
+	 * be continous. For these, use the default trigger name as the motion
+	 * trigger. The code generating intermediate events is dependent on
+	 * motion_trigger_name being set to a non empty string.
+	 */
+
+	for (s=0; s<sensor_count; s++)
+		if ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+		    sensor_info[s].motion_trigger_name[0] == '\0')
+			strcpy( sensor_info[s].motion_trigger_name,
+				sensor_info[s].init_trigger_name);
+
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].num_channels) {
 			ALOGI(	"Sensor %d (%s) default trigger: %s\n", s,
