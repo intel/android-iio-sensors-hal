@@ -374,13 +374,13 @@ static void* acquisition_routine (void* param)
 	struct timespec target_time;
 	int64_t timestamp, period;
 
-	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), ts(%lld)\n", s,
-		sensor_info[s].friendly_name, sensor_info[s].sampling_rate, sensor_info[s].report_ts);
-
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
 		return NULL;
 	}
+
+	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), ts(%lld)\n", s,
+		sensor_info[s].friendly_name, sensor_info[s].sampling_rate, sensor_info[s].report_ts);
 
 	if (sensor_info[s].sampling_rate <= 0) {
 		ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
