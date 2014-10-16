@@ -15,7 +15,7 @@
 
 int usage(void)
 {
-	fprintf(stderr, "sens start hal.so\n");
+	fprintf(stderr, "sens start [sensors.gmin.so]\n");
 	fprintf(stderr, "sens [activate | deactivate] sensor_id\n");
 	fprintf(stderr, "sens set_delay sensor_id delay\n");
 	fprintf(stderr, "sens poll\n");
@@ -407,13 +407,36 @@ static int start_server(void)
 	}
 }
 
-static int start_hal(const char *hal_path)
+static const char *hal_paths[] = {
+	"/system/lib/hw/sensors.gmin.so",
+	"sensors.gmin.so",
+	"/lib/sensors.gmin.so",
+};
+
+static int start_hal(int argc, char **argv)
 {
 	void *hal;
 	pid_t child;
 	int err;
 	pthread_t sensors_thread;
+	const char *hal_path = NULL;
 
+	if (argc == 2) {
+		unsigned i;
+
+		for(i = 0; i < sizeof(hal_paths)/sizeof(const char*); i++) {
+			if (!access(hal_paths[i], R_OK)) {
+				hal_path = hal_paths[i];
+				break;
+			}
+		}
+
+		if (!hal_path) {
+			fprintf(stderr, "unable to find HAL\n");
+			exit(1);
+		}
+	} else
+		hal_path = argv[2];
 
 	hal = dlopen(hal_path, RTLD_NOW);
 	if (!hal) {
@@ -500,10 +523,10 @@ int main(int argc, char **argv)
 	}
 
 	if (!strcmp(argv[1], "start")) {
-		if (argc < 3)
+		if (argc < 2)
 			return usage();
 
-		return start_hal(argv[2]);
+		return start_hal(argc, argv);
 	}
 
 	strcpy(cmd, argv[1]); strcat(cmd, " ");
