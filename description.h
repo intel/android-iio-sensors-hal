@@ -14,25 +14,20 @@
 #define QUIRK_NOISY		0x10  /* High noise level on readings	      */
 #define QUIRK_FORCE_CONTINUOUS	0x20  /* Force usage of continuous trigger    */
 
-char*	sensor_get_name		(int handle);
-char*	sensor_get_vendor	(int handle);
-int	sensor_get_version	(int handle);
-float	sensor_get_max_range	(int handle);
-float	sensor_get_resolution	(int handle);
-float	sensor_get_power	(int handle);
-float	sensor_get_illumincalib (int handle);
-
+char*		sensor_get_name		(int s);
+char*		sensor_get_vendor	(int s);
+int		sensor_get_version	(int s);
+float		sensor_get_max_range	(int s);
+float		sensor_get_resolution	(int s);
+float		sensor_get_power	(int s);
+flag_t		sensor_get_flags	(int s);
+int32_t		sensor_get_min_delay	(int s);
+max_delay_t	sensor_get_max_delay	(int s);
+float		sensor_get_illumincalib (int s);
+uint32_t	sensor_get_quirks	(int s);
 int		sensor_get_prop		(int s, const char* sel, int* val);
 int		sensor_get_fl_prop	(int s, const char* sel, float* val);
-
-int		sensor_get_order	(int s, unsigned char map[MAX_CHANNELS]);
-
-char* sensor_get_string_type(int s);
-flag_t sensor_get_flags (int s);
-
-uint32_t sensor_get_quirks (int s);
-
-int32_t sensor_get_min_delay(int s);
-max_delay_t sensor_get_max_delay (int s);
+int		sensor_get_order	(int s,unsigned char map[MAX_CHANNELS]);
+char*		sensor_get_string_type	(int s);
 
 #endif
