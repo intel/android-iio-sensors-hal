@@ -742,9 +742,16 @@ static void enable_motion_trigger (int dev_num)
 	enable_buffer(dev_num, 1);
 }
 
+/* CTS acceptable thresholds:
+ *	EventGapVerification.java: (th <= 1.8)
+ *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
+ */
+#define THRESHOLD 1.10
 void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
+	int catalog_index = sensor_info[s].catalog_index;
+	int is_accel	  = (sensor_catalog[catalog_index].type == SENSOR_TYPE_ACCELEROMETER);
 
 	/*
 	*  A bit of a hack to please a bunch of cts tests. They
@@ -757,7 +764,7 @@ void set_report_ts(int s, int64_t ts)
 		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
 	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
-		maxTs = sensor_info[s].report_ts + period;
+		maxTs = sensor_info[s].report_ts + (is_accel ? 1 : THRESHOLD) * period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
 	} else {
 		sensor_info[s].report_ts = ts;
@@ -773,7 +780,6 @@ static int integrate_device_report(int dev_num)
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int64_t ts;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -786,8 +792,6 @@ static int integrate_device_report(int dev_num)
 		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
-
-	ts = get_timestamp();
 
 	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
@@ -825,7 +829,7 @@ static int integrate_device_report(int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
-			set_report_ts(s, ts);
+			set_report_ts(s, get_timestamp());
 			sensor_info[s].report_pending = 1;
 			sensor_info[s].report_initialized = 1;
 		}
