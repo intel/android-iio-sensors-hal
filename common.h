@@ -130,6 +130,7 @@ struct sensor_info_t
 	int enable_count;
 
 	int catalog_index;/* Associated entry within the sensor_catalog array */
+	int type;	  /* Sensor type, such as SENSOR_TYPE_GYROSCOPE	      */
 
 	int num_channels; /* Actual channel count ; 0 for poll mode sensors */
 

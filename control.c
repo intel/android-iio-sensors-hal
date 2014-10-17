@@ -252,8 +252,6 @@ int adjust_counters (int s, int enabled)
 	 */
 
 	int dev_num = sensor_info[s].dev_num;
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type = sensor_catalog[catalog_index].type;
 
 	/* Refcount per sensor, in terms of enable count */
 	if (enabled) {
@@ -265,7 +263,7 @@ int adjust_counters (int s, int enabled)
 		if (sensor_info[s].enable_count > 1)
 			return 0; /* The sensor was, and remains, in use */
 
-		switch (sensor_type) {
+		switch (sensor_info[s].type) {
 			case SENSOR_TYPE_MAGNETIC_FIELD:
 				compass_read_data(&sensor_info[s]);
 				break;
@@ -290,13 +288,13 @@ int adjust_counters (int s, int enabled)
 		/* Sensor disabled, lower report available flag */
 		sensor_info[s].report_pending = 0;
 
-		if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+		if (sensor_info[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor_info[s]);
 	}
 
 
 	/* If uncalibrated type and pair is already active don't adjust counters */
-	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
 		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
 			return 0;
 
@@ -327,10 +325,7 @@ int adjust_counters (int s, int enabled)
 
 static int get_field_count (int s)
 {
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type	  = sensor_catalog[catalog_index].type;
-
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
 		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
@@ -354,7 +349,6 @@ static int get_field_count (int s)
 			return 0;			/* Drop sample */
 	}
 }
-
 
 
 static void* acquisition_routine (void* param)
@@ -548,7 +542,7 @@ int sensor_activate(int s, int enabled)
 	 * Deactivate gyro calibrated   - Calibrated releases handler
 	 * Reactivate gyro uncalibrated - Uncalibrated has handler */
 
-	if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
 		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
 
 				sensor_activate(sensor_info[s].pair_idx, 0);
@@ -669,9 +663,8 @@ static int is_fast_accelerometer (int s)
 	 * to request fairly high event rates. Favor continuous triggers if the
 	 * sensor is an accelerometer and uses a sampling rate of at least 25.
 	 */
-	int catalog_index = sensor_info[s].catalog_index;
 
-	if (sensor_catalog[catalog_index].type != SENSOR_TYPE_ACCELEROMETER)
+	if (sensor_info[s].type != SENSOR_TYPE_ACCELEROMETER)
 		return 0;
 
 	if (sensor_info[s].sampling_rate < 25)
@@ -847,12 +840,10 @@ static int integrate_device_report(int dev_num)
 }
 
 
-static int propagate_sensor_report(int s, struct sensors_event_t  *data)
+static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type	  = sensor_catalog[catalog_index].type;
 	int num_fields	  = get_field_count(s);
 	int c;
 	unsigned char* current_sample;
@@ -863,7 +854,7 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 
 
 	/* Only return uncalibrated event if also gyro active */
-	if (sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
+	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
 		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
 			return 0;
 
@@ -871,10 +862,10 @@ static int propagate_sensor_report(int s, struct sensors_event_t  *data)
 
 	data->version	= sizeof(sensors_event_t);
 	data->sensor	= s;
-	data->type	= sensor_type;
+	data->type	= sensor_info[s].type;
 	data->timestamp = sensor_info[s].report_ts;
 
-	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_type);
+	ALOGV("Sample on sensor %d (type %d):\n", s, sensor_info[s].type);
 
 	current_sample = sensor_info[s].report_buffer;
 
@@ -1050,7 +1041,7 @@ return_available_sensor_reports:
 			event_count = propagate_sensor_report(s, &data[returned_events]);
 
 			/* Duplicate only if both cal & uncal are active */
-			if (sensor_catalog[sensor_info[s].catalog_index].type == SENSOR_TYPE_GYROSCOPE &&
+			if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
 					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
 					struct gyro_cal* gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
 
