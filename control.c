@@ -28,6 +28,8 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
+int64_t ts_delta; /* delta between SystemClock.getNanos and our timestamp */
+
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
@@ -400,7 +402,7 @@ static void* acquisition_routine (void* param)
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
 	/* Pinpoint the moment we start sampling */
-	timestamp = get_timestamp();
+	timestamp = get_timestamp_monotonic();
 
 	/* Check and honor termination requests */
 	while (sensor_info[s].thread_data_fd[1] != -1) {
@@ -468,7 +470,7 @@ static void start_acquisition_thread (int s)
 
 	/* Create condition variable and mutex for quick thread release */
 	ret = pthread_condattr_init(&thread_cond_attr[s]);
-	ret = pthread_condattr_setclock(&thread_cond_attr[s], POLLING_CLOCK);
+	ret = pthread_condattr_setclock(&thread_cond_attr[s], CLOCK_MONOTONIC);
 	ret = pthread_cond_init(&thread_release_cond[s], &thread_cond_attr[s]);
 	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
@@ -533,6 +535,8 @@ int sensor_activate(int s, int enabled)
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
+	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
+
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
 	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
@@ -792,6 +796,8 @@ static int integrate_device_report(int dev_num)
 		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
+
+
 
 	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
