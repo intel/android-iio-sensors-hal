@@ -84,8 +84,6 @@ void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 {
 	struct gyro_cal* cal_data = (struct gyro_cal*) info->cal_data;
 
-	event->gyro.status = SENSOR_STATUS_ACCURACY_MEDIUM;
-
 	if (cal_data == NULL)
 		return;
 

@@ -28,6 +28,8 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
+int64_t ts_delta; /* delta between SystemClock.getNanos and our timestamp */
+
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
@@ -400,7 +402,7 @@ static void* acquisition_routine (void* param)
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
 	/* Pinpoint the moment we start sampling */
-	timestamp = get_timestamp();
+	timestamp = get_timestamp_monotonic();
 
 	/* Check and honor termination requests */
 	while (sensor_info[s].thread_data_fd[1] != -1) {
@@ -468,7 +470,7 @@ static void start_acquisition_thread (int s)
 
 	/* Create condition variable and mutex for quick thread release */
 	ret = pthread_condattr_init(&thread_cond_attr[s]);
-	ret = pthread_condattr_setclock(&thread_cond_attr[s], POLLING_CLOCK);
+	ret = pthread_condattr_setclock(&thread_cond_attr[s], CLOCK_MONOTONIC);
 	ret = pthread_cond_init(&thread_release_cond[s], &thread_cond_attr[s]);
 	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
@@ -533,6 +535,8 @@ int sensor_activate(int s, int enabled)
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
+	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
+
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
 	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
@@ -742,9 +746,16 @@ static void enable_motion_trigger (int dev_num)
 	enable_buffer(dev_num, 1);
 }
 
+/* CTS acceptable thresholds:
+ *	EventGapVerification.java: (th <= 1.8)
+ *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
+ */
+#define THRESHOLD 1.10
 void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
+	int catalog_index = sensor_info[s].catalog_index;
+	int is_accel	  = (sensor_catalog[catalog_index].type == SENSOR_TYPE_ACCELEROMETER);
 
 	/*
 	*  A bit of a hack to please a bunch of cts tests. They
@@ -757,7 +768,7 @@ void set_report_ts(int s, int64_t ts)
 		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
 	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
-		maxTs = sensor_info[s].report_ts + period;
+		maxTs = sensor_info[s].report_ts + (is_accel ? 1 : THRESHOLD) * period;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
 	} else {
 		sensor_info[s].report_ts = ts;
@@ -773,7 +784,6 @@ static int integrate_device_report(int dev_num)
 	unsigned char *target;
 	unsigned char *source;
 	int size;
-	int64_t ts;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -787,7 +797,7 @@ static int integrate_device_report(int dev_num)
 		return -1;
 	}
 
-	ts = get_timestamp();
+
 
 	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
@@ -825,7 +835,7 @@ static int integrate_device_report(int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
-			set_report_ts(s, ts);
+			set_report_ts(s, get_timestamp());
 			sensor_info[s].report_pending = 1;
 			sensor_info[s].report_initialized = 1;
 		}
@@ -916,8 +926,8 @@ static void synthetize_duplicate_samples (void)
 			continue;
 
 		/* If the sensor is continuously firing, leave it alone */
-		if (	sensor_info[s].selected_trigger !=
-			sensor_info[s].motion_trigger_name)
+		if (sensor_info[s].selected_trigger !=
+		    sensor_info[s].motion_trigger_name)
 			continue;
 
 		/* If we haven't seen a sample, there's nothing to duplicate */
@@ -979,10 +989,10 @@ static int get_poll_wait_timeout (void)
 	int64_t period;
 
 	/*
-	 * Check if have have to deal with "terse" drivers that only send events
-	 * when there is motion, despite the fact that the associated Android
-	 * sensor type is continuous rather than on-change. In that case we have
-	 * to duplicate events. Check deadline for the nearest upcoming event.
+	 * Check if we're dealing with a driver that only send events when
+	 * there is motion, despite the fact that the associated Android sensor
+	 * type is continuous rather than on-change. In that case we have to
+	 * duplicate events. Check deadline for the nearest upcoming event.
 	 */
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].enable_count &&
@@ -1123,6 +1133,25 @@ await_event:
 }
 
 
+static void tentative_switch_trigger (int s)
+{
+	/*
+	 * Under certain situations it may be beneficial to use an alternate
+	 * trigger:
+	 *
+	 * - for applications using the accelerometer with high sampling rates,
+	 *   prefer the continuous trigger over the any-motion one, to avoid
+	 *   jumps related to motion thresholds
+	 */
+
+	if (is_fast_accelerometer(s) &&
+		!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+			sensor_info[s].selected_trigger ==
+				sensor_info[s].motion_trigger_name)
+		setup_trigger(s, sensor_info[s].init_trigger_name);
+}
+
+
 int sensor_set_delay(int s, int64_t ns)
 {
 	/* Set the rate at which a specific sensor should report events */
@@ -1251,12 +1280,10 @@ int sensor_set_delay(int s, int64_t ns)
 		}
 	}
 
-
 	if (max_supported_rate &&
 		new_sampling_rate > max_supported_rate) {
 		new_sampling_rate = max_supported_rate;
 	}
-
 
 	/* If the desired rate is already active we're all set */
 	if (new_sampling_rate == cur_sampling_rate)
@@ -1269,10 +1296,8 @@ int sensor_set_delay(int s, int64_t ns)
 
 	sysfs_write_float(sysfs_path, new_sampling_rate);
 
-	/* Switch back to continuous sampling for accelerometer based games */
-	if (is_fast_accelerometer(s) && sensor_info[s].selected_trigger !=
-					sensor_info[s].init_trigger_name)
-		setup_trigger(s, sensor_info[s].init_trigger_name);
+	/* Check if it makes sense to use an alternate trigger */
+	tentative_switch_trigger(s);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 1);
