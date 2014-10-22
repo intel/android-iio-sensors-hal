@@ -377,6 +377,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].acquisition_thread = -1;
 
 	sensor_info[s].meta_data_pending = 0;
+	sensor_info[s].event_count = 0;
 
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor_info[s].order))

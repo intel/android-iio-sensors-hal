@@ -33,6 +33,8 @@
 
 #define MAX_NAME_SIZE		32
 
+#define MIN_SAMPLES 5
+
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
@@ -213,6 +215,13 @@ struct sensor_info_t
 	int history_size;	/* Number of recorded samples		      */
 	int history_entries;	/* How many of these are initialized	      */
 	int history_index;	/* Index of sample to evict next time	      */
+
+	/*
+	 * Event counter - will be used to check if we have a significant sample
+	 * for noisy sensors. We want to make sure we do not send any wrong
+	 * events before filtering kicks in. We can also use it for statistics.
+	 */
+	uint64_t event_count;
 };
 
 /* Reference a few commonly used variables... */
