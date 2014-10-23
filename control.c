@@ -290,6 +290,10 @@ int adjust_counters (int s, int enabled)
 
 		if (sensor_info[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor_info[s]);
+
+		if(sensor_info[s].type == SENSOR_TYPE_GYROSCOPE ||
+			sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+			gyro_store_data(&sensor_info[s]);
 	}
 
 
