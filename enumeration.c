@@ -513,33 +513,6 @@ static void orientation_sensor_check(void)
 			}
 }
 
-static int is_continuous (int s)
-{
-	/* Is sensor s of the continous trigger type kind? */
-
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type = sensor_catalog[catalog_index].type;
-
-	switch (sensor_type) {
-		case SENSOR_TYPE_ACCELEROMETER:
-		case SENSOR_TYPE_MAGNETIC_FIELD:
-		case SENSOR_TYPE_ORIENTATION:
-		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_PRESSURE:
-		case SENSOR_TYPE_GRAVITY:
-		case SENSOR_TYPE_LINEAR_ACCELERATION:
-		case SENSOR_TYPE_ROTATION_VECTOR:
-		case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-		case SENSOR_TYPE_GEOMAGNETIC_ROTATION_VECTOR:
-			return 1;
-
-		default:
-			return 0;
-	}
-}
-
-
 static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 				 int sensor_name_len)
 {
@@ -555,19 +528,18 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 	if (!memcmp(suffix, "dev", 3))
 		return;
 
-	/*
-	 * If we found any-motion trigger, record it and force the sensor to
-	 * automatic intermediate event generation mode, at least if it is of a
-	 * continuously firing sensor type.
-	 */
+	/* If we found any-motion trigger, record it */
 
-	if (!memcmp(suffix, "any-motion-", 11) && is_continuous(s)) {
-		/* Update the any-motion trigger name to use for this sensor */
+	if (!memcmp(suffix, "any-motion-", 11)) {
 		strcpy(sensor_info[s].motion_trigger_name, trigger_name);
 		return;
 	}
 
-	/* Update the initial trigger name to use for this sensor */
+	/*
+	 * It's neither the default "dev" nor an "any-motion" one. Make sure we
+	 * use this though, as we may not have any other indication of the name
+	 * of the trigger to use with this sensor.
+	 */
 	strcpy(sensor_info[s].init_trigger_name, trigger_name);
 }
 
@@ -655,13 +627,26 @@ static void setup_trigger_names (void)
 		update_sensor_matching_trigger_name(buf);
 	}
 
+	/*
+	 * Certain drivers expose only motion triggers even though they should
+	 * be continous. For these, use the default trigger name as the motion
+	 * trigger. The code generating intermediate events is dependent on
+	 * motion_trigger_name being set to a non empty string.
+	 */
+
+	for (s=0; s<sensor_count; s++)
+		if ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+		    sensor_info[s].motion_trigger_name[0] == '\0')
+			strcpy( sensor_info[s].motion_trigger_name,
+				sensor_info[s].init_trigger_name);
+
 	for (s=0; s<sensor_count; s++)
 		if (sensor_info[s].num_channels) {
-			ALOGI(	"Sensor %d (%s) default trigger: %s\n", s,
+			ALOGI("Sensor %d (%s) default trigger: %s\n", s,
 				sensor_info[s].friendly_name,
 				sensor_info[s].init_trigger_name);
 			if (sensor_info[s].motion_trigger_name[0])
-				ALOGI(	"Sensor %d (%s) motion trigger: %s\n",
+				ALOGI("Sensor %d (%s) motion trigger: %s\n",
 				s, sensor_info[s].friendly_name,
 				sensor_info[s].motion_trigger_name);
 		}
