@@ -335,6 +335,9 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			break;
 	}
 
+	/* Add this event to our global records, for filtering purposes */
+	record_sample(s, data);
+
 	return 1; /* Return sample to Android */
 }
 
@@ -372,6 +375,9 @@ static int finalize_sample_ISH (int s, struct sensors_event_t* data)
 		data->data[1] = -pitch;
 		data->data[2] = -roll;
 	}
+
+	/* Add this event to our global records, for filtering purposes */
+	record_sample(s, data);
 
 	return 1; /* Return sample to Android */
 }
