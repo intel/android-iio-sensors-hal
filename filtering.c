@@ -96,6 +96,7 @@ void denoise_median_release(int s)
 	free(sensor_info[s].filter);
 	sensor_info[s].filter = NULL;
 }
+
 void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
 					unsigned int num_fields)
 {
@@ -121,3 +122,55 @@ void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
 	f_data->idx = (f_data->idx + 1) % f_data->sample_size;
 }
 
+
+#define GLOBAL_HISTORY_SIZE 100
+
+struct recorded_sample_t
+{
+	int sensor;
+	int motion_trigger;
+	sensors_event_t data;
+};
+
+/*
+ * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events,
+ * covering the entire sensor collection. It is intended as a way to correlate
+ * data coming from active sensors, no matter the sensor type, over a recent
+ * window of time. The array is not sorted ; we simply evict the oldest cell
+ * (by insertion time) and replace its contents. Timestamps don't necessarily
+ * grow monotonically as they tell the data acquisition type, and that there can
+ * be a delay between acquisition and insertion into this table.
+ */
+
+static struct recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
+
+static int initialized_entries;	/* How many of these are initialized	      */
+static int insertion_index;	/* Index of sample to evict next time	      */
+
+
+void record_sample (int s, const struct sensors_event_t* event)
+{
+	struct recorded_sample_t *cell;
+	int i;
+
+	/* Don't record duplicate samples, as they are not useful for filters */
+	if (sensor_info[s].report_pending == DATA_DUPLICATE)
+		return;
+
+	if (initialized_entries == GLOBAL_HISTORY_SIZE) {
+		i = insertion_index;
+		insertion_index = (insertion_index+1) % GLOBAL_HISTORY_SIZE;
+	} else {
+		i = initialized_entries;
+		initialized_entries++;
+	}
+
+	cell = &global_history[i];
+
+	cell->sensor	     	= s;
+
+	cell->motion_trigger 	= (sensor_info[s].selected_trigger ==
+				   sensor_info[s].motion_trigger_name);
+
+	memcpy(&cell->data, event, sizeof(sensors_event_t));
+}

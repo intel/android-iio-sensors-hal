@@ -33,6 +33,8 @@
 
 #define MAX_NAME_SIZE		32
 
+#define MIN_SAMPLES 5
+
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
@@ -99,6 +101,15 @@ struct sample_ops_t
 	int (*finalize)(int s, struct sensors_event_t* data);
 };
 
+/*
+ * Whenever we have sensor data recorded for a sensor in the associated
+ * sensor_info cell, its report_pending field is set to a non-zero value
+ * indicating how we got this data.
+ */
+#define DATA_TRIGGER	1	/* From /dev/iio:device fd		*/
+#define DATA_SYSFS	2	/* Through polling    			*/
+#define DATA_DUPLICATE	3	/* Duplicate of triggered motion sample	*/
+
 struct sensor_info_t
 {
 	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer	     */
@@ -130,6 +141,7 @@ struct sensor_info_t
 	int enable_count;
 
 	int catalog_index;/* Associated entry within the sensor_catalog array */
+	int type;	  /* Sensor type, such as SENSOR_TYPE_GYROSCOPE	      */
 
 	int num_channels; /* Actual channel count ; 0 for poll mode sensors */
 
@@ -146,7 +158,8 @@ struct sensor_info_t
 	/*
 	 * This flag is set if we acquired data from the sensor but did not
 	 * forward it to upper layers (i.e. Android) yet. If so, report_buffer
-	 * contains that data.
+	 * contains that data. Valid values are 0: empty, 1: normal, 2: repeat
+	 * of last acquired value after timeout.
 	 */
 	int report_pending;
 
@@ -212,6 +225,13 @@ struct sensor_info_t
 	int history_size;	/* Number of recorded samples		      */
 	int history_entries;	/* How many of these are initialized	      */
 	int history_index;	/* Index of sample to evict next time	      */
+
+	/*
+	 * Event counter - will be used to check if we have a significant sample
+	 * for noisy sensors. We want to make sure we do not send any wrong
+	 * events before filtering kicks in. We can also use it for statistics.
+	 */
+	uint64_t event_count;
 };
 
 /* Reference a few commonly used variables... */

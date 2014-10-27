@@ -176,9 +176,6 @@ int sensor_get_version (int s)
 
 float sensor_get_max_range (int s)
 {
-	int catalog_index;
-	int sensor_type;
-
 	if (sensor_info[s].max_range != 0.0 ||
 		!sensor_get_fl_prop(s, "max_range", &sensor_info[s].max_range))
 			return sensor_info[s].max_range;
@@ -187,10 +184,7 @@ float sensor_get_max_range (int s)
 
 	/* We should cap returned samples accordingly... */
 
-	catalog_index = sensor_info[s].catalog_index;
-	sensor_type = sensor_catalog[catalog_index].type;
-
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 			return 50;
 
@@ -303,15 +297,9 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	return 1;	/* OK to use modified ordering map */
 }
 
-char* sensor_get_string_type(int s)
+char* sensor_get_string_type (int s)
 {
-	int catalog_index;
-	int sensor_type;
-
-	catalog_index = sensor_info[s].catalog_index;
-	sensor_type = sensor_catalog[catalog_index].type;
-
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return SENSOR_STRING_TYPE_ACCELEROMETER;
 
@@ -352,14 +340,9 @@ char* sensor_get_string_type(int s)
 
 flag_t sensor_get_flags (int s)
 {
-	int catalog_index;
-	int sensor_type;
-
 	flag_t flags = 0x0;
-	catalog_index = sensor_info[s].catalog_index;
-	sensor_type = sensor_catalog[catalog_index].type;
 
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 		case SENSOR_TYPE_ORIENTATION:
@@ -388,12 +371,9 @@ flag_t sensor_get_flags (int s)
 	return flags;
 }
 
-int get_cdd_freq(int s, int must)
+int get_cdd_freq (int s, int must)
 {
-	int catalog_index = sensor_info[s].catalog_index;
-	int sensor_type = sensor_catalog[catalog_index].type;
-
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
 		case SENSOR_TYPE_GYROSCOPE:

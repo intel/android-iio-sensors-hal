@@ -23,10 +23,47 @@ static void reset (struct gyro_cal* cal_data)
 
 void gyro_cal_init (struct sensor_info_t* info)
 {
+	int ret;
+	struct gyro_cal* cal_data = (struct gyro_cal*) info->cal_data;
+	FILE* data_file;
+
 	info->cal_level = 0;
 
-	if (info->cal_data)
-		reset((struct gyro_cal*) info->cal_data);
+	if (cal_data == NULL)
+		return;
+
+	reset(cal_data);
+
+	data_file = fopen (GYRO_CALIBRATION_PATH, "r");
+	if (data_file == NULL)
+		return;
+
+	ret = fscanf(data_file, "%f %f %f",
+			&cal_data->bias_x, &cal_data->bias_y, &cal_data->bias_z);
+	fclose(data_file);
+}
+
+void gyro_store_data (struct sensor_info_t* info)
+{
+	int ret;
+	struct gyro_cal* cal_data = (struct gyro_cal*) info->cal_data;
+	FILE* data_file;
+
+	if (cal_data == NULL)
+		return;
+
+	data_file = fopen (GYRO_CALIBRATION_PATH, "w");
+
+	if (data_file == NULL)
+		return;
+
+	ret = fprintf(data_file, "%f %f %f",
+		cal_data->bias_x, cal_data->bias_y, cal_data->bias_z);
+
+	if (ret < 0)
+		ALOGE ("Gyro calibration - store data failed!");
+
+	fclose(data_file);
 }
 
 
