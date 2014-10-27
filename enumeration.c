@@ -264,6 +264,25 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
 
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
+	if (!sensor_get_fl_prop(s, "scale", &scale)) {
+		/*
+		 * There is a chip preferred scale specified,
+		 * so try to store it in sensor's scale file
+		 */
+		if (sysfs_write_float(sysfs_path, scale) == -1 && errno == ENOENT) {
+			ALOGE("Failed to store scale[%f] into %s - file is missing", scale, sysfs_path);
+			/* Store failed, try to store the scale into channel specific file */
+	                for (c = 0; c < num_channels; c++)
+		        {
+			        sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+					sensor_catalog[catalog_index].channel[c].scale_path);
+				if (sysfs_write_float(sysfs_path, scale) == -1)
+					ALOGE("Failed to store scale[%f] into %s", scale, sysfs_path);
+                        }
+                }
+	}
+
+	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale)) {
                 sensor_info[s].scale = scale;
 		ALOGI("Scale path:%s scale:%f dev_num:%d\n",
