@@ -24,6 +24,7 @@
 /* gyro defines */
 #define GYRO_MAX_ERR 0.05f
 #define GYRO_DS_SIZE 100
+#define GYRO_CALIBRATION_PATH "/data/gyro.conf"
 
 struct compass_cal {
     /* hard iron offsets */
@@ -55,4 +56,5 @@ void compass_store_data (struct sensor_info_t* info);
 
 void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info);
 void gyro_cal_init(struct sensor_info_t* info);
+void gyro_store_data (struct sensor_info_t* info);
 #endif

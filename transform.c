@@ -261,16 +261,14 @@ static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
 }
 
 
-static int finalize_sample_default(int s, struct sensors_event_t* data)
+static int finalize_sample_default (int s, struct sensors_event_t* data)
 {
-	int i		= sensor_info[s].catalog_index;
-	int sensor_type	= sensor_catalog[i].type;
-
 	/* Swap fields if we have a custom channel ordering on this sensor */
 	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
 		reorder_fields(data->data, sensor_info[s].order);
 
-	switch (sensor_type) {
+	sensor_info[s].event_count++;
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
@@ -303,8 +301,18 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 				sensor_info[s].motion_trigger_name)
 					calibrate_gyro(data, &sensor_info[s]);
 
-			if (sensor_info[s].quirks & QUIRK_NOISY)
+			/* For noisy sensors we'll drop a very few number
+			 * of samples to make sure we have at least MIN_SAMPLES events
+			 * in the filtering queue. This is to make sure we are not sending
+			 * events that can disturb our mean or stddev.
+			 */
+			if (sensor_info[s].quirks & QUIRK_NOISY) {
 				denoise_median(&sensor_info[s], data, 3);
+				if((sensor_info[s].selected_trigger !=
+					sensor_info[s].motion_trigger_name) &&
+					sensor_info[s].event_count < MIN_SAMPLES)
+						return 0;
+			}
 			break;
 
 		case SENSOR_TYPE_LIGHT:
@@ -327,6 +335,9 @@ static int finalize_sample_default(int s, struct sensors_event_t* data)
 			break;
 	}
 
+	/* Add this event to our global records, for filtering purposes */
+	record_sample(s, data);
+
 	return 1; /* Return sample to Android */
 }
 
@@ -346,17 +357,15 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 }
 
 
-static int finalize_sample_ISH(int s, struct sensors_event_t* data)
+static int finalize_sample_ISH (int s, struct sensors_event_t* data)
 {
-	int i		= sensor_info[s].catalog_index;
-	int sensor_type	= sensor_catalog[i].type;
 	float pitch, roll, yaw;
 
 	/* Swap fields if we have a custom channel ordering on this sensor */
 	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
 		reorder_fields(data->data, sensor_info[s].order);
 
-	if (sensor_type == SENSOR_TYPE_ORIENTATION) {
+	if (sensor_info[s].type == SENSOR_TYPE_ORIENTATION) {
 
 		pitch = data->data[0];
 		roll = data->data[1];
@@ -367,16 +376,17 @@ static int finalize_sample_ISH(int s, struct sensors_event_t* data)
 		data->data[2] = -roll;
 	}
 
+	/* Add this event to our global records, for filtering purposes */
+	record_sample(s, data);
+
 	return 1; /* Return sample to Android */
 }
 
 
-static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
+static float transform_sample_ISH (int s, int c, unsigned char* sample_data)
 {
 	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
 	int val		= (int) sample_as_int64(sample_data, sample_type);
-	int i		= sensor_info[s].catalog_index;
-	int sensor_type	= sensor_catalog[i].type;
 	float correction;
 	int data_bytes  = (sample_type->realbits)/8;
 	int exponent    = sensor_info[s].offset;
@@ -384,7 +394,7 @@ static float transform_sample_ISH(int s, int c, unsigned char* sample_data)
 	/* In case correction has been requested using properties, apply it */
 	correction = sensor_info[s].channel[c].opt_scale;
 
-	switch (sensor_type) {
+	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			switch (c) {
 				case 0:

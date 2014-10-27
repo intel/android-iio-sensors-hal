@@ -231,6 +231,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	sensor_info[s].dev_num		= dev_num;
 	sensor_info[s].catalog_index	= catalog_index;
+	sensor_info[s].type		= sensor_type;
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
@@ -245,7 +246,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	 * receiving the illumination sensor calibration inputs from
 	 * the Android properties and setting it within sysfs
 	 */
-	if (sensor_catalog[catalog_index].type == SENSOR_TYPE_LIGHT) {
+	if (sensor_type == SENSOR_TYPE_LIGHT) {
 		retval = sensor_get_illumincalib(s);
                 if (retval > 0) {
 			sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
@@ -376,6 +377,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].acquisition_thread = -1;
 
 	sensor_info[s].meta_data_pending = 0;
+	sensor_info[s].event_count = 0;
 
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor_info[s].order))
@@ -486,7 +488,7 @@ static void orientation_sensor_check(void)
 	int catalog_size = CATALOG_SIZE;
 
 	for (i=0; i<sensor_count; i++)
-		switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+		switch (sensor_info[i].type) {
 			case SENSOR_TYPE_ACCELEROMETER:
 				has_acc = 1;
 				break;
@@ -666,8 +668,7 @@ static void uncalibrated_gyro_check (void)
 
 	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
 	for (i=0; i < sensor_count; i++)
-		if(sensor_catalog[sensor_info[i].catalog_index].type == SENSOR_TYPE_GYROSCOPE)
-		{
+		if (sensor_info[i].type == SENSOR_TYPE_GYROSCOPE) {
 			has_gyr=1;
 			dev_num = sensor_info[i].dev_num;
 			is_poll_sensor = !sensor_info[i].num_channels;
@@ -768,10 +769,9 @@ void enumerate_sensors (void)
 
 void delete_enumeration_data (void)
 {
-
 	int i;
 	for (i = 0; i < sensor_count; i++)
-	switch (sensor_catalog[sensor_info[i].catalog_index].type) {
+	switch (sensor_info[i].type) {
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			if (sensor_info[i].cal_data != NULL) {
 				free(sensor_info[i].cal_data);
