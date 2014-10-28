@@ -360,7 +360,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
-		denoise_median_init(s, 7, 3);
+		denoise_median_init(s, 3, 7);
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
