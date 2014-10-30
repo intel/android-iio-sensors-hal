@@ -261,6 +261,62 @@ static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
 }
 
 
+static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
+{
+	float x, y, z;
+	float near_zero;
+
+	switch (sensor_info[s].type) {
+		case SENSOR_TYPE_GYROSCOPE:
+			x = data->data[0];
+			y = data->data[1];
+			z = data->data[2];
+			break;
+
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			x = data->data[0] - data->uncalibrated_gyro.bias[0];
+			y = data->data[1] - data->uncalibrated_gyro.bias[1];
+			z = data->data[2] - data->uncalibrated_gyro.bias[2];
+			break;
+
+		default:
+			return;
+	}
+
+	/* If we're calibrated, don't filter out as much */
+	if (sensor_info[s].cal_level > 0)
+		near_zero = 0.02; /* rad/s */
+	else
+		near_zero = 0.1;
+
+	/* If motion on all axes is small enough */
+	if (fabs(x) < near_zero && fabs(y) < near_zero && fabs(z) < near_zero) {
+
+		/*
+		 * Report that we're not moving at all... but not exactly zero
+		 * as composite sensors (orientation, rotation vector) don't
+		 * seem to react very well to it.
+		 */
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE:
+				data->data[0] *= 0.000001;
+				data->data[1] *= 0.000001;
+				data->data[2] *= 0.000001;
+				break;
+
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+				data->data[0]= data->uncalibrated_gyro.bias[0]
+						+ 0.000001 * x;
+				data->data[1]= data->uncalibrated_gyro.bias[1]
+						+ 0.000001 * y;
+				data->data[2]= data->uncalibrated_gyro.bias[2]
+						+ 0.000001 * z;
+				break;
+		}
+	}
+}
+
+
 static int finalize_sample_default (int s, struct sensors_event_t* data)
 {
 	/* Swap fields if we have a custom channel ordering on this sensor */
@@ -283,13 +339,17 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+
 			/*
 			 * Report medium accuracy by default ; higher accuracy
 			 * levels will be reported once, and if, we achieve
 			 * calibration.
 			 */
 			data->gyro.status = SENSOR_STATUS_ACCURACY_MEDIUM;
+
+			/* ... fall through */
+
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 
 			/*
 			 * We're only trying to calibrate data from continuously
@@ -313,6 +373,9 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 					sensor_info[s].event_count < MIN_SAMPLES)
 						return 0;
 			}
+
+			/* Clamp near zero moves to (0,0,0) if appropriate */
+			clamp_gyro_readings_to_zero(s, data);
 			break;
 
 		case SENSOR_TYPE_LIGHT:
