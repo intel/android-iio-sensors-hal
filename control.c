@@ -561,6 +561,8 @@ int sensor_activate(int s, int enabled)
 	if (ret <= 0)
 		return ret;
 
+	sensor_info[s].event_count = 0;
+	sensor_info[s].meta_data_pending = 0;
 
 	if (!is_poll_sensor) {
 

@@ -264,6 +264,25 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
 
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
+	if (!sensor_get_fl_prop(s, "scale", &scale)) {
+		/*
+		 * There is a chip preferred scale specified,
+		 * so try to store it in sensor's scale file
+		 */
+		if (sysfs_write_float(sysfs_path, scale) == -1 && errno == ENOENT) {
+			ALOGE("Failed to store scale[%f] into %s - file is missing", scale, sysfs_path);
+			/* Store failed, try to store the scale into channel specific file */
+	                for (c = 0; c < num_channels; c++)
+		        {
+			        sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+					sensor_catalog[catalog_index].channel[c].scale_path);
+				if (sysfs_write_float(sysfs_path, scale) == -1)
+					ALOGE("Failed to store scale[%f] into %s", scale, sysfs_path);
+                        }
+                }
+	}
+
+	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale)) {
                 sensor_info[s].scale = scale;
 		ALOGI("Scale path:%s scale:%f dev_num:%d\n",
@@ -360,7 +379,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
-		denoise_median_init(s, 7, 3);
+		denoise_median_init(s, 3, 7);
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
@@ -375,9 +394,6 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_info[s].thread_data_fd[0]  = -1;
 	sensor_info[s].thread_data_fd[1]  = -1;
 	sensor_info[s].acquisition_thread = -1;
-
-	sensor_info[s].meta_data_pending = 0;
-	sensor_info[s].event_count = 0;
 
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor_info[s].order))

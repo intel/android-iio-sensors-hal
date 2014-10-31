@@ -87,6 +87,17 @@ void denoise_median_init(int s, unsigned int num_fields,
 	sensor_info[s].filter = f_data;
 }
 
+static void denoise_median_reset(struct sensor_info_t* info)
+{
+	struct filter_median* f_data = (struct filter_median*) info->filter;
+
+	if (!f_data)
+		return;
+
+	f_data->count = 0;
+	f_data->idx = 0;
+}
+
 void denoise_median_release(int s)
 {
 	if (!sensor_info[s].filter)
@@ -108,6 +119,9 @@ void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
 	if (!f_data)
 		return;
 
+	/* If we are at event count 1 reset the indexes */
+	if (info->event_count == 1)
+		denoise_median_reset(info);
 
 	if (f_data->count < f_data->sample_size)
 		f_data->count++;

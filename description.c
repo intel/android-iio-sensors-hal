@@ -212,6 +212,15 @@ float sensor_get_max_range (int s)
 		}
 }
 
+float sensor_get_max_freq (int s)
+{
+	float max_freq;
+
+	if (!sensor_get_fl_prop(s, "max_freq", &max_freq))
+		return max_freq;
+
+	return 1000;
+}
 
 float sensor_get_resolution (int s)
 {
@@ -497,7 +506,7 @@ int32_t sensor_get_min_delay(int s)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			if (sr > max_supported_rate && sr <= MAX_EVENTS)
+			if (sr > max_supported_rate && sr <= sensor_get_max_freq(s))
 				max_supported_rate = sr;
 
 			/* Skip digits */
