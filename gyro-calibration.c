@@ -129,15 +129,15 @@ void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 		info->cal_level = gyro_collect(event->data[0], event->data[1],
 					       event->data[2], cal_data);
 
-	if (info->cal_level)
-		event->gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
-
 	switch (event->type) {
 		case SENSOR_TYPE_GYROSCOPE:
 			/* For the gyroscope apply the bias */
 			event->data[0] = event->data[0] - cal_data->bias_x;
 			event->data[1] = event->data[1] - cal_data->bias_y;
 			event->data[2] = event->data[2] - cal_data->bias_z;
+
+			if (info->cal_level)
+			       event->gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:

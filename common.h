@@ -137,7 +137,7 @@ struct sensor_info_t
 	float sampling_rate;	/* requested events / second */
 
 	int dev_num;	/* Associated iio dev num, ex: 3 for /dev/iio:device3 */
-	int enable_count;
+	int enabled;
 
 	int catalog_index;/* Associated entry within the sensor_catalog array */
 	int type;	  /* Sensor type, such as SENSOR_TYPE_GYROSCOPE	      */

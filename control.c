@@ -258,10 +258,10 @@ int adjust_counters (int s, int enabled)
 		ALOGI("Enabling sensor %d (iio device %d: %s)\n",
 			s, dev_num, sensor_info[s].friendly_name);
 
-		sensor_info[s].enable_count++;
-
-		if (sensor_info[s].enable_count > 1)
+		if (sensor_info[s].enabled)
 			return 0; /* The sensor was, and remains, in use */
+
+		sensor_info[s].enabled = 1;
 
 		switch (sensor_info[s].type) {
 			case SENSOR_TYPE_MAGNETIC_FIELD:
@@ -274,16 +274,13 @@ int adjust_counters (int s, int enabled)
 				break;
 		}
 	} else {
-		if (sensor_info[s].enable_count == 0)
-			return -1; /* Spurious disable call */
+		if (sensor_info[s].enabled == 0)
+			return 0; /* Spurious disable call */
 
 		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
 		      sensor_info[s].friendly_name);
 
-		sensor_info[s].enable_count--;
-
-		if (sensor_info[s].enable_count > 0)
-			return 0; /* The sensor was, and remains, in use */
+		sensor_info[s].enabled = 0;
 
 		/* Sensor disabled, lower report available flag */
 		sensor_info[s].report_pending = 0;
@@ -299,7 +296,7 @@ int adjust_counters (int s, int enabled)
 
 	/* If uncalibrated type and pair is already active don't adjust counters */
 	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
-		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+		sensor_info[sensor_info[s].pair_idx].enabled != 0)
 			return 0;
 
 	/* We changed the state of a sensor - adjust per iio device counters */
@@ -547,7 +544,7 @@ int sensor_activate(int s, int enabled)
 	 * Reactivate gyro uncalibrated - Uncalibrated has handler */
 
 	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
-		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enabled != 0) {
 
 				sensor_activate(sensor_info[s].pair_idx, 0);
 				ret = sensor_activate(s, enabled);
@@ -711,7 +708,7 @@ static void enable_motion_trigger (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enable_count &&
+		    sensor_info[s].enabled &&
 		    sensor_info[s].num_channels &&
 		    (!sensor_info[s].motion_trigger_name[0] ||
 		     !sensor_info[s].report_initialized ||
@@ -724,7 +721,7 @@ static void enable_motion_trigger (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enable_count &&
+		    sensor_info[s].enabled &&
 		    sensor_info[s].num_channels &&
 		    sensor_info[s].selected_trigger !=
 			sensor_info[s].motion_trigger_name)
@@ -812,7 +809,7 @@ static int integrate_device_report (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enable_count) {
+		    sensor_info[s].enabled) {
 
 			sr_offset = 0;
 
@@ -861,7 +858,7 @@ static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 
 	/* Only return uncalibrated event if also gyro active */
 	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
-		sensor_info[sensor_info[s].pair_idx].enable_count != 0)
+		sensor_info[sensor_info[s].pair_idx].enabled != 0)
 			return 0;
 
 	memset(data, 0, sizeof(sensors_event_t));
@@ -919,7 +916,7 @@ static void synthetize_duplicate_samples (void)
 	for (s=0; s<sensor_count; s++) {
 
 		/* Ignore disabled sensors */
-		if (!sensor_info[s].enable_count)
+		if (!sensor_info[s].enabled)
 			continue;
 
 		/* If the sensor is continuously firing, leave it alone */
@@ -992,7 +989,7 @@ static int get_poll_wait_timeout (void)
 	 * duplicate events. Check deadline for the nearest upcoming event.
 	 */
 	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].enable_count &&
+		if (sensor_info[s].enabled &&
 		    sensor_info[s].selected_trigger ==
 		    sensor_info[s].motion_trigger_name &&
 		    sensor_info[s].sampling_rate) {
@@ -1049,7 +1046,7 @@ return_available_sensor_reports:
 
 			/* Duplicate only if both cal & uncal are active */
 			if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
-					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enable_count != 0) {
+					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enabled != 0) {
 					struct gyro_cal* gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
 
 					memcpy(&data[returned_events + event_count], &data[returned_events],
@@ -1233,7 +1230,7 @@ int sensor_set_delay(int s, int64_t ns)
 		for (n=0; n<sensor_count; n++)
 			if (n != s && sensor_info[n].dev_num == dev_num &&
 			    sensor_info[n].num_channels &&
-			    sensor_info[n].enable_count &&
+			    sensor_info[n].enabled &&
 			    sensor_info[n].sampling_rate > new_sampling_rate)
 				new_sampling_rate= sensor_info[n].sampling_rate;
 
@@ -1307,7 +1304,7 @@ int sensor_flush (int s)
 {
 	/* If one shot or not enabled return -EINVAL */
 	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE ||
-		sensor_info[s].enable_count == 0)
+		sensor_info[s].enabled == 0)
 		return -EINVAL;
 
 	sensor_info[s].meta_data_pending++;
