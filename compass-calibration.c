@@ -26,7 +26,7 @@ int file_no = 0;
 /* We'll have multiple calibration levels
 *  so that we can provide an estimation as fast as possible
 */
-static const float min_diffs[CAL_STEPS] =  {0.15,  0.2, 0.4, 0.6, 1.0 };
+static const float min_diffs[CAL_STEPS] =  {0.2,  0.25, 0.4, 0.6, 1.0 };
 static const float max_sqr_errs[CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5 };
 static const unsigned int lookback_counts[CAL_STEPS] = {2, 3, 4, 5, 6 };
 
@@ -233,6 +233,10 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     multiply (3, 3, 3, temp1, evecs_trans, temp);
     transpose (3, 3, temp, w_invert);
     *bfield = pow(sqrt(1/eig1) * sqrt(1/eig2) * sqrt(1/eig3), 1.0/3.0);
+
+    if (bfield < 0)
+        return 0;
+
     multiply_scalar_inplace(3, 3, w_invert, *bfield);
 
     return 1;
