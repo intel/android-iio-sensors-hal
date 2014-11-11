@@ -386,7 +386,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
-
+	sensor_info[s].max_cal_level = sensor_get_cal_steps(s);
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
 

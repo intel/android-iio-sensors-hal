@@ -222,6 +222,15 @@ float sensor_get_max_freq (int s)
 	return 1000;
 }
 
+int sensor_get_cal_steps (int s)
+{
+	int cal_steps;
+	if (!sensor_get_prop(s, "cal_steps", &cal_steps))
+		return cal_steps;
+
+	return 0;
+}
+
 float sensor_get_resolution (int s)
 {
 	if (sensor_info[s].resolution != 0.0 ||

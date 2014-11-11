@@ -184,6 +184,9 @@ struct sensor_info_t
 	struct sample_ops_t ops;
 
 	int cal_level; /* 0 means not calibrated */
+
+	/* Depending on the sensor calibration may take too much at higher levels */
+	int max_cal_level;
 	void* cal_data;
 
 	/* Filtering data for noisy sensors */
