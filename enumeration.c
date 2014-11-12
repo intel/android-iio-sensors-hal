@@ -779,7 +779,13 @@ void enumerate_sensors (void)
 	 * Create the uncalibrated counterpart to the compensated gyroscope.
 	 * This is is a new sensor type in Android 4.4.
 	 */
-	uncalibrated_gyro_check();
+
+	/*
+	 * Patrick Porlan 11/12/2014 - Disabled for now due to a possible
+	 * relation with GMINL-3234 Panorama Drift. I take full responsability
+	 * for this.
+	 *
+	 * uncalibrated_gyro_check(); */
 }
 
 
