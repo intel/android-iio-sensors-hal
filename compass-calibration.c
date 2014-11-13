@@ -26,7 +26,7 @@ int file_no = 0;
 /* We'll have multiple calibration levels
 *  so that we can provide an estimation as fast as possible
 */
-static const float min_diffs[CAL_STEPS] =  {0.15,  0.2, 0.4, 0.6, 1.0 };
+static const float min_diffs[CAL_STEPS] =  {0.2,  0.25, 0.4, 0.6, 1.0 };
 static const float max_sqr_errs[CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5 };
 static const unsigned int lookback_counts[CAL_STEPS] = {2, 3, 4, 5, 6 };
 
@@ -233,6 +233,10 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     multiply (3, 3, 3, temp1, evecs_trans, temp);
     transpose (3, 3, temp, w_invert);
     *bfield = pow(sqrt(1/eig1) * sqrt(1/eig2) * sqrt(1/eig3), 1.0/3.0);
+
+    if (bfield < 0)
+        return 0;
+
     multiply_scalar_inplace(3, 3, w_invert, *bfield);
 
     return 1;
@@ -443,6 +447,14 @@ static int compass_ready (struct sensor_info_t* info)
 
     struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
 
+    /*
+    *  Some sensors take unrealistically long to calibrate at higher levels.
+    *  We'll use a max_cal_level if we have such a property setup, or go with
+    *  the default settings if not.
+    */
+    int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
+        info->max_cal_level : CAL_STEPS;
+
     if (cal_data->sample_count < DS_SIZE)
         return info->cal_level;
 
@@ -469,7 +481,7 @@ static int compass_ready (struct sensor_info_t* info)
                 memcpy(cal_data->offset, new_cal_data.offset, sizeof(cal_data->offset));
                 memcpy(cal_data->w_invert, new_cal_data.w_invert, sizeof(cal_data->w_invert));
                 cal_data->bfield = new_cal_data.bfield;
-                if (info->cal_level < (CAL_STEPS - 1))
+                if (info->cal_level < (cal_steps - 1))
                     info->cal_level++;
                 ALOGV("CompassCalibration: ready check success, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f, err %f",
                     cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0], cal_data->w_invert[0][0],

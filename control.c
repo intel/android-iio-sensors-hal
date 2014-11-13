@@ -747,6 +747,7 @@ static void enable_motion_trigger (int dev_num)
  *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
  */
 #define THRESHOLD 1.10
+#define MAX_DELAY 500000000 /* 500 ms */
 void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
@@ -765,6 +766,9 @@ void set_report_ts(int s, int64_t ts)
 	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
 		maxTs = sensor_info[s].report_ts + (is_accel ? 1 : THRESHOLD) * period;
+		/* If we're too far behind get back on track */
+		if (ts - maxTs >= MAX_DELAY)
+			maxTs = ts;
 		sensor_info[s].report_ts = (ts < maxTs ? ts : maxTs);
 	} else {
 		sensor_info[s].report_ts = ts;

@@ -28,6 +28,7 @@ uint32_t	sensor_get_quirks	(int s);
 int		sensor_get_prop		(int s, const char* sel, int* val);
 int		sensor_get_fl_prop	(int s, const char* sel, float* val);
 int		sensor_get_order	(int s,unsigned char map[MAX_CHANNELS]);
+int 	sensor_get_cal_steps (int s);
 char*		sensor_get_string_type	(int s);
 
 #endif

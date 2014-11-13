@@ -212,7 +212,25 @@ float sensor_get_max_range (int s)
 		}
 }
 
-float sensor_get_max_freq (int s)
+static float sensor_get_min_freq (int s)
+{
+	/*
+	 * Check if a low cap has been specified for this sensor sampling rate.
+	 * In some case, even when the driver supports lower rate, we still
+	 * wish to receive a certain number of samples per seconds for various
+	 * reasons (calibration, filtering, no change in power consumption...).
+	 */
+
+	float min_freq;
+
+	if (!sensor_get_fl_prop(s, "min_freq", &min_freq))
+		return min_freq;
+
+	return 0;
+}
+
+
+static float sensor_get_max_freq (int s)
 {
 	float max_freq;
 
@@ -220,6 +238,15 @@ float sensor_get_max_freq (int s)
 		return max_freq;
 
 	return 1000;
+}
+
+int sensor_get_cal_steps (int s)
+{
+	int cal_steps;
+	if (!sensor_get_prop(s, "cal_steps", &cal_steps))
+		return cal_steps;
+
+	return 0;
 }
 
 float sensor_get_resolution (int s)
@@ -419,6 +446,7 @@ max_delay_t sensor_get_max_delay (int s)
 	char freqs_buf[100];
 	char* cursor;
 	float min_supported_rate = 1000;
+	float rate_cap;
 	float sr;
 
 	/* continuous, on-change: maximum sampling period allowed in microseconds.
@@ -455,6 +483,12 @@ max_delay_t sensor_get_max_delay (int s)
 				cursor++;
 		}
 	}
+
+	/* Check if a minimum rate was specified for this sensor */
+	rate_cap = sensor_get_min_freq(s);
+
+	if (min_supported_rate < rate_cap)
+		min_supported_rate = rate_cap;
 
 	/* return 0 for wrong values */
 	if (min_supported_rate < 0.1)
