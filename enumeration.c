@@ -14,7 +14,6 @@
 #include "description.h"
 #include "control.h"
 #include "calibration.h"
-#include "filtering.h"
 
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
@@ -379,7 +378,6 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
-		denoise_median_init(s, 3, 7);
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
@@ -801,6 +799,7 @@ void delete_enumeration_data (void)
 				sensor_info[i].cal_level = 0;
 			}
 			break;
+
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:
 			if (sensor_info[i].cal_data != NULL) {
@@ -809,9 +808,7 @@ void delete_enumeration_data (void)
 				sensor_info[i].cal_level = 0;
 			}
 			break;
-			if (sensor_info[i].filter != NULL) {
-				denoise_median_release(i);
-			}
+
 		default:
 			break;
 	}

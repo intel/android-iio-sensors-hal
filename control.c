@@ -17,6 +17,7 @@
 #include "transform.h"
 #include "calibration.h"
 #include "description.h"
+#include "filtering.h"
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
@@ -561,6 +562,10 @@ int sensor_activate(int s, int enabled)
 	sensor_info[s].event_count = 0;
 	sensor_info[s].meta_data_pending = 0;
 
+	if (enabled && (sensor_info[s].quirks & QUIRK_NOISY))
+		/* Initialize filtering data if required */
+		setup_noise_filtering(s);
+
 	if (!is_poll_sensor) {
 
 		/* Stop sampling */
@@ -600,16 +605,8 @@ int sensor_activate(int s, int enabled)
 				device_fd[dev_num] = -1;
 			}
 
-		/* If we recorded a trail of samples for filtering, delete it */
-		if (sensor_info[s].history) {
-			free(sensor_info[s].history);
-			sensor_info[s].history = NULL;
-			sensor_info[s].history_size = 0;
-			if (sensor_info[s].history_sum) {
-				free(sensor_info[s].history_sum);
-				sensor_info[s].history_sum = NULL;
-			}
-		}
+		/* Release any filtering data we may have accumulated */
+		release_noise_filtering_data(s);
 
 		return 0;
 	}
