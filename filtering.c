@@ -15,15 +15,16 @@ struct filter_median
 	unsigned int sample_size;
 };
 
-static unsigned int partition(float* list, unsigned int left,
-	unsigned int right, unsigned int pivot_index)
+
+static unsigned int partition (	float* list, unsigned int left,
+				unsigned int right, unsigned int pivot_index)
 {
 	unsigned int i;
 	unsigned int store_index = left;
 	float aux;
 	float pivot_value = list[pivot_index];
 
-	// swap list[pivotIndex] and list[right]
+	/* Swap list[pivotIndex] and list[right] */
 	aux = list[pivot_index];
 	list[pivot_index] = list[right];
 	list[right] = aux;
@@ -32,23 +33,26 @@ static unsigned int partition(float* list, unsigned int left,
 	{
 		if (list[i] < pivot_value)
 		{
-			// swap list[store_index] and list[i]
+			/* Swap list[store_index] and list[i] */
 			aux = list[store_index];
 			list[store_index] = list[i];
 			list[i] = aux;
 			store_index++;
 		}
 	}
-	//swap list[right] and list[store_index]
+
+	/* Swap list[right] and list[store_index] */
 	aux = list[right];
 	list[right] = list[store_index];
 	list[store_index] = aux;
 	return store_index;
 }
 
-/* http://en.wikipedia.org/wiki/Quickselect */
-float median(float* queue, unsigned int size)
+
+static float median (float* queue, unsigned int size)
 {
+	/* http://en.wikipedia.org/wiki/Quickselect */
+
 	unsigned int left = 0;
 	unsigned int right = size - 1;
 	unsigned int pivot_index;
@@ -75,10 +79,13 @@ float median(float* queue, unsigned int size)
 	return temp[left];
 }
 
-void denoise_median_init(int s, unsigned int num_fields,
-	unsigned int max_samples)
+
+static void denoise_median_init(int s, unsigned int num_fields,
+				unsigned int max_samples)
 {
-	struct filter_median* f_data = (struct filter_median*) calloc(1, sizeof(struct filter_median));
+	struct filter_median* f_data = (struct filter_median*) calloc(1,
+						sizeof(struct filter_median));
+
 	f_data->buff = (float*)calloc(max_samples,
 		sizeof(float) * num_fields);
 	f_data->sample_size = max_samples;
@@ -87,7 +94,8 @@ void denoise_median_init(int s, unsigned int num_fields,
 	sensor_info[s].filter = f_data;
 }
 
-static void denoise_median_reset(struct sensor_info_t* info)
+
+static void denoise_median_reset (struct sensor_info_t* info)
 {
 	struct filter_median* f_data = (struct filter_median*) info->filter;
 
@@ -98,18 +106,10 @@ static void denoise_median_reset(struct sensor_info_t* info)
 	f_data->idx = 0;
 }
 
-void denoise_median_release(int s)
-{
-	if (!sensor_info[s].filter)
-		return;
 
-	free(((struct filter_median*)sensor_info[s].filter)->buff);
-	free(sensor_info[s].filter);
-	sensor_info[s].filter = NULL;
-}
-
-void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
-					unsigned int num_fields)
+static void denoise_median (	struct sensor_info_t* info,
+				struct sensors_event_t* data,
+				unsigned int num_fields)
 {
 	float x, y, z;
 	float scale;
@@ -119,7 +119,7 @@ void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
 	if (!f_data)
 		return;
 
-	/* If we are at event count 1 reset the indexes */
+	/* If we are at event count 1 reset the indices */
 	if (info->event_count == 1)
 		denoise_median_reset(info);
 
@@ -137,61 +137,9 @@ void denoise_median(struct sensor_info_t* info, struct sensors_event_t* data,
 }
 
 
-#define GLOBAL_HISTORY_SIZE 100
-
-struct recorded_sample_t
-{
-	int sensor;
-	int motion_trigger;
-	sensors_event_t data;
-};
-
-/*
- * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events,
- * covering the entire sensor collection. It is intended as a way to correlate
- * data coming from active sensors, no matter the sensor type, over a recent
- * window of time. The array is not sorted ; we simply evict the oldest cell
- * (by insertion time) and replace its contents. Timestamps don't necessarily
- * grow monotonically as they tell the data acquisition type, and that there can
- * be a delay between acquisition and insertion into this table.
- */
-
-static struct recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
-
-static int initialized_entries;	/* How many of these are initialized	      */
-static int insertion_index;	/* Index of sample to evict next time	      */
-
-
-void record_sample (int s, const struct sensors_event_t* event)
-{
-	struct recorded_sample_t *cell;
-	int i;
-
-	/* Don't record duplicate samples, as they are not useful for filters */
-	if (sensor_info[s].report_pending == DATA_DUPLICATE)
-		return;
-
-	if (initialized_entries == GLOBAL_HISTORY_SIZE) {
-		i = insertion_index;
-		insertion_index = (insertion_index+1) % GLOBAL_HISTORY_SIZE;
-	} else {
-		i = initialized_entries;
-		initialized_entries++;
-	}
-
-	cell = &global_history[i];
-
-	cell->sensor	     	= s;
-
-	cell->motion_trigger 	= (sensor_info[s].selected_trigger ==
-				   sensor_info[s].motion_trigger_name);
-
-	memcpy(&cell->data, event, sizeof(sensors_event_t));
-}
-
-
-void denoise_average (	struct sensor_info_t* si, struct sensors_event_t* data,
-			int num_fields, int max_samples)
+static void denoise_average (	struct sensor_info_t* si,
+				struct sensors_event_t* data,
+				int num_fields, int max_samples)
 {
 	/*
 	 * Smooth out incoming data using a moving average over a number of
@@ -259,4 +207,111 @@ void denoise_average (	struct sensor_info_t* si, struct sensors_event_t* data,
 
 	/* Update our rolling index (next evicted cell) */
 	si->history_index = (si->history_index + 1) % si->history_size;
+}
+
+
+void setup_noise_filtering (int s)
+{
+	switch (sensor_info[s].type) {
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			denoise_median_init(s, 3, 7);
+			break;
+	}
+}
+
+
+void denoise (int s, struct sensors_event_t* data)
+{
+	switch (sensor_info[s].type) {
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			denoise_median(&sensor_info[s], data, 3);
+			break;
+
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			denoise_average(&sensor_info[s], data, 3 , 30);
+			break;
+	}
+}
+
+
+void release_noise_filtering_data (int s)
+{
+	void *buff;
+
+	/* Delete moving average structures */
+	if (sensor_info[s].history) {
+		free(sensor_info[s].history);
+		sensor_info[s].history = NULL;
+		sensor_info[s].history_size = 0;
+		if (sensor_info[s].history_sum) {
+			free(sensor_info[s].history_sum);
+			sensor_info[s].history_sum = NULL;
+		}
+	}
+
+	/* Delete median filter structures */
+	if (sensor_info[s].filter) {
+		buff = ((struct filter_median*)sensor_info[s].filter)->buff;
+
+		if (buff)
+			free(buff);
+
+		free(sensor_info[s].filter);
+		sensor_info[s].filter = NULL;
+	}
+}
+
+
+#define GLOBAL_HISTORY_SIZE 100
+
+struct recorded_sample_t
+{
+	int sensor;
+	int motion_trigger;
+	sensors_event_t data;
+};
+
+/*
+ * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events,
+ * covering the entire sensor collection. It is intended as a way to correlate
+ * data coming from active sensors, no matter the sensor type, over a recent
+ * window of time. The array is not sorted ; we simply evict the oldest cell
+ * (by insertion time) and replace its contents. Timestamps don't necessarily
+ * grow monotonically as they tell the data acquisition type, and that there can
+ * be a delay between acquisition and insertion into this table.
+ */
+
+static struct recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
+
+static int initialized_entries;	/* How many of these are initialized	      */
+static int insertion_index;	/* Index of sample to evict next time	      */
+
+
+void record_sample (int s, const struct sensors_event_t* event)
+{
+	struct recorded_sample_t *cell;
+	int i;
+
+	/* Don't record duplicate samples, as they are not useful for filters */
+	if (sensor_info[s].report_pending == DATA_DUPLICATE)
+		return;
+
+	if (initialized_entries == GLOBAL_HISTORY_SIZE) {
+		i = insertion_index;
+		insertion_index = (insertion_index+1) % GLOBAL_HISTORY_SIZE;
+	} else {
+		i = initialized_entries;
+		initialized_entries++;
+	}
+
+	cell = &global_history[i];
+
+	cell->sensor	     	= s;
+
+	cell->motion_trigger 	= (sensor_info[s].selected_trigger ==
+				   sensor_info[s].motion_trigger_name);
+
+	memcpy(&cell->data, event, sizeof(sensors_event_t));
 }

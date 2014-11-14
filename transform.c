@@ -257,13 +257,13 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise_average(&sensor_info[s], data, 3, 20);
+				denoise(s, data);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			calibrate_compass (data, &sensor_info[s], get_timestamp());
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise_average(&sensor_info[s], data, 3, 30);
+				denoise(s, data);
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
@@ -295,11 +295,12 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			 * events that can disturb our mean or stddev.
 			 */
 			if (sensor_info[s].quirks & QUIRK_NOISY) {
-				denoise_median(&sensor_info[s], data, 3);
 				if((sensor_info[s].selected_trigger !=
 					sensor_info[s].motion_trigger_name) &&
 					sensor_info[s].event_count < MIN_SAMPLES)
 						return 0;
+
+				denoise(s, data);
 			}
 
 			/* Clamp near zero moves to (0,0,0) if appropriate */
@@ -325,9 +326,6 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			sensor_info[s].prev_val = data->data[0];
 			break;
 	}
-
-	/* Add this event to our global records, for filtering purposes */
-	record_sample(s, data);
 
 	return 1; /* Return sample to Android */
 }
