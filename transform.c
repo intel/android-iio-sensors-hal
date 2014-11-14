@@ -189,78 +189,6 @@ static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
 }
 
 
-static void denoise (struct sensor_info_t* si, struct sensors_event_t* data,
-		     int num_fields, int max_samples)
-{
-	/*
-	 * Smooth out incoming data using a moving average over a number of
-	 * samples. We accumulate one second worth of samples, or max_samples,
-	 * depending on which is lower.
-	 */
-
-	int i;
-	int f;
-	int sampling_rate = (int) si->sampling_rate;
-	int history_size;
-	int history_full = 0;
-
-	/* Don't denoise anything if we have less than two samples per second */
-	if (sampling_rate < 2)
-		return;
-
-	/* Restrict window size to the min of sampling_rate and max_samples */
-	if (sampling_rate > max_samples)
-		history_size = max_samples;
-	else
-		history_size = sampling_rate;
-
-	/* Reset history if we're operating on an incorrect window size */
-	if (si->history_size != history_size) {
-		si->history_size = history_size;
-		si->history_entries = 0;
-		si->history_index = 0;
-		si->history = (float*) realloc(si->history,
-				si->history_size * num_fields * sizeof(float));
-		if (si->history) {
-			si->history_sum = (float*) realloc(si->history_sum,
-				num_fields * sizeof(float));
-			if (si->history_sum)
-				memset(si->history_sum, 0, num_fields * sizeof(float));
-		}
-	}
-
-	if (!si->history || !si->history_sum)
-		return;	/* Unlikely, but still... */
-
-	/* Update initialized samples count */
-	if (si->history_entries < si->history_size)
-		si->history_entries++;
-	else
-		history_full = 1;
-
-	/* Record new sample and calculate the moving sum */
-	for (f=0; f < num_fields; f++) {
-		/**
-		 * A field is going to be overwritten if
-		 * history is full, so decrease the history sum
-		 */
-		if (history_full)
-			si->history_sum[f] -=
-				si->history[si->history_index * num_fields + f];
-
-		si->history[si->history_index * num_fields + f] = data->data[f];
-		si->history_sum[f] += data->data[f];
-
-		/* For now simply compute a mobile mean for each field */
-		/* and output filtered data */
-		data->data[f] = si->history_sum[f] / si->history_entries;
-	}
-
-	/* Update our rolling index (next evicted cell) */
-	si->history_index = (si->history_index + 1) % si->history_size;
-}
-
-
 static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 {
 	float x, y, z;
@@ -329,13 +257,13 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3, 20);
+				denoise_average(&sensor_info[s], data, 3, 20);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			calibrate_compass (data, &sensor_info[s], get_timestamp());
 			if (sensor_info[s].quirks & QUIRK_NOISY)
-				denoise(&sensor_info[s], data, 3, 30);
+				denoise_average(&sensor_info[s], data, 3, 30);
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
