@@ -24,6 +24,7 @@ static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
 static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based */
 
 static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
+static int has_iio_ts[MAX_DEVICES];  /* ts channel available on this iio dev */
 
 static int poll_fd; /* epoll instance covering all enabled sensors */
 
@@ -105,7 +106,51 @@ static int setup_trigger (int s, const char* trigger_val)
 }
 
 
-void build_sensor_report_maps(int dev_num)
+static void enable_iio_timestamp (int dev_num, int known_channels)
+{
+	/* Check if we have a dedicated iio timestamp channel */
+
+	char spec_buf[MAX_TYPE_SPEC_LEN];
+	char sysfs_path[PATH_MAX];
+	int n;
+
+	sprintf(sysfs_path, CHANNEL_PATH "%s", dev_num, "in_timestamp_type");
+
+	n = sysfs_read_str(sysfs_path, spec_buf, sizeof(spec_buf));
+
+	if (n <= 0)
+		return;
+
+	if (strcmp(spec_buf, "le:s64/64>>0"))
+		return;
+
+	/* OK, type is int64_t as expected, in little endian representation */
+
+	sprintf(sysfs_path, CHANNEL_PATH"%s", dev_num, "in_timestamp_index");
+
+	if (sysfs_read_int(sysfs_path, &n))
+		return;
+
+	/* Check that the timestamp comes after the other fields we read */
+	if (n != known_channels)
+		return;
+
+	/* Try enabling that channel */
+	sprintf(sysfs_path, CHANNEL_PATH "%s", dev_num, "in_timestamp_en");
+
+	sysfs_write_int(sysfs_path, 1);
+
+	if (sysfs_read_int(sysfs_path, &n))
+		return;
+
+	if (n) {
+		ALOGI("Detected timestamp channel on iio device %d\n", dev_num);
+		has_iio_ts[dev_num] = 1;
+	}
+}
+
+
+void build_sensor_report_maps (int dev_num)
 {
 	/*
 	 * Read sysfs files from a iio device's scan_element directory, and
@@ -240,6 +285,9 @@ void build_sensor_report_maps(int dev_num)
 
 		offset += size;
 	 }
+
+	/* Enable the timestamp channel if there is one available */
+	enable_iio_timestamp(dev_num, known_channels);
 }
 
 
@@ -775,6 +823,7 @@ void set_report_ts(int s, int64_t ts)
 	}
 }
 
+
 static int integrate_device_report (int dev_num)
 {
 	int len;
@@ -784,6 +833,8 @@ static int integrate_device_report (int dev_num)
 	unsigned char *target;
 	unsigned char *source;
 	int size;
+	int64_t ts = 0;
+	int ts_offset = 0;	/* Offset of iio timestamp, if provided */
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -796,8 +847,6 @@ static int integrate_device_report (int dev_num)
 		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
-
-
 
 	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
 
@@ -835,13 +884,37 @@ static int integrate_device_report (int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
-			set_report_ts(s, get_timestamp());
 			sensor_info[s].report_pending = DATA_TRIGGER;
 			sensor_info[s].report_initialized = 1;
+			set_report_ts(s, get_timestamp());
+
+			ts_offset += sr_offset;
 		}
 
 	/* Tentatively switch to an any-motion trigger if conditions are met */
 	enable_motion_trigger(dev_num);
+
+	/* If no iio timestamp channel was detected for this device, bail out */
+	if (!has_iio_ts[dev_num])
+		return 0;
+
+	/* Align on a 64 bits boundary */
+	ts_offset = (ts_offset + 7)/8*8;
+
+	/* If we read an amount of data consistent with timestamp presence */
+	if (len == ts_offset + (int) sizeof(int64_t))
+		ts = *(int64_t*) (buf + ts_offset);
+
+	if (ts == 0) {
+		ALOGV("Unreliable timestamp channel on iio dev %d\n", dev_num);
+		return 0;
+	}
+
+	ALOGV("Driver timestamp on iio device %d: ts=%lld\n", dev_num, ts);
+
+	for (s=0; s<MAX_SENSORS; s++)
+		if (sensor_info[s].dev_num == dev_num && sensor_info[s].enabled)
+			set_report_ts(s, ts);
 
 	return 0;
 }
