@@ -282,7 +282,7 @@ static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
             &cal_data->w_invert[2][0], &cal_data->w_invert[2][1], &cal_data->w_invert[2][2],
             &cal_data->bfield);
 
-        if (ret != data_count || info->cal_level > cal_steps) {
+        if (ret != data_count || info->cal_level >= cal_steps) {
             info->cal_level = 0;
         }
     }
@@ -362,8 +362,8 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     }
 #endif
 
-    lookback_count = lookback_counts[info->cal_level - 1];
-    min_diff = min_diffs[info->cal_level - 1];
+    lookback_count = lookback_counts[info->cal_level];
+    min_diff = min_diffs[info->cal_level];
 
     // For the current point to be accepted, each x/y/z value must be different enough
     // to the last several collected points
@@ -460,7 +460,7 @@ static int compass_ready (struct sensor_info_t* info)
     if (cal_data->sample_count < DS_SIZE)
         return info->cal_level;
 
-    max_sqr_err = max_sqr_errs[info->cal_level - 1];
+    max_sqr_err = max_sqr_errs[info->cal_level];
 
     /* enough points have been collected, do the ellipsoid calibration */
     for (i = 0; i < DS_SIZE; i++) {
@@ -483,7 +483,7 @@ static int compass_ready (struct sensor_info_t* info)
                 memcpy(cal_data->offset, new_cal_data.offset, sizeof(cal_data->offset));
                 memcpy(cal_data->w_invert, new_cal_data.w_invert, sizeof(cal_data->w_invert));
                 cal_data->bfield = new_cal_data.bfield;
-                if (info->cal_level < cal_steps)
+                if (info->cal_level < (cal_steps - 1))
                     info->cal_level++;
                 ALOGV("CompassCalibration: ready check success, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f, err %f",
                     cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0], cal_data->w_invert[0][0],
