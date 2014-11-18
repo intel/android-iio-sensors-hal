@@ -370,7 +370,7 @@ static void* acquisition_routine (void* param)
 	int c;
 	int ret;
 	struct timespec target_time;
-	int64_t timestamp, period;
+	int64_t timestamp, period, start, stop;
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
@@ -387,7 +387,7 @@ static void* acquisition_routine (void* param)
 	}
 
 	num_fields = get_field_count(s);
-	sample_size = num_fields * sizeof(float);
+	sample_size = sizeof(int64_t) + num_fields * sizeof(float);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be
@@ -402,7 +402,7 @@ static void* acquisition_routine (void* param)
 
 	/* Check and honor termination requests */
 	while (sensor_info[s].thread_data_fd[1] != -1) {
-
+		start = get_timestamp();
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
@@ -410,13 +410,16 @@ static void* acquisition_routine (void* param)
 			if (sensor_info[s].thread_data_fd[1] == -1)
 				goto exit;
 		}
+		stop = get_timestamp();
+		data.timestamp = start/2 + stop/2;
 
 		/* If the sample looks good */
 		if (sensor_info[s].ops.finalize(s, &data)) {
 
 			/* Pipe it for transmission to poll loop */
 			ret = write(	sensor_info[s].thread_data_fd[1],
-					data.data, sample_size);
+					&data.timestamp, sample_size);
+
 			if (ret != sample_size)
 				ALOGE("S%d acquisition thread: tried to write %d, ret: %d\n",
 					s, sample_size, ret);
@@ -956,15 +959,21 @@ static void integrate_thread_report (uint32_t tag)
 	int s = tag - THREAD_REPORT_TAG_BASE;
 	int len;
 	int expected_len;
+	int64_t timestamp;
+	unsigned char current_sample[MAX_SENSOR_REPORT_SIZE];
 
-	expected_len = get_field_count(s) * sizeof(float);
+	expected_len = sizeof(int64_t) + get_field_count(s) * sizeof(float);
 
 	len = read(sensor_info[s].thread_data_fd[0],
-		   sensor_info[s].report_buffer,
+		   current_sample,
 		   expected_len);
 
+	memcpy(&timestamp, current_sample, sizeof(int64_t));
+	memcpy(sensor_info[s].report_buffer, sizeof(int64_t) + current_sample,
+			expected_len - sizeof(int64_t));
+
 	if (len == expected_len) {
-		set_report_ts(s, get_timestamp());
+		set_report_ts(s, timestamp);
 		sensor_info[s].report_pending = DATA_SYSFS;
 	}
 }
