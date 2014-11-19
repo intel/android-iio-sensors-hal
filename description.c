@@ -168,7 +168,7 @@ char* sensor_get_vendor (int s)
 }
 
 
-int sensor_get_version (int s)
+int sensor_get_version (__attribute__((unused)) int s)
 {
 	return IIO_SENSOR_HAL_VERSION;
 }

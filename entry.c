@@ -12,7 +12,8 @@
 
 static int init_count;
 
-static int activate(struct sensors_poll_device_t* dev, int handle, int enabled)
+static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
+		     int handle, int enabled)
 {
 	if (init_count == 0 || handle < 0 || handle >= sensor_count)
 		return -EINVAL;
@@ -40,7 +41,8 @@ static int activate(struct sensors_poll_device_t* dev, int handle, int enabled)
 }
 
 
-static int set_delay(struct sensors_poll_device_t* dev, int handle, int64_t ns)
+static int set_delay (__attribute__((unused)) struct sensors_poll_device_t* dev,
+		      int handle, int64_t ns)
 {
 	if (init_count == 0 || handle < 0 || handle >= sensor_count)
 		return -EINVAL;
@@ -49,8 +51,8 @@ static int set_delay(struct sensors_poll_device_t* dev, int handle, int64_t ns)
 }
 
 
-static int poll(struct sensors_poll_device_t* dev, sensors_event_t* data,
-		int count)
+static int poll (__attribute__((unused)) struct sensors_poll_device_t* dev,
+		 sensors_event_t* data, int count)
 {
 	if (init_count == 0 || !data || count < 1)
 		return -EINVAL;
@@ -58,19 +60,24 @@ static int poll(struct sensors_poll_device_t* dev, sensors_event_t* data,
 	return sensor_poll(data, count);
 }
 
-static int batch (struct sensors_poll_device_1* dev,
-            int sensor_handle, int flags, int64_t sampling_period_ns,
-            int64_t max_report_latency_ns)
+
+static int batch (__attribute__((unused)) struct sensors_poll_device_1* dev,
+		  int sensor_handle, __attribute__((unused)) int flags,
+		  int64_t sampling_period_ns,
+		  __attribute__((unused)) int64_t max_report_latency_ns)
 {
 	return set_delay ((struct sensors_poll_device_t*)dev,
 		sensor_handle, sampling_period_ns);
 }
 
-static int flush(struct sensors_poll_device_1* dev, int handle)
+static int flush (__attribute__((unused)) struct sensors_poll_device_1* dev,
+		  int handle)
 {
 	return sensor_flush (handle);
 }
-static int close_module(hw_device_t *device)
+
+
+static int close_module (__attribute__((unused)) hw_device_t *device)
 {
 	if (init_count == 0)
 		return -EINVAL;

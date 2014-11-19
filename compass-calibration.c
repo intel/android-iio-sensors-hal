@@ -333,7 +333,7 @@ static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
         ALOGE ("compass calibration - store data failed!");
 }
 
-static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
+static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info)
 {
     float data[3] = {event->magnetic.x, event->magnetic.y, event->magnetic.z};
     unsigned int index,j;
@@ -497,13 +497,13 @@ static int compass_ready (struct sensor_info_t* info)
     return info->cal_level;
 }
 
-void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
+
+void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info)
 {
-    long current_time_ms = current_time / 1000000;
     int cal_level;
 
     /* Calibration is continuous */
-    compass_collect (event, info, current_time_ms);
+    compass_collect (event, info);
 
     cal_level = compass_ready(info);
 

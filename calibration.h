@@ -49,7 +49,7 @@ struct gyro_cal {
 
 typedef double mat_input_t[DS_SIZE][3];
 
-void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t time);
+void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info);
 void compass_read_data (struct sensor_info_t* info);
 void compass_store_data (struct sensor_info_t* info);
 
