@@ -529,9 +529,13 @@ int main(int argc, char **argv)
 		return start_hal(argc, argv);
 	}
 
-	strcpy(cmd, argv[1]); strcat(cmd, " ");
+	if (strlen(argv[1]) >= sizeof(cmd))
+		return usage();
+	strncpy(cmd, argv[1], sizeof(cmd) - 1);
+	strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
 	for(i = 2; i < argc; i++) {
-		strcat(cmd, argv[i]); strcat(cmd, " ");
+		strncat(cmd, argv[i], sizeof(cmd) - strlen(cmd) - 1);
+		strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
 	}
 
 	sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
