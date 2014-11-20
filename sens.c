@@ -176,7 +176,7 @@ static void run_sensors_poll_v0(void)
 	}
 }
 
-static void *run_sensors_thread(void *arg)
+static void *run_sensors_thread(void *arg __attribute((unused)))
 {
 	switch (dev->version) {
 	case SENSORS_DEVICE_API_VERSION_0_1:
