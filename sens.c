@@ -233,7 +233,7 @@ static int sensor_activate(int handle, int enable)
 #define CLIENT_ERR(f, fmt...)			\
 	{ if (f) { fprintf(f, fmt); fprintf(f, "\n"); } ALOGE(fmt); }
 
-static int dispatch_cmd(char *cmd, int cmd_len, FILE *f)
+static int dispatch_cmd(char *cmd, FILE *f)
 {
 	char *argv[16], *tmp;
 	int argc = 0, handle;
@@ -388,7 +388,12 @@ static int start_server(void)
 				}
 			}
 
-			err = dispatch_cmd(data_buff, err, f);
+			if (data_buff[err - 1] != 0) {
+				ALOGE("command is not NULL terminated\n");
+				break;
+			}
+
+			err = dispatch_cmd(data_buff, f);
 			if (err < 0) {
 				ALOGE("error dispatching command: %d", err);
 				break;
