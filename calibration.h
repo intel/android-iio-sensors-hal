@@ -13,7 +13,6 @@
 #define EPSILON 0.000000001
 
 #define MAGNETIC_LOW 960 /* 31 micro tesla squared */
-#define MAGNETIC_HIGH 3600 /* 60 micro tesla squared */
 
 #ifdef DBG_RAW_DATA
 #define RAW_DATA_FULL_PATH "/data/raw_compass_data_full_%d.txt"

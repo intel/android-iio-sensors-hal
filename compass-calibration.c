@@ -405,8 +405,8 @@ static void scale_event (struct sensors_event_t* event)
                 event->magnetic.y * event->magnetic.y +
                 event->magnetic.z * event->magnetic.z);
 
-    sanity_norm = (sqr_norm < MAGNETIC_LOW) ?  MAGNETIC_LOW : sanity_norm;
-    sanity_norm = (sqr_norm > MAGNETIC_HIGH) ? MAGNETIC_HIGH : sanity_norm;
+    if (sqr_norm < MAGNETIC_LOW)
+        sanity_norm = MAGNETIC_LOW;
 
     if (sanity_norm && sqr_norm) {
         scale = sanity_norm / sqr_norm;
