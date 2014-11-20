@@ -364,6 +364,9 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor_desc[s].fifoReservedEventCount = 0;
 	sensor_desc[s].fifoMaxEventCount = 0;
 
+	/* Populate the quirks array */
+	sensor_get_quirks(s);
+
 	if (sensor_info[s].internal_name[0] == '\0') {
 		/*
 		 * In case the kernel-mode driver doesn't expose a name for
