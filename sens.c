@@ -490,11 +490,10 @@ static int start_hal(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	char cmd[1024];
+	char cmd[1024], *tmp;
 	int sock, i;
-	struct iovec recv_buff = {
+	struct iovec buff = {
 		.iov_base = cmd,
-		.iov_len = sizeof(cmd),
 	};
 	struct cmsg_fd {
 		struct cmsghdr hdr;
@@ -510,7 +509,7 @@ int main(int argc, char **argv)
 	struct msghdr msg = {
 		.msg_name = NULL,
 		.msg_namelen = 0,
-		.msg_iov = &recv_buff,
+		.msg_iov = &buff,
 		.msg_iovlen = 1,
 		.msg_control = &cmsg_buff,
 		.msg_controllen = sizeof(cmsg_buff),
@@ -549,11 +548,13 @@ int main(int argc, char **argv)
 		return 5;
 	}
 
+	buff.iov_len = strlen(cmd) + 1;
 	if (sendmsg(sock, &msg, 0) < 0) {
 		fprintf(stderr, "failed sending command to server: %s\n", strerror(errno));
 		return 6;
 	}
 
+	buff.iov_len = sizeof(cmd);
 	if (read(sock, cmd, 1) < 0) {
 		fprintf(stderr, "failed getting ack from server: %s\n", strerror(errno));
 		return 7;
