@@ -599,7 +599,7 @@ int sensor_activate(int s, int enabled)
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
 	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
-	sys_to_rt_delta = get_timestamp_realtime - load_timestamp_sys_clock();
+	sys_to_rt_delta = get_timestamp_realtime() - load_timestamp_sys_clock();
 
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
@@ -903,7 +903,6 @@ static int integrate_device_report (int dev_num)
 
 			sensor_info[s].report_pending = DATA_TRIGGER;
 			sensor_info[s].report_initialized = 1;
-			set_report_ts(s, get_timestamp());
 
 			ts_offset += sr_offset;
 		}
@@ -912,8 +911,13 @@ static int integrate_device_report (int dev_num)
 	enable_motion_trigger(dev_num);
 
 	/* If no iio timestamp channel was detected for this device, bail out */
-	if (!has_iio_ts[dev_num])
+	if (!has_iio_ts[dev_num]) {
+		for (s=0; s<MAX_SENSORS; s++)
+			if (sensor_info[s].dev_num == dev_num &&
+				sensor_info[s].enabled)
+					set_report_ts(s, get_timestamp());
 		return 0;
+	}
 
 	/* Align on a 64 bits boundary */
 	ts_offset = (ts_offset + 7)/8*8;
@@ -924,6 +928,10 @@ static int integrate_device_report (int dev_num)
 
 	if (ts == 0) {
 		ALOGV("Unreliable timestamp channel on iio dev %d\n", dev_num);
+		for (s=0; s<MAX_SENSORS; s++)
+			if (sensor_info[s].dev_num == dev_num &&
+				sensor_info[s].enabled)
+					set_report_ts(s, get_timestamp());
 		return 0;
 	}
 
