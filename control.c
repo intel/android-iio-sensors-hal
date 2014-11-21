@@ -1247,9 +1247,9 @@ int sensor_set_delay(int s, int64_t ns)
 	int per_device_sampling_rate;
 	int32_t min_delay_us = sensor_desc[s].minDelay;
 	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
-	float min_supported_rate = max_delay_us ? (1000000.0f / max_delay_us) : 1;
+	float min_supported_rate = max_delay_us ? (1000000.0 / max_delay_us) : 1;
 	float max_supported_rate = 
-		(min_delay_us && min_delay_us != -1) ? (1000000.0f / min_delay_us) : 0;
+		(min_delay_us && min_delay_us != -1) ? (1000000.0 / min_delay_us) : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;

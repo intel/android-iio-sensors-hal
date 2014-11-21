@@ -11,7 +11,7 @@
 #include "calibration.h"
 
  /* gyro defines */
-#define GYRO_MAX_ERR 0.05f
+#define GYRO_MAX_ERR 0.05
 #define GYRO_DS_SIZE 100
 #define GYRO_CALIBRATION_PATH "/data/gyro.conf"
 

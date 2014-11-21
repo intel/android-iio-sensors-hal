@@ -21,8 +21,8 @@
 #define GRAVITY 9.80665f
 
 /* 720 LSG = 1G */
-#define LSG                         (1024.0f)
-#define NUMOFACCDATA                (8.0f)
+#define LSG                         (1024.0)
+#define NUMOFACCDATA                (8.0)
 
 /* conversion of acceleration data to SI units (m/s^2) */
 #define CONVERT_A                   (GRAVITY_EARTH / LSG / NUMOFACCDATA)
@@ -31,21 +31,21 @@
 #define CONVERT_A_Z(x)              ((float(x)/1000) * (GRAVITY * 1.0))
 
 /* conversion of magnetic data to uT units */
-#define CONVERT_M                   (1.0f/6.6f)
+#define CONVERT_M                   (1.0/6.6)
 #define CONVERT_M_X                 (-CONVERT_M)
 #define CONVERT_M_Y                 (-CONVERT_M)
 #define CONVERT_M_Z                 (CONVERT_M)
 
-#define CONVERT_GAUSS_TO_MICROTESLA(x)        ( (x) * 100 )
+#define CONVERT_GAUSS_TO_MICROTESLA(x)        ((x) * 100 )
 
 /* conversion of orientation data to degree units */
-#define CONVERT_O                   (1.0f/64.0f)
+#define CONVERT_O                   (1.0/64)
 #define CONVERT_O_A                 (CONVERT_O)
 #define CONVERT_O_P                 (CONVERT_O)
 #define CONVERT_O_R                 (-CONVERT_O)
 
 /*conversion of gyro data to SI units (radian/sec) */
-#define CONVERT_GYRO                ((2000.0f/32767.0f)*((float)M_PI / 180.0f))
+#define CONVERT_GYRO                (2000.0/32767*M_PI/180)
 #define CONVERT_GYRO_X              (-CONVERT_GYRO)
 #define CONVERT_GYRO_Y              (-CONVERT_GYRO)
 #define CONVERT_GYRO_Z              (CONVERT_GYRO)
@@ -107,13 +107,13 @@ inline float convert_from_vtf_format(int size, int exponent, unsigned int value)
 // Degree/sec to radian/sec
 #define CONVERT_G_D_VTF16E14_X(s,d,x)  (DEF_ORIENT_GYRO_X *\
                                         convert_from_vtf_format(s,d,x) * \
-                                        ((float)M_PI/180.0f))
+                                        M_PI/180)
 #define CONVERT_G_D_VTF16E14_Y(s,d,x)  (DEF_ORIENT_GYRO_Y *\
                                         convert_from_vtf_format(s,d,x) * \
-                                        ((float)M_PI/180.0f))
+                                        M_PI/180)
 #define CONVERT_G_D_VTF16E14_Z(s,d,x)  (DEF_ORIENT_GYRO_Z *\
                                         convert_from_vtf_format(s,d,x) * \
-                                        ((float)M_PI/180.0f))
+                                        M_PI/180)
 
 // Milli gauss to micro tesla
 #define CONVERT_M_MG_VTF16E14_X(s,d,x) (convert_from_vtf_format(s,d,x)/10)
