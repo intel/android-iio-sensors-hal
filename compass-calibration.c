@@ -70,7 +70,7 @@ static double calc_square_err (struct compass_cal* data)
     return err;
 }
 
-// Given an real symmetric 3x3 matrix A, compute the eigenvalues
+/* Given an real symmetric 3x3 matrix A, compute the eigenvalues */
 static void compute_eigenvalues(double mat[3][3], double* eig1, double* eig2, double* eig3)
 {
     double p = mat[0][1] * mat[0][1] + mat[0][2] * mat[0][2] + mat[1][2] * mat[1][2];
@@ -372,8 +372,10 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     lookback_count = lookback_counts[info->cal_level];
     min_diff = min_diffs[info->cal_level];
 
-    // For the current point to be accepted, each x/y/z value must be different enough
-    // to the last several collected points
+    /*
+     * For the current point to be accepted, each x/y/z value must be different
+     * enough to the last several collected points.
+     */
     if (cal_data->sample_count > 0 && cal_data->sample_count < MAGN_DS_SIZE) {
         unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count :
                         cal_data->sample_count;
