@@ -261,7 +261,7 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			calibrate_compass (data, &sensor_info[s], get_timestamp());
+			calibrate_compass (data, &sensor_info[s]);
 			if (sensor_info[s].quirks & QUIRK_NOISY)
 				denoise(s, data);
 			break;

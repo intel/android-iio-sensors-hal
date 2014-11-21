@@ -15,12 +15,19 @@
 
 #ifdef DBG_RAW_DATA
 #define MAX_RAW_DATA_COUNT 2000
+#define RAW_DATA_FULL_PATH "/data/raw_compass_data_full_%d.txt"
+#define RAW_DATA_SELECTED_PATH "/data/raw_compass_data_selected_%d.txt"
 static FILE *raw_data = NULL;
 static FILE *raw_data_selected = NULL;
 static int raw_data_count = 0;
 int file_no = 0;
 #endif
 
+/* compass defines */
+#define COMPASS_CALIBRATION_PATH "/data/compass.conf"
+#define EPSILON 0.000000001
+
+#define MAGNETIC_LOW 960 /* 31 micro tesla squared */
 #define CAL_STEPS 5
 
 /* We'll have multiple calibration levels
@@ -35,7 +42,7 @@ static void reset_sample (struct compass_cal* data)
 {
     int i,j;
     data->sample_count = 0;
-    for (i = 0; i < DS_SIZE; i++)
+    for (i = 0; i < MAGN_DS_SIZE; i++)
         for (j=0; j < 3; j++)
             data->sample[i][j] = 0;
 }
@@ -46,7 +53,7 @@ static double calc_square_err (struct compass_cal* data)
     double raw[3][1], result[3][1], mat_diff[3][1];
     int i;
 
-    for (i = 0; i < DS_SIZE; i++) {
+    for (i = 0; i < MAGN_DS_SIZE; i++) {
         raw[0][0] = data->sample[i][0];
         raw[1][0] = data->sample[i][1];
         raw[2][0] = data->sample[i][2];
@@ -59,7 +66,7 @@ static double calc_square_err (struct compass_cal* data)
 
         err += diff * diff;
     }
-    err /= DS_SIZE;
+    err /= MAGN_DS_SIZE;
     return err;
 }
 
@@ -136,11 +143,11 @@ static void calc_evector(double mat[3][3], double eig, double vec[3][1])
 static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3][3], double* bfield)
 {
     int i;
-    double h[DS_SIZE][9];
-    double w[DS_SIZE][1];
-    double h_trans[9][DS_SIZE];
+    double h[MAGN_DS_SIZE][9];
+    double w[MAGN_DS_SIZE][1];
+    double h_trans[9][MAGN_DS_SIZE];
     double p_temp1[9][9];
-    double p_temp2[9][DS_SIZE];
+    double p_temp2[9][MAGN_DS_SIZE];
     double temp1[3][3], temp[3][3];
     double temp1_inv[3][3];
     double temp2[3][1];
@@ -149,7 +156,7 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     double a[3][3], sqrt_evals[3][3], evecs[3][3], evecs_trans[3][3];
     double evec1[3][1], evec2[3][1], evec3[3][1];
 
-    for (i = 0; i < DS_SIZE; i++) {
+    for (i = 0; i < MAGN_DS_SIZE; i++) {
         w[i][0] = m[i][0] * m[i][0];
         h[i][0] = m[i][0];
         h[i][1] = m[i][1];
@@ -161,11 +168,11 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
         h[i][7] = -1 * m[i][2] * m[i][2];
         h[i][8] = 1;
     }
-    transpose (DS_SIZE, 9, h, h_trans);
-    multiply (9, DS_SIZE, 9, h_trans, h, result);
+    transpose (MAGN_DS_SIZE, 9, h, h_trans);
+    multiply (9, MAGN_DS_SIZE, 9, h_trans, h, result);
     invert (9, result, p_temp1);
-    multiply (9, 9, DS_SIZE, p_temp1, h_trans, p_temp2);
-    multiply (9, DS_SIZE, 1, p_temp2, w, p);
+    multiply (9, 9, MAGN_DS_SIZE, p_temp1, h_trans, p_temp2);
+    multiply (9, MAGN_DS_SIZE, 1, p_temp2, w, p);
 
     temp1[0][0] = 2;
     temp1[0][1] = p[3][0];
@@ -333,7 +340,7 @@ static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
         ALOGE ("compass calibration - store data failed!");
 }
 
-static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
+static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info)
 {
     float data[3] = {event->magnetic.x, event->magnetic.y, event->magnetic.z};
     unsigned int index,j;
@@ -367,7 +374,7 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
 
     // For the current point to be accepted, each x/y/z value must be different enough
     // to the last several collected points
-    if (cal_data->sample_count > 0 && cal_data->sample_count < DS_SIZE) {
+    if (cal_data->sample_count > 0 && cal_data->sample_count < MAGN_DS_SIZE) {
         unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count :
                         cal_data->sample_count;
         for (index = 0; index < lookback; index++){
@@ -381,7 +388,7 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
         }
     }
 
-    if (cal_data->sample_count < DS_SIZE) {
+    if (cal_data->sample_count < MAGN_DS_SIZE) {
         memcpy(cal_data->sample[cal_data->sample_count], data, sizeof(float) * 3);
         cal_data->sample_count++;
         ALOGV("CompassCalibration:point collected [%f,%f,%f], selected_count=%d",
@@ -405,8 +412,8 @@ static void scale_event (struct sensors_event_t* event)
                 event->magnetic.y * event->magnetic.y +
                 event->magnetic.z * event->magnetic.z);
 
-    sanity_norm = (sqr_norm < MAGNETIC_LOW) ?  MAGNETIC_LOW : sanity_norm;
-    sanity_norm = (sqr_norm > MAGNETIC_HIGH) ? MAGNETIC_HIGH : sanity_norm;
+    if (sqr_norm < MAGNETIC_LOW)
+        sanity_norm = MAGNETIC_LOW;
 
     if (sanity_norm && sqr_norm) {
         scale = sanity_norm / sqr_norm;
@@ -457,13 +464,13 @@ static int compass_ready (struct sensor_info_t* info)
     int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
         info->max_cal_level : CAL_STEPS;
 
-    if (cal_data->sample_count < DS_SIZE)
+    if (cal_data->sample_count < MAGN_DS_SIZE)
         return info->cal_level;
 
     max_sqr_err = max_sqr_errs[info->cal_level];
 
     /* enough points have been collected, do the ellipsoid calibration */
-    for (i = 0; i < DS_SIZE; i++) {
+    for (i = 0; i < MAGN_DS_SIZE; i++) {
        mat[i][0] = cal_data->sample[i][0];
        mat[i][1] = cal_data->sample[i][1];
        mat[i][2] = cal_data->sample[i][2];
@@ -497,13 +504,13 @@ static int compass_ready (struct sensor_info_t* info)
     return info->cal_level;
 }
 
-void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info, int64_t current_time)
+
+void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info)
 {
-    long current_time_ms = current_time / 1000000;
     int cal_level;
 
     /* Calibration is continuous */
-    compass_collect (event, info, current_time_ms);
+    compass_collect (event, info);
 
     cal_level = compass_ready(info);
 

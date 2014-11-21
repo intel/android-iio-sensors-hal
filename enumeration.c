@@ -817,8 +817,8 @@ void delete_enumeration_data (void)
 }
 
 
-int get_sensors_list(	struct sensors_module_t* module,
-			struct sensor_t const** list)
+int get_sensors_list (__attribute__((unused)) struct sensors_module_t* module,
+		      struct sensor_t const** list)
 {
 	*list = sensor_desc;
 	return sensor_count;
