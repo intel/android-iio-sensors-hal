@@ -25,6 +25,9 @@ void	set_timestamp	(struct timespec *out, int64_t target_ns);
 
 int64_t get_timestamp(void);
 int64_t load_timestamp_sys_clock(void);
+
+int64_t get_timestamp_realtime (void);
+
 #endif
 
 

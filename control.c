@@ -32,6 +32,8 @@ static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
 int64_t ts_delta; /* delta between SystemClock.getNanos and our timestamp */
 
+static int64_t sys_to_rt_delta;	/* delta between system and realtime clocks */
+
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
@@ -597,6 +599,7 @@ int sensor_activate(int s, int enabled)
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
 	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
+	sys_to_rt_delta = get_timestamp_realtime - load_timestamp_sys_clock();
 
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
@@ -928,7 +931,7 @@ static int integrate_device_report (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num && sensor_info[s].enabled)
-			set_report_ts(s, ts);
+			set_report_ts(s, ts - sys_to_rt_delta);
 
 	return 0;
 }

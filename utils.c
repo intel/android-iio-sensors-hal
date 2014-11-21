@@ -257,12 +257,14 @@ int decode_type_spec(	const char type_buf[MAX_TYPE_SPEC_LEN],
 	return storagebits / 8;
 }
 
+
 int64_t load_timestamp_monotonic(struct timespec *ts)
 {
 	clock_gettime(CLOCK_MONOTONIC, ts);
 
 	return (1000000000LL * ts->tv_sec + ts->tv_nsec);
 }
+
 
 int64_t load_timestamp_sys_clock(void)
 {
@@ -288,6 +290,17 @@ int64_t load_timestamp_sys_clock(void)
 	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
 }
 
+
+int64_t get_timestamp_realtime (void)
+{
+	struct timespec ts = {0};
+
+	clock_gettime(CLOCK_REALTIME, &ts);
+
+	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+}
+
+
 int64_t get_timestamp_monotonic(void)
 {
 	struct timespec ts = {0};
@@ -295,10 +308,12 @@ int64_t get_timestamp_monotonic(void)
 	return load_timestamp_monotonic(&ts);
 }
 
+
 int64_t get_timestamp(void)
 {
 	return (get_timestamp_monotonic() + ts_delta);
 }
+
 
 void set_timestamp(struct timespec *out, int64_t target_ns)
 {
