@@ -32,8 +32,6 @@
 
 #define MAX_NAME_SIZE		32
 
-#define MIN_SAMPLES 5
-
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 

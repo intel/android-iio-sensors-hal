@@ -289,15 +289,15 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 				sensor_info[s].motion_trigger_name)
 					calibrate_gyro(data, &sensor_info[s]);
 
-			/* For noisy sensors we'll drop a very few number
-			 * of samples to make sure we have at least MIN_SAMPLES events
-			 * in the filtering queue. This is to make sure we are not sending
-			 * events that can disturb our mean or stddev.
+			/*
+			 * For noisy sensors drop a few samples to make sure we
+			 * have at least GYRO_MIN_SAMPLES events in the
+			 * filtering queue. This improves mean and std dev.
 			 */
 			if (sensor_info[s].quirks & QUIRK_NOISY) {
-				if((sensor_info[s].selected_trigger !=
-					sensor_info[s].motion_trigger_name) &&
-					sensor_info[s].event_count < MIN_SAMPLES)
+				if (sensor_info[s].selected_trigger !=
+				    sensor_info[s].motion_trigger_name &&
+				    sensor_info[s].event_count<GYRO_MIN_SAMPLES)
 						return 0;
 
 				denoise(s, data);
