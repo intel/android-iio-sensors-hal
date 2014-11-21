@@ -29,6 +29,7 @@
 
 #define MAX_TYPE_SPEC_LEN 32	/* Channel type spec len; ex: "le:u10/16>>0" */
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
+#define MAX_DEVICE_REPORT_SIZE	32	/* iio device scan buffer size */
 
 #define MAX_NAME_SIZE		32
 

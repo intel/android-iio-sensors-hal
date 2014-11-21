@@ -25,7 +25,7 @@ static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based */
 
 static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
 static int has_iio_ts[MAX_DEVICES];  /* ts channel available on this iio dev */
-
+static int expected_dev_report_size[MAX_DEVICES]; /* expected iio scan len */
 static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
@@ -288,6 +288,20 @@ void build_sensor_report_maps (int dev_num)
 
 	/* Enable the timestamp channel if there is one available */
 	enable_iio_timestamp(dev_num, known_channels);
+
+	/* Add padding and timestamp size if it's enabled on this iio device */
+	if (has_iio_ts[dev_num])
+		offset = (offset+7)/8*8 + sizeof(int64_t);
+
+	expected_dev_report_size[dev_num] = offset;
+	ALOGI("Expecting %d scan length on iio dev %d\n", offset, dev_num);
+
+	if (expected_dev_report_size[dev_num] > MAX_DEVICE_REPORT_SIZE) {
+		ALOGE("Unexpectedly large scan buffer on iio dev%d: %d bytes\n",
+		      dev_num, expected_dev_report_size[dev_num]);
+
+		expected_dev_report_size[dev_num] = MAX_DEVICE_REPORT_SIZE;
+	}
 }
 
 
@@ -828,7 +842,7 @@ static int integrate_device_report (int dev_num)
 {
 	int len;
 	int s,c;
-	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
+	unsigned char buf[MAX_DEVICE_REPORT_SIZE] = { 0 };
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
@@ -848,7 +862,7 @@ static int integrate_device_report (int dev_num)
 		return -1;
 	}
 
-	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
+	len = read(device_fd[dev_num], buf, expected_dev_report_size[dev_num]);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n",
@@ -902,7 +916,7 @@ static int integrate_device_report (int dev_num)
 	ts_offset = (ts_offset + 7)/8*8;
 
 	/* If we read an amount of data consistent with timestamp presence */
-	if (len == ts_offset + (int) sizeof(int64_t))
+	if (len == expected_dev_report_size[dev_num])
 		ts = *(int64_t*) (buf + ts_offset);
 
 	if (ts == 0) {
