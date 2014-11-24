@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <errno.h>
+#include <signal.h>
 
 #include <hardware/sensors.h>
 #include <utils/Log.h>
@@ -176,8 +177,16 @@ static void run_sensors_poll_v0(void)
 	}
 }
 
+static void sig_pipe(int sig)
+{
+	client = NULL;
+}
+
 static void *run_sensors_thread(void *arg __attribute((unused)))
 {
+
+	signal(SIGPIPE, sig_pipe);
+
 	switch (dev->version) {
 	case SENSORS_DEVICE_API_VERSION_0_1:
 	default:
@@ -407,7 +416,6 @@ static int start_server(void)
 			write(conn, data_buff, 1);
 			fclose(f);
 		}
-
 
 		close(conn);
 	}
