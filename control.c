@@ -30,8 +30,6 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
-int64_t ts_delta; /* delta between SystemClock.getNanos and our timestamp */
-
 static int64_t sys_to_rt_delta;	/* delta between system and realtime clocks */
 
 /* We use pthread condition variables to get worker threads out of sleep */
@@ -462,11 +460,11 @@ static void* acquisition_routine (void* param)
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
 	/* Pinpoint the moment we start sampling */
-	timestamp = get_timestamp_monotonic();
+	timestamp = get_timestamp_boot();
 
 	/* Check and honor termination requests */
 	while (sensor_info[s].thread_data_fd[1] != -1) {
-		start = get_timestamp();
+		start = get_timestamp_boot();
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
@@ -474,7 +472,7 @@ static void* acquisition_routine (void* param)
 			if (sensor_info[s].thread_data_fd[1] == -1)
 				goto exit;
 		}
-		stop = get_timestamp();
+		stop = get_timestamp_boot();
 		data.timestamp = start/2 + stop/2;
 
 		/* If the sample looks good */
@@ -598,8 +596,8 @@ int sensor_activate(int s, int enabled)
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
-	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
-	sys_to_rt_delta = get_timestamp_realtime() - load_timestamp_sys_clock();
+
+	sys_to_rt_delta = get_timestamp_realtime() - get_timestamp_boot();
 
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
@@ -915,7 +913,7 @@ static int integrate_device_report (int dev_num)
 		for (s=0; s<MAX_SENSORS; s++)
 			if (sensor_info[s].dev_num == dev_num &&
 				sensor_info[s].enabled)
-					set_report_ts(s, get_timestamp());
+					set_report_ts(s, get_timestamp_boot());
 		return 0;
 	}
 
@@ -931,7 +929,7 @@ static int integrate_device_report (int dev_num)
 		for (s=0; s<MAX_SENSORS; s++)
 			if (sensor_info[s].dev_num == dev_num &&
 				sensor_info[s].enabled)
-					set_report_ts(s, get_timestamp());
+					set_report_ts(s, get_timestamp_boot());
 		return 0;
 	}
 
@@ -1040,7 +1038,7 @@ static void synthetize_duplicate_samples (void)
 
 		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
 
-		current_ts = get_timestamp();
+		current_ts = get_timestamp_boot();
 		target_ts = sensor_info[s].report_ts + period;
 
 		if (target_ts <= current_ts) {
@@ -1112,7 +1110,7 @@ static int get_poll_wait_timeout (void)
 	if (target_ts == INT64_MAX)
 		return -1; /* Infinite wait */
 
-	ms_to_wait = (target_ts - get_timestamp()) / 1000000;
+	ms_to_wait = (target_ts - get_timestamp_boot()) / 1000000;
 
 	/* If the target timestamp is already behind us, don't wait */
 	if (ms_to_wait < 1)

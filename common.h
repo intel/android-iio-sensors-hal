@@ -241,7 +241,4 @@ extern struct sensor_t      sensor_desc[MAX_SENSORS];
 extern struct sensor_info_t		sensor_info[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
 
-/* We are required to be in sync with SystemClock.getNanos */
-extern int64_t ts_delta;
-
 #endif

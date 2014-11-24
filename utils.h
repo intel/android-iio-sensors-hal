@@ -19,14 +19,10 @@ int	sysfs_write_float(const char path[PATH_MAX], float value);
 int	decode_type_spec(const char type_buf[MAX_TYPE_SPEC_LEN],
 			 struct datum_info_t *type_info);
 
-int64_t	load_timestamp_monotonic	(struct timespec *ts);
-int64_t	get_timestamp_monotonic	(void);
 void	set_timestamp	(struct timespec *out, int64_t target_ns);
 
-int64_t get_timestamp(void);
-int64_t load_timestamp_sys_clock(void);
-
-int64_t get_timestamp_realtime (void);
+int64_t get_timestamp_boot	(void);
+int64_t get_timestamp_realtime	(void);
 
 #endif
 
