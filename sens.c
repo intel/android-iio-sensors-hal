@@ -297,6 +297,8 @@ static int dispatch_cmd(char *cmd, FILE *f)
 	} else if (!strcmp(argv[0], "poll")) {
 
 		pthread_mutex_lock(&client_mutex);
+		if (client)
+			fclose(client);
 		client = f;
 		pthread_mutex_unlock(&client_mutex);
 
@@ -359,6 +361,7 @@ static int start_server(void)
 			.msg_controllen = sizeof(cmsg_buffer),
 		};
 		FILE *f =NULL;
+		struct cmsghdr *cmsg;
 
 		conn = accept(sock, NULL, NULL);
 		if (conn < 0) {
@@ -366,49 +369,47 @@ static int start_server(void)
 			continue;
 		}
 
-		while (1) {
-			struct cmsghdr *cmsg;
-
-			err = recvmsg(conn, &msg, 0);
-			if (err < 0) {
-				ALOGE("error in recvmsg: %s", strerror(errno));
-				break;
-			}
-
-			if (err == 0)
-				break;
-
-			for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
-			     cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-				if (cmsg->cmsg_level == SOL_SOCKET
-				    && cmsg->cmsg_type == SCM_RIGHTS) {
-					int *fd = (int *)CMSG_DATA(cmsg);
-					f = fdopen(*fd, "w");
-					break;
-				}
-			}
-
-			if (data_buff[err - 1] != 0) {
-				ALOGE("command is not NULL terminated\n");
-				break;
-			}
-
-			err = dispatch_cmd(data_buff, f);
-			if (err < 0) {
-				ALOGE("error dispatching command: %d", err);
-				break;
-			}
-
-			/* send ack */
-			if (!err)
-				write(conn, data_buff, 1);
+		err = recvmsg(conn, &msg, 0);
+		if (err < 0) {
+			ALOGE("error in recvmsg: %s", strerror(errno));
+			close(conn);
+			continue;
 		}
 
-		pthread_mutex_lock(&client_mutex);
-		client = NULL;
-		pthread_mutex_unlock(&client_mutex);
+		if (err == 0)
+			continue;
 
-		fclose(f); close(conn);
+		for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+		     cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+			if (cmsg->cmsg_level == SOL_SOCKET
+			    && cmsg->cmsg_type == SCM_RIGHTS) {
+				int *fd = (int *)CMSG_DATA(cmsg);
+				f = fdopen(*fd, "w");
+				break;
+			}
+		}
+
+		if (data_buff[err - 1] != 0) {
+			ALOGE("command is not NULL terminated\n");
+			close(conn);
+			continue;
+		}
+
+		err = dispatch_cmd(data_buff, f);
+		if (err < 0) {
+			ALOGE("error dispatching command: %d", err);
+			close(conn);
+			continue;
+		}
+
+		/* send ack */
+		if (!err) {
+			write(conn, data_buff, 1);
+			fclose(f);
+		}
+
+
+		close(conn);
 	}
 }
 
