@@ -529,7 +529,7 @@ static void start_acquisition_thread (int s)
 
 	/* Create condition variable and mutex for quick thread release */
 	ret = pthread_condattr_init(&thread_cond_attr[s]);
-	ret = pthread_condattr_setclock(&thread_cond_attr[s], CLOCK_MONOTONIC);
+	ret = pthread_condattr_setclock(&thread_cond_attr[s], CLOCK_BOOTTIME);
 	ret = pthread_cond_init(&thread_release_cond[s], &thread_cond_attr[s]);
 	ret = pthread_mutex_init(&thread_release_mutex[s], NULL);
 
