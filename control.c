@@ -30,8 +30,6 @@ static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
-static int64_t sys_to_rt_delta;	/* delta between system and realtime clocks */
-
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
@@ -597,9 +595,6 @@ int sensor_activate(int s, int enabled)
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
 
-	sys_to_rt_delta = get_timestamp_realtime() - get_timestamp_boot();
-
-
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
 	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
 	 * Activate gyro calibrated     - Calibrated has handler
@@ -850,6 +845,7 @@ static int integrate_device_report (int dev_num)
 	int size;
 	int64_t ts = 0;
 	int ts_offset = 0;	/* Offset of iio timestamp, if provided */
+	int64_t sys_to_rt_delta;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -934,6 +930,8 @@ static int integrate_device_report (int dev_num)
 	}
 
 	ALOGV("Driver timestamp on iio device %d: ts=%lld\n", dev_num, ts);
+
+	sys_to_rt_delta = get_timestamp_realtime() - get_timestamp_boot();
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num && sensor_info[s].enabled)
