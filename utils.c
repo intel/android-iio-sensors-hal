@@ -276,6 +276,15 @@ int64_t get_timestamp_boot (void)
 }
 
 
+int64_t get_timestamp_monotonic (void)
+{
+	struct timespec ts = {0};
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+}
+
+
 void set_timestamp (struct timespec *out, int64_t target_ns)
 {
 	out->tv_sec  = target_ns / 1000000000LL;

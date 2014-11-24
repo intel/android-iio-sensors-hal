@@ -23,6 +23,7 @@ void	set_timestamp	(struct timespec *out, int64_t target_ns);
 
 int64_t get_timestamp_boot	(void);
 int64_t get_timestamp_realtime	(void);
+int64_t get_timestamp_monotonic	(void);
 
 #endif
 
