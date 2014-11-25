@@ -257,50 +257,35 @@ int decode_type_spec(	const char type_buf[MAX_TYPE_SPEC_LEN],
 	return storagebits / 8;
 }
 
-int64_t load_timestamp_monotonic(struct timespec *ts)
+
+int64_t get_timestamp_realtime (void)
 {
-	clock_gettime(CLOCK_MONOTONIC, ts);
-
-	return (1000000000LL * ts->tv_sec + ts->tv_nsec);
-}
-
-int64_t load_timestamp_sys_clock(void)
-{
-	static int s_fd = -1;
-	int fd, result = 0;
-	struct timespec ts;
-
-	if (s_fd == -1) {
-		fd = open("/dev/alarm", O_RDONLY);
-		if (android_atomic_cmpxchg(-1, fd, &s_fd)) {
-			close(fd);
-		}
-	}
-
-	result = ioctl(s_fd,
-		ANDROID_ALARM_GET_TIME(ANDROID_ALARM_ELAPSED_REALTIME), &ts);
-
-	if (result != 0) {
-		/** /dev/alarm doesn't exist, fallback to CLOCK_BOOTTIME */
-		result = clock_gettime(CLOCK_BOOTTIME, &ts);
-	}
+	struct timespec ts = {0};
+	clock_gettime(CLOCK_REALTIME, &ts);
 
 	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
 }
 
-int64_t get_timestamp_monotonic(void)
+
+int64_t get_timestamp_boot (void)
 {
 	struct timespec ts = {0};
+	clock_gettime(CLOCK_BOOTTIME, &ts);
 
-	return load_timestamp_monotonic(&ts);
+	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
 }
 
-int64_t get_timestamp(void)
+
+int64_t get_timestamp_monotonic (void)
 {
-	return (get_timestamp_monotonic() + ts_delta);
+	struct timespec ts = {0};
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+
+	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
 }
 
-void set_timestamp(struct timespec *out, int64_t target_ns)
+
+void set_timestamp (struct timespec *out, int64_t target_ns)
 {
 	out->tv_sec  = target_ns / 1000000000LL;
 	out->tv_nsec = target_ns % 1000000000LL;

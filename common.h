@@ -29,10 +29,9 @@
 
 #define MAX_TYPE_SPEC_LEN 32	/* Channel type spec len; ex: "le:u10/16>>0" */
 #define MAX_SENSOR_REPORT_SIZE	32	/* Sensor report buffer size */
+#define MAX_DEVICE_REPORT_SIZE	32	/* iio device scan buffer size */
 
 #define MAX_NAME_SIZE		32
-
-#define MIN_SAMPLES 5
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
@@ -241,8 +240,5 @@ extern int				sensor_count;
 extern struct sensor_t      sensor_desc[MAX_SENSORS];
 extern struct sensor_info_t		sensor_info[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
-
-/* We are required to be in sync with SystemClock.getNanos */
-extern int64_t ts_delta;
 
 #endif

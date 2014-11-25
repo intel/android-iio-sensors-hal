@@ -24,12 +24,11 @@ static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
 static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based */
 
 static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
-
+static int has_iio_ts[MAX_DEVICES];  /* ts channel available on this iio dev */
+static int expected_dev_report_size[MAX_DEVICES]; /* expected iio scan len */
 static int poll_fd; /* epoll instance covering all enabled sensors */
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
-
-int64_t ts_delta; /* delta between SystemClock.getNanos and our timestamp */
 
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
@@ -105,7 +104,51 @@ static int setup_trigger (int s, const char* trigger_val)
 }
 
 
-void build_sensor_report_maps(int dev_num)
+static void enable_iio_timestamp (int dev_num, int known_channels)
+{
+	/* Check if we have a dedicated iio timestamp channel */
+
+	char spec_buf[MAX_TYPE_SPEC_LEN];
+	char sysfs_path[PATH_MAX];
+	int n;
+
+	sprintf(sysfs_path, CHANNEL_PATH "%s", dev_num, "in_timestamp_type");
+
+	n = sysfs_read_str(sysfs_path, spec_buf, sizeof(spec_buf));
+
+	if (n <= 0)
+		return;
+
+	if (strcmp(spec_buf, "le:s64/64>>0"))
+		return;
+
+	/* OK, type is int64_t as expected, in little endian representation */
+
+	sprintf(sysfs_path, CHANNEL_PATH"%s", dev_num, "in_timestamp_index");
+
+	if (sysfs_read_int(sysfs_path, &n))
+		return;
+
+	/* Check that the timestamp comes after the other fields we read */
+	if (n != known_channels)
+		return;
+
+	/* Try enabling that channel */
+	sprintf(sysfs_path, CHANNEL_PATH "%s", dev_num, "in_timestamp_en");
+
+	sysfs_write_int(sysfs_path, 1);
+
+	if (sysfs_read_int(sysfs_path, &n))
+		return;
+
+	if (n) {
+		ALOGI("Detected timestamp channel on iio device %d\n", dev_num);
+		has_iio_ts[dev_num] = 1;
+	}
+}
+
+
+void build_sensor_report_maps (int dev_num)
 {
 	/*
 	 * Read sysfs files from a iio device's scan_element directory, and
@@ -240,6 +283,23 @@ void build_sensor_report_maps(int dev_num)
 
 		offset += size;
 	 }
+
+	/* Enable the timestamp channel if there is one available */
+	enable_iio_timestamp(dev_num, known_channels);
+
+	/* Add padding and timestamp size if it's enabled on this iio device */
+	if (has_iio_ts[dev_num])
+		offset = (offset+7)/8*8 + sizeof(int64_t);
+
+	expected_dev_report_size[dev_num] = offset;
+	ALOGI("Expecting %d scan length on iio dev %d\n", offset, dev_num);
+
+	if (expected_dev_report_size[dev_num] > MAX_DEVICE_REPORT_SIZE) {
+		ALOGE("Unexpectedly large scan buffer on iio dev%d: %d bytes\n",
+		      dev_num, expected_dev_report_size[dev_num]);
+
+		expected_dev_report_size[dev_num] = MAX_DEVICE_REPORT_SIZE;
+	}
 }
 
 
@@ -370,7 +430,7 @@ static void* acquisition_routine (void* param)
 	int c;
 	int ret;
 	struct timespec target_time;
-	int64_t timestamp, period;
+	int64_t timestamp, period, start, stop;
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
@@ -387,7 +447,7 @@ static void* acquisition_routine (void* param)
 	}
 
 	num_fields = get_field_count(s);
-	sample_size = num_fields * sizeof(float);
+	sample_size = sizeof(int64_t) + num_fields * sizeof(float);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be
@@ -402,7 +462,7 @@ static void* acquisition_routine (void* param)
 
 	/* Check and honor termination requests */
 	while (sensor_info[s].thread_data_fd[1] != -1) {
-
+		start = get_timestamp_boot();
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
@@ -410,13 +470,16 @@ static void* acquisition_routine (void* param)
 			if (sensor_info[s].thread_data_fd[1] == -1)
 				goto exit;
 		}
+		stop = get_timestamp_boot();
+		data.timestamp = start/2 + stop/2;
 
 		/* If the sample looks good */
 		if (sensor_info[s].ops.finalize(s, &data)) {
 
 			/* Pipe it for transmission to poll loop */
 			ret = write(	sensor_info[s].thread_data_fd[1],
-					data.data, sample_size);
+					&data.timestamp, sample_size);
+
 			if (ret != sample_size)
 				ALOGE("S%d acquisition thread: tried to write %d, ret: %d\n",
 					s, sample_size, ret);
@@ -531,8 +594,6 @@ int sensor_activate(int s, int enabled)
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor_info[s].report_ts = 0;
-	ts_delta = load_timestamp_sys_clock() - get_timestamp_monotonic();
-
 
 	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
 	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
@@ -772,15 +833,30 @@ void set_report_ts(int s, int64_t ts)
 	}
 }
 
+
+static void stamp_reports (int dev_num, int64_t ts)
+{
+	int s;
+
+	for (s=0; s<MAX_SENSORS; s++)
+			if (sensor_info[s].dev_num == dev_num &&
+				sensor_info[s].enabled)
+					set_report_ts(s, ts);
+}
+
+
 static int integrate_device_report (int dev_num)
 {
 	int len;
 	int s,c;
-	unsigned char buf[MAX_SENSOR_REPORT_SIZE] = { 0 };
+	unsigned char buf[MAX_DEVICE_REPORT_SIZE] = { 0 };
 	int sr_offset;
 	unsigned char *target;
 	unsigned char *source;
 	int size;
+	int64_t ts = 0;
+	int ts_offset = 0;	/* Offset of iio timestamp, if provided */
+	int64_t boot_to_rt_delta;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -794,9 +870,7 @@ static int integrate_device_report (int dev_num)
 		return -1;
 	}
 
-
-
-	len = read(device_fd[dev_num], buf, MAX_SENSOR_REPORT_SIZE);
+	len = read(device_fd[dev_num], buf, expected_dev_report_size[dev_num]);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n",
@@ -832,13 +906,49 @@ static int integrate_device_report (int dev_num)
 			ALOGV("Sensor %d report available (%d bytes)\n", s,
 			      sr_offset);
 
-			set_report_ts(s, get_timestamp());
 			sensor_info[s].report_pending = DATA_TRIGGER;
 			sensor_info[s].report_initialized = 1;
+
+			ts_offset += sr_offset;
 		}
 
 	/* Tentatively switch to an any-motion trigger if conditions are met */
 	enable_motion_trigger(dev_num);
+
+	/* If no iio timestamp channel was detected for this device, bail out */
+	if (!has_iio_ts[dev_num]) {
+		stamp_reports(dev_num, get_timestamp_boot());
+		return 0;
+	}
+
+	/* Don't trust the timestamp channel in any-motion mode */
+	for (s=0; s<MAX_SENSORS; s++)
+		if (sensor_info[s].dev_num == dev_num &&
+		    sensor_info[s].enabled &&
+		    sensor_info[s].selected_trigger ==
+					sensor_info[s].motion_trigger_name) {
+		stamp_reports(dev_num, get_timestamp_boot());
+		return 0;
+	}
+
+	/* Align on a 64 bits boundary */
+	ts_offset = (ts_offset + 7)/8*8;
+
+	/* If we read an amount of data consistent with timestamp presence */
+	if (len == expected_dev_report_size[dev_num])
+		ts = *(int64_t*) (buf + ts_offset);
+
+	if (ts == 0) {
+		ALOGV("Unreliable timestamp channel on iio dev %d\n", dev_num);
+		stamp_reports(dev_num, get_timestamp_boot());
+		return 0;
+	}
+
+	ALOGV("Driver timestamp on iio device %d: ts=%lld\n", dev_num, ts);
+
+	boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
+
+	stamp_reports(dev_num, ts + boot_to_rt_delta);
 
 	return 0;
 }
@@ -939,7 +1049,7 @@ static void synthetize_duplicate_samples (void)
 
 		period = (int64_t) (1000000000.0/ sensor_info[s].sampling_rate);
 
-		current_ts = get_timestamp();
+		current_ts = get_timestamp_boot();
 		target_ts = sensor_info[s].report_ts + period;
 
 		if (target_ts <= current_ts) {
@@ -956,15 +1066,21 @@ static void integrate_thread_report (uint32_t tag)
 	int s = tag - THREAD_REPORT_TAG_BASE;
 	int len;
 	int expected_len;
+	int64_t timestamp;
+	unsigned char current_sample[MAX_SENSOR_REPORT_SIZE];
 
-	expected_len = get_field_count(s) * sizeof(float);
+	expected_len = sizeof(int64_t) + get_field_count(s) * sizeof(float);
 
 	len = read(sensor_info[s].thread_data_fd[0],
-		   sensor_info[s].report_buffer,
+		   current_sample,
 		   expected_len);
 
+	memcpy(&timestamp, current_sample, sizeof(int64_t));
+	memcpy(sensor_info[s].report_buffer, sizeof(int64_t) + current_sample,
+			expected_len - sizeof(int64_t));
+
 	if (len == expected_len) {
-		set_report_ts(s, get_timestamp());
+		set_report_ts(s, timestamp);
 		sensor_info[s].report_pending = DATA_SYSFS;
 	}
 }
@@ -1005,7 +1121,7 @@ static int get_poll_wait_timeout (void)
 	if (target_ts == INT64_MAX)
 		return -1; /* Infinite wait */
 
-	ms_to_wait = (target_ts - get_timestamp()) / 1000000;
+	ms_to_wait = (target_ts - get_timestamp_boot()) / 1000000;
 
 	/* If the target timestamp is already behind us, don't wait */
 	if (ms_to_wait < 1)
@@ -1165,9 +1281,9 @@ int sensor_set_delay(int s, int64_t ns)
 	int per_device_sampling_rate;
 	int32_t min_delay_us = sensor_desc[s].minDelay;
 	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
-	float min_supported_rate = max_delay_us ? (1000000.0f / max_delay_us) : 1;
+	float min_supported_rate = max_delay_us ? (1000000.0 / max_delay_us) : 1;
 	float max_supported_rate = 
-		(min_delay_us && min_delay_us != -1) ? (1000000.0f / min_delay_us) : 0;
+		(min_delay_us && min_delay_us != -1) ? (1000000.0 / min_delay_us) : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
