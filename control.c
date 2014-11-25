@@ -834,6 +834,17 @@ void set_report_ts(int s, int64_t ts)
 }
 
 
+static void stamp_reports (int dev_num, int64_t ts)
+{
+	int s;
+
+	for (s=0; s<MAX_SENSORS; s++)
+			if (sensor_info[s].dev_num == dev_num &&
+				sensor_info[s].enabled)
+					set_report_ts(s, ts);
+}
+
+
 static int integrate_device_report (int dev_num)
 {
 	int len;
@@ -906,11 +917,17 @@ static int integrate_device_report (int dev_num)
 
 	/* If no iio timestamp channel was detected for this device, bail out */
 	if (!has_iio_ts[dev_num]) {
-		ts = get_timestamp_boot();
-		for (s=0; s<MAX_SENSORS; s++)
-			if (sensor_info[s].dev_num == dev_num &&
-				sensor_info[s].enabled)
-					set_report_ts(s, ts);
+		stamp_reports(dev_num, get_timestamp_boot());
+		return 0;
+	}
+
+	/* Don't trust the timestamp channel in any-motion mode */
+	for (s=0; s<MAX_SENSORS; s++)
+		if (sensor_info[s].dev_num == dev_num &&
+		    sensor_info[s].enabled &&
+		    sensor_info[s].selected_trigger ==
+					sensor_info[s].motion_trigger_name) {
+		stamp_reports(dev_num, get_timestamp_boot());
 		return 0;
 	}
 
@@ -923,11 +940,7 @@ static int integrate_device_report (int dev_num)
 
 	if (ts == 0) {
 		ALOGV("Unreliable timestamp channel on iio dev %d\n", dev_num);
-		ts = get_timestamp_boot();
-		for (s=0; s<MAX_SENSORS; s++)
-			if (sensor_info[s].dev_num == dev_num &&
-				sensor_info[s].enabled)
-					set_report_ts(s, ts);
+		stamp_reports(dev_num, get_timestamp_boot());
 		return 0;
 	}
 
@@ -935,9 +948,7 @@ static int integrate_device_report (int dev_num)
 
 	boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
-	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor_info[s].dev_num == dev_num && sensor_info[s].enabled)
-			set_report_ts(s, ts + boot_to_rt_delta);
+	stamp_reports(dev_num, ts + boot_to_rt_delta);
 
 	return 0;
 }
