@@ -845,7 +845,7 @@ static int integrate_device_report (int dev_num)
 	int size;
 	int64_t ts = 0;
 	int ts_offset = 0;	/* Offset of iio timestamp, if provided */
-	int64_t sys_to_rt_delta;
+	int64_t boot_to_rt_delta;
 
 	/* There's an incoming report on the specified iio device char dev fd */
 
@@ -906,10 +906,11 @@ static int integrate_device_report (int dev_num)
 
 	/* If no iio timestamp channel was detected for this device, bail out */
 	if (!has_iio_ts[dev_num]) {
+		ts = get_timestamp_boot();
 		for (s=0; s<MAX_SENSORS; s++)
 			if (sensor_info[s].dev_num == dev_num &&
 				sensor_info[s].enabled)
-					set_report_ts(s, get_timestamp_boot());
+					set_report_ts(s, ts);
 		return 0;
 	}
 
@@ -922,20 +923,21 @@ static int integrate_device_report (int dev_num)
 
 	if (ts == 0) {
 		ALOGV("Unreliable timestamp channel on iio dev %d\n", dev_num);
+		ts = get_timestamp_boot();
 		for (s=0; s<MAX_SENSORS; s++)
 			if (sensor_info[s].dev_num == dev_num &&
 				sensor_info[s].enabled)
-					set_report_ts(s, get_timestamp_boot());
+					set_report_ts(s, ts);
 		return 0;
 	}
 
 	ALOGV("Driver timestamp on iio device %d: ts=%lld\n", dev_num, ts);
 
-	sys_to_rt_delta = get_timestamp_realtime() - get_timestamp_boot();
+	boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num && sensor_info[s].enabled)
-			set_report_ts(s, ts - sys_to_rt_delta);
+			set_report_ts(s, ts + boot_to_rt_delta);
 
 	return 0;
 }
