@@ -45,6 +45,8 @@ static void reset_sample (struct compass_cal* data)
     for (i = 0; i < MAGN_DS_SIZE; i++)
         for (j=0; j < 3; j++)
             data->sample[i][j] = 0;
+
+    data->average[0] = data->average[1] = data->average[2] = 0;
 }
 
 static double calc_square_err (struct compass_cal* data)
@@ -52,11 +54,16 @@ static double calc_square_err (struct compass_cal* data)
     double err = 0;
     double raw[3][1], result[3][1], mat_diff[3][1];
     int i;
+    float stdev[3] = {0,0,0};
 
     for (i = 0; i < MAGN_DS_SIZE; i++) {
         raw[0][0] = data->sample[i][0];
         raw[1][0] = data->sample[i][1];
         raw[2][0] = data->sample[i][2];
+
+        stdev[0] += (raw[0][0] - data->average[0]) * (raw[0][0] - data->average[0]);
+        stdev[1] += (raw[1][0] - data->average[1]) * (raw[1][0] - data->average[1]);
+        stdev[2] += (raw[2][0] - data->average[2]) * (raw[2][0] - data->average[2]);
 
         substract (3, 1, raw, data->offset, mat_diff);
         multiply(3, 3, 1, data->w_invert, mat_diff, result);
@@ -66,6 +73,18 @@ static double calc_square_err (struct compass_cal* data)
 
         err += diff * diff;
     }
+
+    stdev[0] = sqrt(stdev[0] / MAGN_DS_SIZE);
+    stdev[1] = sqrt(stdev[1] / MAGN_DS_SIZE);
+    stdev[2] = sqrt(stdev[2] / MAGN_DS_SIZE);
+
+    /*
+     * A sanity check - if we have too little variation for an axis
+     * it's best to reject the calibration than risking a wrong calibration.
+     */
+    if (stdev[0] <= 1 || stdev[1] <= 1 || stdev[2] <= 1)
+        return max_sqr_errs[0];
+
     err /= MAGN_DS_SIZE;
     return err;
 }
@@ -210,6 +229,9 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
 
     double eig1 = 0, eig2 = 0, eig3 = 0;
     compute_eigenvalues(a, &eig1, &eig2, &eig3);
+
+    if (eig1 <=0 || eig2 <= 0 || eig3 <= 0)
+        return 0;
 
     sqrt_evals[0][0] = sqrt(eig1);
     sqrt_evals[1][0] = 0;
@@ -393,6 +415,9 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     if (cal_data->sample_count < MAGN_DS_SIZE) {
         memcpy(cal_data->sample[cal_data->sample_count], data, sizeof(float) * 3);
         cal_data->sample_count++;
+        cal_data->average[0] += data[0];
+        cal_data->average[1] += data[1];
+        cal_data->average[2] += data[2];
         ALOGV("CompassCalibration:point collected [%f,%f,%f], selected_count=%d",
             (double)data[0], (double)data[1], (double)data[2], cal_data->sample_count);
 #ifdef DBG_RAW_DATA
@@ -471,7 +496,13 @@ static int compass_ready (struct sensor_info_t* info)
 
     max_sqr_err = max_sqr_errs[info->cal_level];
 
-    /* enough points have been collected, do the ellipsoid calibration */
+    /* Enough points have been collected, do the ellipsoid calibration */
+
+    /* Compute average per axis */
+    cal_data->average[0] /= MAGN_DS_SIZE;
+    cal_data->average[1] /= MAGN_DS_SIZE;
+    cal_data->average[2] /= MAGN_DS_SIZE;
+
     for (i = 0; i < MAGN_DS_SIZE; i++) {
        mat[i][0] = cal_data->sample[i][0];
        mat[i][1] = cal_data->sample[i][1];
