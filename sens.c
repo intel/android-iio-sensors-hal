@@ -9,6 +9,7 @@
 #include <dlfcn.h>
 #include <pthread.h>
 #include <errno.h>
+#include <signal.h>
 
 #include <hardware/sensors.h>
 #include <utils/Log.h>
@@ -176,8 +177,16 @@ static void run_sensors_poll_v0(void)
 	}
 }
 
-static void *run_sensors_thread(void *arg)
+static void sig_pipe(int sig)
 {
+	client = NULL;
+}
+
+static void *run_sensors_thread(void *arg __attribute((unused)))
+{
+
+	signal(SIGPIPE, sig_pipe);
+
 	switch (dev->version) {
 	case SENSORS_DEVICE_API_VERSION_0_1:
 	default:
@@ -233,7 +242,7 @@ static int sensor_activate(int handle, int enable)
 #define CLIENT_ERR(f, fmt...)			\
 	{ if (f) { fprintf(f, fmt); fprintf(f, "\n"); } ALOGE(fmt); }
 
-static int dispatch_cmd(char *cmd, int cmd_len, FILE *f)
+static int dispatch_cmd(char *cmd, FILE *f)
 {
 	char *argv[16], *tmp;
 	int argc = 0, handle;
@@ -297,6 +306,8 @@ static int dispatch_cmd(char *cmd, int cmd_len, FILE *f)
 	} else if (!strcmp(argv[0], "poll")) {
 
 		pthread_mutex_lock(&client_mutex);
+		if (client)
+			fclose(client);
 		client = f;
 		pthread_mutex_unlock(&client_mutex);
 
@@ -359,6 +370,7 @@ static int start_server(void)
 			.msg_controllen = sizeof(cmsg_buffer),
 		};
 		FILE *f =NULL;
+		struct cmsghdr *cmsg;
 
 		conn = accept(sock, NULL, NULL);
 		if (conn < 0) {
@@ -366,44 +378,46 @@ static int start_server(void)
 			continue;
 		}
 
-		while (1) {
-			struct cmsghdr *cmsg;
-
-			err = recvmsg(conn, &msg, 0);
-			if (err < 0) {
-				ALOGE("error in recvmsg: %s", strerror(errno));
-				break;
-			}
-
-			if (err == 0)
-				break;
-
-			for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
-			     cmsg = CMSG_NXTHDR(&msg,cmsg)) {
-				if (cmsg->cmsg_level == SOL_SOCKET
-				    && cmsg->cmsg_type == SCM_RIGHTS) {
-					int *fd = (int *)CMSG_DATA(cmsg);
-					f = fdopen(*fd, "w");
-					break;
-				}
-			}
-
-			err = dispatch_cmd(data_buff, err, f);
-			if (err < 0) {
-				ALOGE("error dispatching command: %d", err);
-				break;
-			}
-
-			/* send ack */
-			if (!err)
-				write(conn, data_buff, 1);
+		err = recvmsg(conn, &msg, 0);
+		if (err < 0) {
+			ALOGE("error in recvmsg: %s", strerror(errno));
+			close(conn);
+			continue;
 		}
 
-		pthread_mutex_lock(&client_mutex);
-		client = NULL;
-		pthread_mutex_unlock(&client_mutex);
+		if (err == 0)
+			continue;
 
-		fclose(f); close(conn);
+		for (cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL;
+		     cmsg = CMSG_NXTHDR(&msg,cmsg)) {
+			if (cmsg->cmsg_level == SOL_SOCKET
+			    && cmsg->cmsg_type == SCM_RIGHTS) {
+				int *fd = (int *)CMSG_DATA(cmsg);
+				f = fdopen(*fd, "w");
+				break;
+			}
+		}
+
+		if (data_buff[err - 1] != 0) {
+			ALOGE("command is not NULL terminated\n");
+			close(conn);
+			continue;
+		}
+
+		err = dispatch_cmd(data_buff, f);
+		if (err < 0) {
+			ALOGE("error dispatching command: %d", err);
+			close(conn);
+			continue;
+		}
+
+		/* send ack */
+		if (!err) {
+			write(conn, data_buff, 1);
+			fclose(f);
+		}
+
+		close(conn);
 	}
 }
 
@@ -490,11 +504,10 @@ static int start_hal(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	char cmd[1024];
+	char cmd[1024], *tmp;
 	int sock, i;
-	struct iovec recv_buff = {
+	struct iovec buff = {
 		.iov_base = cmd,
-		.iov_len = sizeof(cmd),
 	};
 	struct cmsg_fd {
 		struct cmsghdr hdr;
@@ -510,7 +523,7 @@ int main(int argc, char **argv)
 	struct msghdr msg = {
 		.msg_name = NULL,
 		.msg_namelen = 0,
-		.msg_iov = &recv_buff,
+		.msg_iov = &buff,
 		.msg_iovlen = 1,
 		.msg_control = &cmsg_buff,
 		.msg_controllen = sizeof(cmsg_buff),
@@ -529,9 +542,13 @@ int main(int argc, char **argv)
 		return start_hal(argc, argv);
 	}
 
-	strcpy(cmd, argv[1]); strcat(cmd, " ");
+	if (strlen(argv[1]) >= sizeof(cmd))
+		return usage();
+	strncpy(cmd, argv[1], sizeof(cmd) - 1);
+	strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
 	for(i = 2; i < argc; i++) {
-		strcat(cmd, argv[i]); strcat(cmd, " ");
+		strncat(cmd, argv[i], sizeof(cmd) - strlen(cmd) - 1);
+		strncat(cmd, " ", sizeof(cmd) - strlen(cmd) - 1);
 	}
 
 	sock = socket(AF_UNIX, SOCK_SEQPACKET, 0);
@@ -545,11 +562,13 @@ int main(int argc, char **argv)
 		return 5;
 	}
 
+	buff.iov_len = strlen(cmd) + 1;
 	if (sendmsg(sock, &msg, 0) < 0) {
 		fprintf(stderr, "failed sending command to server: %s\n", strerror(errno));
 		return 6;
 	}
 
+	buff.iov_len = sizeof(cmd);
 	if (read(sock, cmd, 1) < 0) {
 		fprintf(stderr, "failed getting ack from server: %s\n", strerror(errno));
 		return 7;

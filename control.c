@@ -806,11 +806,10 @@ static void enable_motion_trigger (int dev_num)
  */
 #define THRESHOLD 1.10
 #define MAX_DELAY 500000000 /* 500 ms */
+
 void set_report_ts(int s, int64_t ts)
 {
 	int64_t maxTs, period;
-	int catalog_index = sensor_info[s].catalog_index;
-	int is_accel	  = (sensor_catalog[catalog_index].type == SENSOR_TYPE_ACCELEROMETER);
 
 	/*
 	*  A bit of a hack to please a bunch of cts tests. They
@@ -823,7 +822,7 @@ void set_report_ts(int s, int64_t ts)
 		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
 	{
 		period = (int64_t) (1000000000LL / sensor_info[s].sampling_rate);
-		maxTs = sensor_info[s].report_ts + (is_accel ? 1 : THRESHOLD) * period;
+		maxTs = sensor_info[s].report_ts + THRESHOLD * period;
 		/* If we're too far behind get back on track */
 		if (ts - maxTs >= MAX_DELAY)
 			maxTs = ts;

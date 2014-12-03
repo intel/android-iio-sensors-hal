@@ -22,6 +22,7 @@ struct compass_cal {
     /* selection data */
     float sample[MAGN_DS_SIZE][3];
     unsigned int sample_count;
+    float average[3];
 };
 
 struct gyro_cal {
