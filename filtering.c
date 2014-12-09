@@ -214,7 +214,6 @@ void setup_noise_filtering (int s)
 {
 	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			denoise_median_init(s, 3, 5);
 			break;
 	}
@@ -225,7 +224,6 @@ void denoise (int s, struct sensors_event_t* data)
 {
 	switch (sensor_info[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			denoise_median(&sensor_info[s], data, 3);
 			break;
 

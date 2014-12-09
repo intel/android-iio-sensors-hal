@@ -39,7 +39,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 					 "quat_x", "quat_y", "quat_z", "quat_w")
 	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
-	DECLARE_SENSOR3("anglvel",      SENSOR_TYPE_GYROSCOPE_UNCALIBRATED, "x", "y", "z")
+	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -54,7 +54,6 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
 struct sensor_info_t sensor_info[MAX_SENSORS];	/* Internal descriptors      */
 int sensor_count;				/* Detected sensors 	     */
-
 
 static void setup_properties_from_pld(int s, int panel, int rotation,
 				      int num_channels)
@@ -198,6 +197,66 @@ static void decode_placement_information (int dev_num, int num_channels, int s)
 	setup_properties_from_pld(s, panel, rotation, num_channels);
 }
 
+static void populate_descriptors(int s, int sensor_type)
+{
+	/* Initialize Android-visible descriptor */
+	sensor_desc[s].name		= sensor_get_name(s);
+	sensor_desc[s].vendor		= sensor_get_vendor(s);
+	sensor_desc[s].version		= sensor_get_version(s);
+	sensor_desc[s].handle		= s;
+	sensor_desc[s].type		= sensor_type;
+
+	sensor_desc[s].maxRange		= sensor_get_max_range(s);
+	sensor_desc[s].resolution	= sensor_get_resolution(s);
+	sensor_desc[s].power		= sensor_get_power(s);
+	sensor_desc[s].stringType = sensor_get_string_type(s);
+
+	/* None of our supported sensors requires a special permission.
+	*  If this will be the case we should implement a sensor_get_perm
+	*/
+	sensor_desc[s].requiredPermission = "";
+	sensor_desc[s].flags = sensor_get_flags(s);
+	sensor_desc[s].minDelay = sensor_get_min_delay(s);
+	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
+
+	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
+		s, sensor_info[s].friendly_name, sensor_desc[s].type,
+		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
+
+	/* We currently do not implement batching when we'll so
+	 * these should be overriden appropriately
+	 */
+	sensor_desc[s].fifoReservedEventCount = 0;
+	sensor_desc[s].fifoMaxEventCount = 0;
+}
+
+static void add_virtual_sensor (int catalog_index)
+{
+	int s;
+	int sensor_type;
+
+	if (sensor_count == MAX_SENSORS) {
+		ALOGE("Too many sensors!\n");
+		return;
+	}
+
+	sensor_type = sensor_catalog[catalog_index].type;
+
+	s = sensor_count;
+
+	sensor_info[s].is_virtual = 1;
+	sensor_info[s].catalog_index	= catalog_index;
+	sensor_info[s].type		= sensor_type;
+
+	populate_descriptors(s, sensor_type);
+
+	/* Initialize fields related to sysfs reads offloading */
+	sensor_info[s].thread_data_fd[0]  = -1;
+	sensor_info[s].thread_data_fd[1]  = -1;
+	sensor_info[s].acquisition_thread = -1;
+
+	sensor_count++;
+}
 
 static void add_sensor (int dev_num, int catalog_index, int use_polling)
 {
@@ -336,33 +395,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		if (!sensor_get_fl_prop(s, "opt_scale", &opt_scale))
 			sensor_info[s].channel[0].opt_scale = opt_scale;
 
-	/* Initialize Android-visible descriptor */
-	sensor_desc[s].name		= sensor_get_name(s);
-	sensor_desc[s].vendor		= sensor_get_vendor(s);
-	sensor_desc[s].version		= sensor_get_version(s);
-	sensor_desc[s].handle		= s;
-	sensor_desc[s].type		= sensor_type;
-	sensor_desc[s].maxRange		= sensor_get_max_range(s);
-	sensor_desc[s].resolution	= sensor_get_resolution(s);
-	sensor_desc[s].power		= sensor_get_power(s);
-	sensor_desc[s].stringType = sensor_get_string_type(s);
-
-	/* None of our supported sensors requires a special permission.
-	*  If this will be the case we should implement a sensor_get_perm
-	*/
-	sensor_desc[s].requiredPermission = "";
-	sensor_desc[s].flags = sensor_get_flags(s);
-	sensor_desc[s].minDelay = sensor_get_min_delay(s);
-	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
-	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
-		s, sensor_info[s].friendly_name, sensor_desc[s].type,
-		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
-
-	/* We currently do not implement batching when we'll so
-	 * these should be overriden appropriately
-	 */
-	sensor_desc[s].fifoReservedEventCount = 0;
-	sensor_desc[s].fifoMaxEventCount = 0;
+	populate_descriptors(s, sensor_type);
 
 	/* Populate the quirks array */
 	sensor_get_quirks(s);
@@ -377,8 +410,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor_info[s].internal_name, "(null)");
 	}
 
-	if (sensor_type == SENSOR_TYPE_GYROSCOPE ||
-		sensor_type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
+	if (sensor_type == SENSOR_TYPE_GYROSCOPE) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
 		sensor_info[s].cal_data = calibration_data;
 	}
@@ -428,9 +460,9 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 			continue;
 
 		/* If the name matches a catalog entry, flag it */
-		for (i = 0; i<CATALOG_SIZE; i++) {
-		/* This will be added separately later */
-		if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+		for (i = 0; i < CATALOG_SIZE; i++) {
+		/* No discovery for virtual sensors */
+		if (sensor_catalog[i].is_virtual)
 			continue;
 		for (c=0; c<sensor_catalog[i].num_channels; c++)
 			if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) ||
@@ -470,7 +502,8 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 		/* Compare en entry to known ones and create matching sensors */
 
 		for (i = 0; i<CATALOG_SIZE; i++) {
-			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+			/* No discovery for virtual sensors */
+			if (sensor_catalog[i].is_virtual)
 				continue;
 			if (!strcmp(d->d_name,
 					sensor_catalog[i].channel[0].en_path)) {
@@ -675,62 +708,33 @@ static void uncalibrated_gyro_check (void)
 {
 	unsigned int has_gyr = 0;
 	unsigned int dev_num;
-	int i, c;
-	unsigned int is_poll_sensor;
-	char buf[MAX_NAME_SIZE];
+	int i;
 
 	int cal_idx = 0;
 	int uncal_idx = 0;
 	int catalog_size = CATALOG_SIZE; /* Avoid GCC sign comparison warning */
 
+	if (sensor_count == MAX_SENSORS)
+		return;
 	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
 	for (i=0; i < sensor_count; i++)
 		if (sensor_info[i].type == SENSOR_TYPE_GYROSCOPE) {
 			has_gyr=1;
-			dev_num = sensor_info[i].dev_num;
-			is_poll_sensor = !sensor_info[i].num_channels;
 			cal_idx = i;
 			break;
 		}
 
-	/*
-	 * If we have a gyro we can add the uncalibrated sensor of the same type and
-	 * on the same dev_num. We will save indexes for easy finding and also save the
-	 * channel specific information.
-	 */
-	if (has_gyr)
+	if (has_gyr) {
+		uncal_idx = sensor_count;
+		sensor_info[uncal_idx].base_count = 1;
+		sensor_info[uncal_idx].base_idx[0] = cal_idx;
+
 		for (i=0; i<catalog_size; i++)
 			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-				add_sensor(dev_num, i, is_poll_sensor);
-
-				uncal_idx = sensor_count - 1; /* Just added uncalibrated sensor */
-
-				/* Similar to build_sensor_report_maps */
-				for (c = 0; c < sensor_info[uncal_idx].num_channels; c++)
-				{
-					memcpy( &(sensor_info[uncal_idx].channel[c].type_spec),
-						&(sensor_info[cal_idx].channel[c].type_spec),
-						sizeof(sensor_info[uncal_idx].channel[c].type_spec));
-					sensor_info[uncal_idx].channel[c].type_info = sensor_info[cal_idx].channel[c].type_info;
-					sensor_info[uncal_idx].channel[c].offset    = sensor_info[cal_idx].channel[c].offset;
-					sensor_info[uncal_idx].channel[c].size      = sensor_info[cal_idx].channel[c].size;
-				}
-				sensor_info[uncal_idx].pair_idx = cal_idx;
-				sensor_info[cal_idx].pair_idx = uncal_idx;
-				strncpy(sensor_info[uncal_idx].init_trigger_name,
-					sensor_info[cal_idx].init_trigger_name,
-					MAX_NAME_SIZE);
-				strncpy(sensor_info[uncal_idx].motion_trigger_name,
-					sensor_info[cal_idx].motion_trigger_name,
-					MAX_NAME_SIZE);
-
-				/* Add "Uncalibrated " prefix to sensor name */
-				strcpy(buf, sensor_info[cal_idx].friendly_name);
-				snprintf(sensor_info[uncal_idx].friendly_name,
-					 MAX_NAME_SIZE,
-					 "%s %s", "Uncalibrated", buf);
+				add_virtual_sensor(i);
 				break;
 			}
+	}
 }
 
 void enumerate_sensors (void)
@@ -781,12 +785,7 @@ void enumerate_sensors (void)
 	 * This is is a new sensor type in Android 4.4.
 	 */
 
-	/*
-	 * Patrick Porlan 11/12/2014 - Disabled for now due to a possible
-	 * relation with GMINL-3234 Panorama Drift. I take full responsability
-	 * for this.
-	 *
-	 * uncalibrated_gyro_check(); */
+	  uncalibrated_gyro_check();
 }
 
 
@@ -803,7 +802,6 @@ void delete_enumeration_data (void)
 			}
 			break;
 
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 		case SENSOR_TYPE_GYROSCOPE:
 			if (sensor_info[i].cal_data != NULL) {
 				free(sensor_info[i].cal_data);

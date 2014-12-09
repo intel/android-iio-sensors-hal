@@ -33,6 +33,8 @@
 
 #define MAX_NAME_SIZE		32
 
+#define MAX_REAL_DEP 3	/* Max number of base sensors a sensor can depend on */
+
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
@@ -64,6 +66,7 @@ struct sensor_catalog_entry_t
 	const char *tag; /* Prefix such as "accel", "gyro", "temp"... */
 	const int type;	 /* Sensor type ; ex: SENSOR_TYPE_ACCELEROMETER */
 	const int num_channels;	/* Expected iio channels for this sensor */
+	const int is_virtual;  /* Is the sensor virtual or not */
 	struct channel_descriptor_t channel[MAX_CHANNELS];
 };
 
@@ -133,10 +136,10 @@ struct sensor_info_t
 	float scale;    /*default: 1. when set to 0, use channel specific value*/
 	float illumincalib;	/* to set the calibration for the ALS */
 
-	float sampling_rate;	/* requested events / second */
+	float requested_rate;   /* requested events / second */
+	float sampling_rate;	/* setup events / second */
 
 	int dev_num;	/* Associated iio dev num, ex: 3 for /dev/iio:device3 */
-	int enabled;
 
 	int catalog_index;/* Associated entry within the sensor_catalog array */
 	int type;	  /* Sensor type, such as SENSOR_TYPE_GYROSCOPE	      */
@@ -203,13 +206,32 @@ struct sensor_info_t
 	int thread_data_fd[2];
 	pthread_t acquisition_thread;
 
-	/* For cal-uncal sensor pairs - index to the pair sensor in sensor_info */
-	int pair_idx;
+	/* How many base sensors is the sensor depending on */
+	int base_count;
+	int base_idx[MAX_REAL_DEP];
 
 	uint32_t quirks; /* Bit mask expressing the need for special tweaks */
 
 	/* Note: we may have to explicitely serialize access to some fields */
 
+	int is_virtual;
+	/*
+	* Dependency count - for a real sensor how many active virtual sensors are
+	* depending on it
+	*/
+	uint32_t ref_count;
+
+	/*
+	 * Flag showing if a sensor was enabled directly by Android
+	 */
+	uint32_t directly_enabled;
+
+	/*
+	 * Current sample for a virtual sensor - when a report is ready we'll
+	 * keep the data here until it's finally processed. Can be modified for
+	 * more than one at a later time.
+	 */
+	struct sensors_event_t sample;
 
 	/*
 	 * If the QUIRK_FIELD_ORDERING bit is set in quirks, the contents of

@@ -142,6 +142,23 @@ int sensor_get_fl_prop (int s, const char* sel, float* val)
 
 char* sensor_get_name (int s)
 {
+	char buf[MAX_NAME_SIZE];
+
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				strcpy(buf, sensor_info[sensor_info[s].base_idx[0]].friendly_name);
+				snprintf(sensor_info[s].friendly_name,
+					 MAX_NAME_SIZE,
+					 "%s %s", "Uncalibrated", buf);
+				return sensor_info[s].friendly_name;
+
+			default:
+				return "";
+		}
+	}
+
 	if (sensor_info[s].friendly_name[0] != '\0' ||
 		!sensor_get_st_prop(s, "name", sensor_info[s].friendly_name))
 			return sensor_info[s].friendly_name;
@@ -160,6 +177,19 @@ char* sensor_get_name (int s)
 
 char* sensor_get_vendor (int s)
 {
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_info[sensor_info[s].base_idx[0]].vendor_name;
+			break;
+
+			default:
+				return "";
+
+		}
+	}
+
 	if (sensor_info[s].vendor_name[0] ||
 		!sensor_get_st_prop(s, "vendor", sensor_info[s].vendor_name))
 			return sensor_info[s].vendor_name;
@@ -176,6 +206,18 @@ int sensor_get_version (__attribute__((unused)) int s)
 
 float sensor_get_max_range (int s)
 {
+
+	if (sensor_info[s].is_virtual)  {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_info[sensor_info[s].base_idx[0]].max_range;
+
+			default:
+				return 0.0;
+		}
+	}
+
 	if (sensor_info[s].max_range != 0.0 ||
 		!sensor_get_fl_prop(s, "max_range", &sensor_info[s].max_range))
 			return sensor_info[s].max_range;
@@ -251,6 +293,17 @@ int sensor_get_cal_steps (int s)
 
 float sensor_get_resolution (int s)
 {
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_info[sensor_info[s].base_idx[0]].resolution;
+
+			default:
+				return 0;
+		}
+	}
+
 	if (sensor_info[s].resolution != 0.0 ||
 		!sensor_get_fl_prop(s, "resolution", &sensor_info[s].resolution))
 			return sensor_info[s].resolution;
@@ -261,6 +314,18 @@ float sensor_get_resolution (int s)
 
 float sensor_get_power (int s)
 {
+
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_info[sensor_info[s].base_idx[0]].power;
+
+			default:
+				return 0;
+		}
+	}
+
 	/* mA used while sensor is in use ; not sure about volts :) */
 	if (sensor_info[s].power != 0.0 ||
 		!sensor_get_fl_prop(s, "power",	&sensor_info[s].power))
@@ -456,6 +521,15 @@ max_delay_t sensor_get_max_delay (int s)
 	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
 		return 0;
 
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_desc[sensor_info[s].base_idx[0]].maxDelay;
+			default:
+				return 0;
+		}
+	}
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
@@ -524,6 +598,16 @@ int32_t sensor_get_min_delay(int s)
 
 	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE)
 		return -1;
+
+	if (sensor_info[s].is_virtual) {
+		switch (sensor_info[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_desc[sensor_info[s].base_idx[0]].minDelay;
+			default:
+				return 0;
+		}
+	}
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 

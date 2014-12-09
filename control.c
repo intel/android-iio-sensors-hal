@@ -47,6 +47,51 @@ static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 #define ENABLE_BUFFER_RETRIES 10
 #define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
+inline int is_enabled(int s)
+{
+	return (sensor_info[s].directly_enabled || sensor_info[s].ref_count);
+}
+
+static int check_state_change(int s, int enabled, int from_virtual)
+{
+	if(enabled) {
+		if (sensor_info[s].directly_enabled)
+			return 0;
+
+		/* If we were enabled by Android no sample drops */
+		if (!from_virtual)
+			sensor_info[s].directly_enabled = 1;
+
+		/*
+		* If we got here it means we were not previously directly enabled - we may
+		* or may not be now, whatever the case if we already had references we
+		* were already in use
+		*/
+		if (sensor_info[s].ref_count)
+			return 0;
+
+		return 1;
+
+	}
+	/* Spurious disable call */
+	if (!is_enabled(s))
+		return 0;
+
+	/* We're requesting disable for a virtual sensor but the base is still active */
+	if (from_virtual && sensor_info[s].directly_enabled)
+		return 0;
+
+	/* If it's disable, and it's from Android, and we still have ref counts */
+	if (!from_virtual && sensor_info[s].ref_count) {
+		sensor_info[s].directly_enabled = 0;
+		return 0;
+	}
+
+	/*If perhaps we are from virtual but we're disabling it*/
+	sensor_info[s].directly_enabled = 0;
+
+	return 1;
+}
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
@@ -303,7 +348,7 @@ void build_sensor_report_maps (int dev_num)
 }
 
 
-int adjust_counters (int s, int enabled)
+int adjust_counters (int s, int enabled, int from_virtual)
 {
 	/*
 	 * Adjust counters based on sensor enable action. Return values are:
@@ -314,15 +359,12 @@ int adjust_counters (int s, int enabled)
 
 	int dev_num = sensor_info[s].dev_num;
 
-	/* Refcount per sensor, in terms of enable count */
+	if (!check_state_change(s, enabled, from_virtual))
+		return 0;
+
 	if (enabled) {
 		ALOGI("Enabling sensor %d (iio device %d: %s)\n",
 			s, dev_num, sensor_info[s].friendly_name);
-
-		if (sensor_info[s].enabled)
-			return 0; /* The sensor was, and remains, in use */
-
-		sensor_info[s].enabled = 1;
 
 		switch (sensor_info[s].type) {
 			case SENSOR_TYPE_MAGNETIC_FIELD:
@@ -330,18 +372,12 @@ int adjust_counters (int s, int enabled)
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
-			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				gyro_cal_init(&sensor_info[s]);
 				break;
 		}
 	} else {
-		if (sensor_info[s].enabled == 0)
-			return 0; /* Spurious disable call */
-
 		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
 		      sensor_info[s].friendly_name);
-
-		sensor_info[s].enabled = 0;
 
 		/* Sensor disabled, lower report available flag */
 		sensor_info[s].report_pending = 0;
@@ -349,19 +385,11 @@ int adjust_counters (int s, int enabled)
 		if (sensor_info[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor_info[s]);
 
-		if(sensor_info[s].type == SENSOR_TYPE_GYROSCOPE ||
-			sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+		if(sensor_info[s].type == SENSOR_TYPE_GYROSCOPE)
 			gyro_store_data(&sensor_info[s]);
 	}
 
-
-	/* If uncalibrated type and pair is already active don't adjust counters */
-	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
-		sensor_info[sensor_info[s].pair_idx].enabled != 0)
-			return 0;
-
 	/* We changed the state of a sensor - adjust per iio device counters */
-
 	/* If this is a regular event-driven sensor */
 	if (sensor_info[s].num_channels) {
 
@@ -582,8 +610,253 @@ static void stop_acquisition_thread (int s)
 	pthread_mutex_destroy(&thread_release_mutex[s]);
 }
 
+static void sensor_activate_virtual(int s, int enabled, int from_virtual)
+{
+	int i, base;
 
-int sensor_activate(int s, int enabled)
+	sensor_info[s].event_count = 0;
+	sensor_info[s].meta_data_pending = 0;
+
+	if (!check_state_change(s, enabled, from_virtual))
+		return;
+	if (enabled) {
+		/* Enable all the base sensors for this virtual one */
+		for (i = 0; i < sensor_info[s].base_count; i++) {
+			base = sensor_info[s].base_idx[i];
+			sensor_activate(base, enabled, 1);
+			sensor_info[base].ref_count++;
+		}
+		return;
+	}
+
+	/* Sensor disabled, lower report available flag */
+	sensor_info[s].report_pending = 0;
+
+	for (i = 0; i < sensor_info[s].base_count; i++) {
+		base = sensor_info[s].base_idx[i];
+		sensor_activate(base, enabled, 1);
+		sensor_info[base].ref_count--;
+	}
+
+}
+
+
+static int is_fast_accelerometer (int s)
+{
+	/*
+	 * Some games don't react well to accelerometers using any-motion
+	 * triggers. Even very low thresholds seem to trip them, and they tend
+	 * to request fairly high event rates. Favor continuous triggers if the
+	 * sensor is an accelerometer and uses a sampling rate of at least 25.
+	 */
+
+	if (sensor_info[s].type != SENSOR_TYPE_ACCELEROMETER)
+		return 0;
+
+	if (sensor_info[s].sampling_rate < 25)
+		return 0;
+
+	return 1;
+}
+
+static void tentative_switch_trigger (int s)
+{
+	/*
+	 * Under certain situations it may be beneficial to use an alternate
+	 * trigger:
+	 *
+	 * - for applications using the accelerometer with high sampling rates,
+	 *   prefer the continuous trigger over the any-motion one, to avoid
+	 *   jumps related to motion thresholds
+	 */
+
+	if (is_fast_accelerometer(s) &&
+		!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
+			sensor_info[s].selected_trigger ==
+				sensor_info[s].motion_trigger_name)
+		setup_trigger(s, sensor_info[s].init_trigger_name);
+}
+
+static int setup_delay_sysfs(int s, float new_sampling_rate)
+{
+	/* Set the rate at which a specific sensor should report events */
+
+	/* See Android sensors.h for indication on sensor trigger modes */
+
+	char sysfs_path[PATH_MAX];
+	char avail_sysfs_path[PATH_MAX];
+	float cur_sampling_rate; /* Currently used sampling rate	      */
+	int dev_num		=	sensor_info[s].dev_num;
+	int i			=	sensor_info[s].catalog_index;
+	const char *prefix	=	sensor_catalog[i].tag;
+	int per_sensor_sampling_rate;
+	int per_device_sampling_rate;
+	int32_t min_delay_us = sensor_desc[s].minDelay;
+	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
+	float min_supported_rate = max_delay_us ? (1000000.0 / max_delay_us) : 1;
+	float max_supported_rate =
+		(min_delay_us && min_delay_us != -1) ? (1000000.0 / min_delay_us) : 0;
+	char freqs_buf[100];
+	char* cursor;
+	int n;
+	float sr;
+
+	if (new_sampling_rate < min_supported_rate)
+		new_sampling_rate = min_supported_rate;
+
+	if (max_supported_rate &&
+		new_sampling_rate > max_supported_rate) {
+		new_sampling_rate = max_supported_rate;
+	}
+
+	sensor_info[s].sampling_rate = new_sampling_rate;
+
+	/* If we're dealing with a poll-mode sensor */
+	if (!sensor_info[s].num_channels) {
+		/* Interrupt current sleep so the new sampling gets used */
+		pthread_cond_signal(&thread_release_cond[s]);
+		return 0;
+	}
+
+	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
+
+	if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1) {
+		per_sensor_sampling_rate = 1;
+		per_device_sampling_rate = 0;
+	} else {
+		per_sensor_sampling_rate = 0;
+
+		sprintf(sysfs_path, DEVICE_SAMPLING_PATH, dev_num);
+
+		if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1)
+			per_device_sampling_rate = 1;
+		else
+			per_device_sampling_rate = 0;
+	}
+
+	if (!per_sensor_sampling_rate && !per_device_sampling_rate) {
+		ALOGE("No way to adjust sampling rate on sensor %d\n", s);
+		return -ENOSYS;
+	}
+
+	/* Coordinate with others active sensors on the same device, if any */
+	if (per_device_sampling_rate)
+		for (n=0; n<sensor_count; n++)
+			if (n != s && sensor_info[n].dev_num == dev_num &&
+			    sensor_info[n].num_channels &&
+			    is_enabled(s) &&
+			    sensor_info[n].sampling_rate > new_sampling_rate)
+				new_sampling_rate= sensor_info[n].sampling_rate;
+
+	/* Check if we have contraints on allowed sampling rates */
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0){
+		cursor = freqs_buf;
+
+		/* Decode allowed sampling rates string, ex: "10 20 50 100" */
+
+		/* While we're not at the end of the string */
+		while (*cursor && cursor[0]) {
+
+			/* Decode a single value */
+			sr = strtod(cursor, NULL);
+
+			/* If this matches the selected rate, we're happy */
+			if (new_sampling_rate == sr)
+				break;
+
+			/*
+			 * If we reached a higher value than the desired rate,
+			 * adjust selected rate so it matches the first higher
+			 * available one and stop parsing - this makes the
+			 * assumption that rates are sorted by increasing value
+			 * in the allowed frequencies string.
+			 */
+			if (sr > new_sampling_rate) {
+				new_sampling_rate = sr;
+				break;
+			}
+
+			/* Skip digits */
+			while (cursor[0] && !isspace(cursor[0]))
+				cursor++;
+
+			/* Skip spaces */
+			while (cursor[0] && isspace(cursor[0]))
+					cursor++;
+		}
+	}
+
+	if (max_supported_rate &&
+		new_sampling_rate > max_supported_rate) {
+		new_sampling_rate = max_supported_rate;
+	}
+
+	/* If the desired rate is already active we're all set */
+	if (new_sampling_rate == cur_sampling_rate)
+		return 0;
+
+	ALOGI("Sensor %d sampling rate set to %g\n", s, new_sampling_rate);
+
+	if (trig_sensors_per_dev[dev_num])
+		enable_buffer(dev_num, 0);
+
+	sysfs_write_float(sysfs_path, new_sampling_rate);
+
+	/* Check if it makes sense to use an alternate trigger */
+	tentative_switch_trigger(s);
+
+	if (trig_sensors_per_dev[dev_num])
+		enable_buffer(dev_num, 1);
+
+	return 0;
+}
+/*
+ * We go through all the virtual sensors of the base - and the base itself
+ * in order to recompute the maximum requested delay of the group and setup the base
+ * at that specific delay.
+ */
+static int arbitrate_bases (int s)
+{
+	int i, vidx;
+
+	float arbitrated_rate = 0;
+
+	if (sensor_info[s].directly_enabled)
+		arbitrated_rate = sensor_info[s].requested_rate;
+
+	 for (i = 0; i < sensor_count; i++) {
+			for (vidx = 0; vidx < sensor_info[i].base_count; vidx++)
+			/* If we have a virtual sensor depending on this one - handle it */
+				if (sensor_info[i].base_idx[vidx] == s &&
+					sensor_info[i].directly_enabled &&
+					sensor_info[i].requested_rate > arbitrated_rate)
+						arbitrated_rate = sensor_info[i].requested_rate;
+		}
+
+	return setup_delay_sysfs(s, arbitrated_rate);
+}
+
+/*
+ * Re-assesment for delays. We need to re-asses delays for all related groups
+ * of sensors everytime a sensor enables / disables / changes frequency.
+*/
+int arbitrate_delays (int s)
+{
+	int i;
+
+	if (!sensor_info[s].is_virtual) {
+		return arbitrate_bases(s);
+	}
+	/* Is virtual sensor - go through bases */
+	for (i = 0; i < sensor_info[s].base_count; i++)
+		arbitrate_bases(sensor_info[s].base_idx[i]);
+
+	return 0;
+}
+int sensor_activate(int s, int enabled, int from_virtual)
 {
 	char device_name[PATH_MAX];
 	struct epoll_event ev = {0};
@@ -592,33 +865,21 @@ int sensor_activate(int s, int enabled)
 	int dev_num = sensor_info[s].dev_num;
 	int is_poll_sensor = !sensor_info[s].num_channels;
 
-	/* Prepare the report timestamp field for the first event, see set_report_ts method */
-	sensor_info[s].report_ts = 0;
-
-	/* If we want to activate gyro calibrated and gyro uncalibrated is activated
-	 * Deactivate gyro uncalibrated - Uncalibrated releases handler
-	 * Activate gyro calibrated     - Calibrated has handler
-	 * Reactivate gyro uncalibrated - Uncalibrated gets data from calibrated */
-
-	/* If we want to deactivate gyro calibrated and gyro uncalibrated is active
-	 * Deactivate gyro uncalibrated - Uncalibrated no longer gets data from handler
-	 * Deactivate gyro calibrated   - Calibrated releases handler
-	 * Reactivate gyro uncalibrated - Uncalibrated has handler */
-
-	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
-		sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enabled != 0) {
-
-				sensor_activate(sensor_info[s].pair_idx, 0);
-				ret = sensor_activate(s, enabled);
-				sensor_activate(sensor_info[s].pair_idx, 1);
-				return ret;
+	if (sensor_info[s].is_virtual) {
+		sensor_activate_virtual(s, enabled, from_virtual);
+		arbitrate_delays(s);
+		return 0;
 	}
 
-	ret = adjust_counters(s, enabled);
+	/* Prepare the report timestamp field for the first event, see set_report_ts method */
+	sensor_info[s].report_ts = 0;
+	ret = adjust_counters(s, enabled, from_virtual);
 
 	/* If the operation was neutral in terms of state, we're done */
 	if (ret <= 0)
 		return ret;
+
+	arbitrate_delays(s);
 
 	sensor_info[s].event_count = 0;
 	sensor_info[s].meta_data_pending = 0;
@@ -682,7 +943,7 @@ int sensor_activate(int s, int enabled)
 		if (dev_fd == -1) {
 			ALOGE("Could not open fd on %s (%s)\n",
 			      device_name, strerror(errno));
-			adjust_counters(s, 0);
+			adjust_counters(s, 0, from_virtual);
 			return -1;
 		}
 
@@ -713,25 +974,6 @@ int sensor_activate(int s, int enabled)
 		start_acquisition_thread(s);
 
 	return 0;
-}
-
-
-static int is_fast_accelerometer (int s)
-{
-	/*
-	 * Some games don't react well to accelerometers using any-motion
-	 * triggers. Even very low thresholds seem to trip them, and they tend
-	 * to request fairly high event rates. Favor continuous triggers if the
-	 * sensor is an accelerometer and uses a sampling rate of at least 25.
-	 */
-
-	if (sensor_info[s].type != SENSOR_TYPE_ACCELEROMETER)
-		return 0;
-
-	if (sensor_info[s].sampling_rate < 25)
-		return 0;
-
-	return 1;
 }
 
 
@@ -766,7 +1008,7 @@ static void enable_motion_trigger (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enabled &&
+		    is_enabled(s) &&
 		    sensor_info[s].num_channels &&
 		    (!sensor_info[s].motion_trigger_name[0] ||
 		     !sensor_info[s].report_initialized ||
@@ -779,7 +1021,7 @@ static void enable_motion_trigger (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enabled &&
+		    is_enabled(s) &&
 		    sensor_info[s].num_channels &&
 		    sensor_info[s].selected_trigger !=
 			sensor_info[s].motion_trigger_name)
@@ -839,7 +1081,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 
 	for (s=0; s<MAX_SENSORS; s++)
 			if (sensor_info[s].dev_num == dev_num &&
-				sensor_info[s].enabled)
+				is_enabled(s))
 					set_report_ts(s, ts);
 }
 
@@ -883,7 +1125,7 @@ static int integrate_device_report (int dev_num)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enabled) {
+		    is_enabled(s)) {
 
 			sr_offset = 0;
 
@@ -923,7 +1165,7 @@ static int integrate_device_report (int dev_num)
 	/* Don't trust the timestamp channel in any-motion mode */
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor_info[s].dev_num == dev_num &&
-		    sensor_info[s].enabled &&
+		    is_enabled(s) &&
 		    sensor_info[s].selected_trigger ==
 					sensor_info[s].motion_trigger_name) {
 		stamp_reports(dev_num, get_timestamp_boot());
@@ -952,6 +1194,16 @@ static int integrate_device_report (int dev_num)
 	return 0;
 }
 
+static int propagate_vsensor_report (int s, struct sensors_event_t  *data)
+{
+	/* There's a new report stored in sensor_info.sample for this sensor; transmit it */
+
+	memcpy(data, &sensor_info[s].sample, sizeof(struct sensors_event_t));
+
+	data->sensor	= s;
+	data->type	= sensor_info[s].type;
+	return 1;
+}
 
 static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 {
@@ -964,12 +1216,6 @@ static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 	/* If there's nothing to return... we're done */
 	if (!num_fields)
 		return 0;
-
-
-	/* Only return uncalibrated event if also gyro active */
-	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED &&
-		sensor_info[sensor_info[s].pair_idx].enabled != 0)
-			return 0;
 
 	memset(data, 0, sizeof(sensors_event_t));
 
@@ -1026,7 +1272,7 @@ static void synthetize_duplicate_samples (void)
 	for (s=0; s<sensor_count; s++) {
 
 		/* Ignore disabled sensors */
-		if (!sensor_info[s].enabled)
+		if (!is_enabled(s))
 			continue;
 
 		/* If the sensor is continuously firing, leave it alone */
@@ -1105,7 +1351,7 @@ static int get_poll_wait_timeout (void)
 	 * duplicate events. Check deadline for the nearest upcoming event.
 	 */
 	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].enabled &&
+		if (is_enabled(s) &&
 		    sensor_info[s].selected_trigger ==
 		    sensor_info[s].motion_trigger_name &&
 		    sensor_info[s].sampling_rate) {
@@ -1141,49 +1387,26 @@ int sensor_poll(struct sensors_event_t* data, int count)
 	int uncal_start;
 
 	/* Get one or more events from our collection of sensors */
-
 return_available_sensor_reports:
 
 	/* Synthetize duplicate samples if needed */
 	synthetize_duplicate_samples();
 
 	returned_events = 0;
-
 	/* Check our sensor collection for available reports */
 	for (s=0; s<sensor_count && returned_events < count; s++) {
 		if (sensor_info[s].report_pending) {
 			event_count = 0;
 
-			/* Report this event if it looks OK */
-			event_count = propagate_sensor_report(s, &data[returned_events]);
+			if (sensor_info[s].is_virtual)
+				event_count = propagate_vsensor_report(s, &data[returned_events]);
+			else {
+				/* Report this event if it looks OK */
+				event_count = propagate_sensor_report(s, &data[returned_events]);
+			}
 
 			/* Lower flag */
 			sensor_info[s].report_pending = 0;
-
-			/* Duplicate only if both cal & uncal are active */
-			if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE &&
-					sensor_info[s].pair_idx && sensor_info[sensor_info[s].pair_idx].enabled != 0) {
-					struct gyro_cal* gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
-
-					memcpy(&data[returned_events + event_count], &data[returned_events],
-							sizeof(struct sensors_event_t) * event_count);
-
-					uncal_start = returned_events + event_count;
-					for (i = 0; i < event_count; i++) {
-						data[uncal_start + i].type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
-						data[uncal_start + i].sensor = sensor_info[s].pair_idx;
-
-						data[uncal_start + i].data[0] = data[returned_events + i].data[0] + gyro_data->bias_x;
-						data[uncal_start + i].data[1] = data[returned_events + i].data[1] + gyro_data->bias_y;
-						data[uncal_start + i].data[2] = data[returned_events + i].data[2] + gyro_data->bias_z;
-
-						data[uncal_start + i].uncalibrated_gyro.bias[0] = gyro_data->bias_x;
-						data[uncal_start + i].uncalibrated_gyro.bias[1] = gyro_data->bias_y;
-						data[uncal_start + i].uncalibrated_gyro.bias[2] = gyro_data->bias_z;
-					}
-					event_count <<= 1;
-			}
-			sensor_info[sensor_info[s].pair_idx].report_pending = 0;
 			returned_events += event_count;
 			/*
 			 * If the sample was deemed invalid or unreportable,
@@ -1243,53 +1466,12 @@ await_event:
 	goto return_available_sensor_reports;
 }
 
-
-static void tentative_switch_trigger (int s)
-{
-	/*
-	 * Under certain situations it may be beneficial to use an alternate
-	 * trigger:
-	 *
-	 * - for applications using the accelerometer with high sampling rates,
-	 *   prefer the continuous trigger over the any-motion one, to avoid
-	 *   jumps related to motion thresholds
-	 */
-
-	if (is_fast_accelerometer(s) &&
-		!(sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
-			sensor_info[s].selected_trigger ==
-				sensor_info[s].motion_trigger_name)
-		setup_trigger(s, sensor_info[s].init_trigger_name);
-}
-
-
 int sensor_set_delay(int s, int64_t ns)
 {
-	/* Set the rate at which a specific sensor should report events */
-
-	/* See Android sensors.h for indication on sensor trigger modes */
-
-	char sysfs_path[PATH_MAX];
-	char avail_sysfs_path[PATH_MAX];
-	int dev_num		=	sensor_info[s].dev_num;
-	int i			=	sensor_info[s].catalog_index;
-	const char *prefix	=	sensor_catalog[i].tag;
 	float new_sampling_rate; /* Granted sampling rate after arbitration   */
-	float cur_sampling_rate; /* Currently used sampling rate	      */
-	int per_sensor_sampling_rate;
-	int per_device_sampling_rate;
-	int32_t min_delay_us = sensor_desc[s].minDelay;
-	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
-	float min_supported_rate = max_delay_us ? (1000000.0 / max_delay_us) : 1;
-	float max_supported_rate = 
-		(min_delay_us && min_delay_us != -1) ? (1000000.0 / min_delay_us) : 0;
-	char freqs_buf[100];
-	char* cursor;
-	int n;
-	float sr;
 
 	if (ns <= 0) {
-		ALOGE("Rejecting non-positive delay request on sensor %d, required delay: %lld\n", s, ns);
+		ALOGE("Rejecting non-positive delay request on sensor %d,required delay: %lld\n", s, ns);
 		return -EINVAL;
 	}
 
@@ -1299,128 +1481,15 @@ int sensor_set_delay(int s, int64_t ns)
 		s, sensor_info[s].friendly_name, sensor_info[s].sampling_rate,
 		new_sampling_rate);
 
-	/*
-	 * Artificially limit ourselves to 1 Hz or higher. This is mostly to
-	 * avoid setting up the stage for divisions by zero.
-	 */
-	if (new_sampling_rate < min_supported_rate)
-		new_sampling_rate = min_supported_rate;
+	sensor_info[s].requested_rate = new_sampling_rate;
 
-	if (max_supported_rate &&
-		new_sampling_rate > max_supported_rate) {
-		new_sampling_rate = max_supported_rate;
-	}
-
-	sensor_info[s].sampling_rate = new_sampling_rate;
-
-	/* If we're dealing with a poll-mode sensor */
-	if (!sensor_info[s].num_channels) {
-		/* Interrupt current sleep so the new sampling gets used */
-		pthread_cond_signal(&thread_release_cond[s]);
-		return 0;
-	}
-
-	sprintf(sysfs_path, SENSOR_SAMPLING_PATH, dev_num, prefix);
-
-	if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1) {
-		per_sensor_sampling_rate = 1;
-		per_device_sampling_rate = 0;
-	} else {
-		per_sensor_sampling_rate = 0;
-
-		sprintf(sysfs_path, DEVICE_SAMPLING_PATH, dev_num);
-
-		if (sysfs_read_float(sysfs_path, &cur_sampling_rate) != -1)
-			per_device_sampling_rate = 1;
-		else
-			per_device_sampling_rate = 0;
-	}
-
-	if (!per_sensor_sampling_rate && !per_device_sampling_rate) {
-		ALOGE("No way to adjust sampling rate on sensor %d\n", s);
-		return -ENOSYS;
-	}
-
-	/* Coordinate with others active sensors on the same device, if any */
-	if (per_device_sampling_rate)
-		for (n=0; n<sensor_count; n++)
-			if (n != s && sensor_info[n].dev_num == dev_num &&
-			    sensor_info[n].num_channels &&
-			    sensor_info[n].enabled &&
-			    sensor_info[n].sampling_rate > new_sampling_rate)
-				new_sampling_rate= sensor_info[n].sampling_rate;
-
-	/* Check if we have contraints on allowed sampling rates */
-
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0){
-		cursor = freqs_buf;
-
-		/* Decode allowed sampling rates string, ex: "10 20 50 100" */
-
-		/* While we're not at the end of the string */
-		while (*cursor && cursor[0]) {
-
-			/* Decode a single value */
-			sr = strtod(cursor, NULL);
-
-			/* If this matches the selected rate, we're happy */
-			if (new_sampling_rate == sr)
-				break;
-
-			/*
-			 * If we reached a higher value than the desired rate,
-			 * adjust selected rate so it matches the first higher
-			 * available one and stop parsing - this makes the
-			 * assumption that rates are sorted by increasing value
-			 * in the allowed frequencies string.
-			 */
-			if (sr > new_sampling_rate) {
-				new_sampling_rate = sr;
-				break;
-			}
-
-			/* Skip digits */
-			while (cursor[0] && !isspace(cursor[0]))
-				cursor++;
-
-			/* Skip spaces */
-			while (cursor[0] && isspace(cursor[0]))
-					cursor++;
-		}
-	}
-
-	if (max_supported_rate &&
-		new_sampling_rate > max_supported_rate) {
-		new_sampling_rate = max_supported_rate;
-	}
-
-	/* If the desired rate is already active we're all set */
-	if (new_sampling_rate == cur_sampling_rate)
-		return 0;
-
-	ALOGI("Sensor %d sampling rate set to %g\n", s, new_sampling_rate);
-
-	if (trig_sensors_per_dev[dev_num])
-		enable_buffer(dev_num, 0);
-
-	sysfs_write_float(sysfs_path, new_sampling_rate);
-
-	/* Check if it makes sense to use an alternate trigger */
-	tentative_switch_trigger(s);
-
-	if (trig_sensors_per_dev[dev_num])
-		enable_buffer(dev_num, 1);
-
-	return 0;
+	return arbitrate_delays(s);
 }
 
 int sensor_flush (int s)
 {
 	/* If one shot or not enabled return -EINVAL */
-	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE ||
-		sensor_info[s].enabled == 0)
+	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE || !is_enabled(s))
 		return -EINVAL;
 
 	sensor_info[s].meta_data_pending++;

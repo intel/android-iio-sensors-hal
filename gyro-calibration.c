@@ -134,25 +134,11 @@ void calibrate_gyro(struct sensors_event_t* event, struct sensor_info_t* info)
 		info->cal_level = gyro_collect(event->data[0], event->data[1],
 					       event->data[2], cal_data);
 
-	switch (event->type) {
-		case SENSOR_TYPE_GYROSCOPE:
-			/* For the gyroscope apply the bias */
-			event->data[0] = event->data[0] - cal_data->bias_x;
-			event->data[1] = event->data[1] - cal_data->bias_y;
-			event->data[2] = event->data[2] - cal_data->bias_z;
 
-			if (info->cal_level)
-			       event->gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
-			break;
+	event->data[0] = event->data[0] - cal_data->bias_x;
+	event->data[1] = event->data[1] - cal_data->bias_y;
+	event->data[2] = event->data[2] - cal_data->bias_z;
 
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-			/*
-			 * For the uncalibrated gyroscope don't apply the bias,
-			 * but tell he Android framework what we think it is.
-			 */
-			event->uncalibrated_gyro.bias[0] = cal_data->bias_x;
-			event->uncalibrated_gyro.bias[1] = cal_data->bias_y;
-			event->uncalibrated_gyro.bias[2] = cal_data->bias_z;
-			break;
-	}
+	if (info->cal_level)
+	       event->gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 }

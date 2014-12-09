@@ -194,22 +194,10 @@ static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 	float x, y, z;
 	float near_zero;
 
-	switch (sensor_info[s].type) {
-		case SENSOR_TYPE_GYROSCOPE:
-			x = data->data[0];
-			y = data->data[1];
-			z = data->data[2];
-			break;
+	x = data->data[0];
+	y = data->data[1];
+	z = data->data[2];
 
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-			x = data->data[0] - data->uncalibrated_gyro.bias[0];
-			y = data->data[1] - data->uncalibrated_gyro.bias[1];
-			z = data->data[2] - data->uncalibrated_gyro.bias[2];
-			break;
-
-		default:
-			return;
-	}
 
 	/* If we're calibrated, don't filter out as much */
 	if (sensor_info[s].cal_level > 0)
@@ -225,25 +213,59 @@ static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 		 * as composite sensors (orientation, rotation vector) don't
 		 * seem to react very well to it.
 		 */
-		switch (sensor_info[s].type) {
-			case SENSOR_TYPE_GYROSCOPE:
-				data->data[0] *= 0.000001;
-				data->data[1] *= 0.000001;
-				data->data[2] *= 0.000001;
-				break;
 
-			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-				data->data[0]= data->uncalibrated_gyro.bias[0]
-						+ 0.000001 * x;
-				data->data[1]= data->uncalibrated_gyro.bias[1]
-						+ 0.000001 * y;
-				data->data[2]= data->uncalibrated_gyro.bias[2]
-						+ 0.000001 * z;
-				break;
-		}
+		data->data[0] *= 0.000001;
+		data->data[1] *= 0.000001;
+		data->data[2] *= 0.000001;
 	}
 }
 
+static void process_event_gyro_uncal(int s, int i, struct sensors_event_t* data)
+{
+	struct gyro_cal* gyro_data = NULL;
+
+	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE) {
+		gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
+		memcpy(&sensor_info[i].sample, data, sizeof(struct sensors_event_t));
+
+		sensor_info[i].sample.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+		sensor_info[i].sample.sensor = s;
+
+		sensor_info[i].sample.data[0] = data->data[0] + gyro_data->bias_x;
+		sensor_info[i].sample.data[1] = data->data[1] + gyro_data->bias_y;
+		sensor_info[i].sample.data[2] = data->data[2] + gyro_data->bias_z;
+
+		sensor_info[i].sample.uncalibrated_gyro.bias[0] = gyro_data->bias_x;
+		sensor_info[i].sample.uncalibrated_gyro.bias[1] = gyro_data->bias_y;
+		sensor_info[i].sample.uncalibrated_gyro.bias[2] = gyro_data->bias_z;
+
+		sensor_info[i].report_pending = 1;
+	}
+}
+
+static void process_event(int s, struct sensors_event_t* data)
+{
+	/*
+	 * This gets the real event (post process - calibration, filtering & co.)
+	 * and makes it into a virtual one.
+	 * The specific processing function for each sensor will populate the
+	 * necessary fields and set up the report pending flag.
+	 */
+
+	 int i;
+
+	 /* Go through out virtual sensors and check if we can use this event */
+	 for (i = 0; i < sensor_count; i++) {
+		switch (sensor_info[i].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+				process_event_gyro_uncal(s, i, data);
+ 			break;
+
+ 			default:
+ 			break;
+		}
+	}
+}
 
 static int finalize_sample_default (int s, struct sensors_event_t* data)
 {
@@ -274,10 +296,6 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			 * calibration.
 			 */
 			data->gyro.status = SENSOR_STATUS_ACCURACY_MEDIUM;
-
-			/* ... fall through */
-
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 
 			/*
 			 * We're only trying to calibrate data from continuously
@@ -326,6 +344,12 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			sensor_info[s].prev_val = data->data[0];
 			break;
 	}
+	/* If there are active virtual sensors depending on this one - process the event */
+	if (sensor_info[s].ref_count)
+		process_event(s, data);
+	/* We will drop samples if the sensor is not directly enabled */
+	if (!sensor_info[s].directly_enabled)
+		return 0;
 
 	return 1; /* Return sample to Android */
 }

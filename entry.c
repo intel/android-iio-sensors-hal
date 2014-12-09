@@ -27,17 +27,18 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 	 * a workaround for this behavior. We set the initial sampling rate to
 	 * 10 events per second when the sensor is enabled for the first time.
 	 */
+
 	if (enabled && sensor_get_quirks(handle) & QUIRK_INITIAL_RATE) {
 		ALOGI("Forcing initial sampling rate\n");
-		sensor_activate(handle, 1);
+		sensor_activate(handle, 1, 0);
 		sensor_set_delay(handle, 100000000L);	/* Start with 100 ms */
-		sensor_activate(handle, 0);
+		sensor_activate(handle, 0, 0);
 
 		/* Clear flag for this sensor as do this only once */
 		sensor_info[handle].quirks ^= QUIRK_INITIAL_RATE;
 	}
 
-	return sensor_activate(handle, enabled);
+	return sensor_activate(handle, enabled, 0);
 }
 
 
