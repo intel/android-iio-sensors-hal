@@ -29,18 +29,117 @@
   */
 
 sensor_catalog_entry_t sensor_catalog[] = {
-	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
-	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
-	DECLARE_SENSOR3("magn",       SENSOR_TYPE_MAGNETIC_FIELD, "x", "y", "z")
-	DECLARE_SENSOR1("intensity",  SENSOR_TYPE_LIGHT,          "both"       )
-	DECLARE_SENSOR0("illuminance",SENSOR_TYPE_LIGHT                        )
-	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
-	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,
-					 "quat_x", "quat_y", "quat_z", "quat_w")
-	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
-	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
-	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED		       )
-	DECLARE_VIRTUAL(SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED			)
+	{
+		.tag		= "accel",
+		.type		= SENSOR_TYPE_ACCELEROMETER,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("accel", "x") },
+			{ DECLARE_NAMED_CHANNEL("accel", "y") },
+			{ DECLARE_NAMED_CHANNEL("accel", "z") },
+		},
+	},
+	{
+		.tag		= "anglvel",
+		.type		= SENSOR_TYPE_GYROSCOPE,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("anglvel", "x") },
+			{ DECLARE_NAMED_CHANNEL("anglvel", "y") },
+			{ DECLARE_NAMED_CHANNEL("anglvel", "z") },
+		},
+	},
+	{
+		.tag		= "magn",
+		.type		= SENSOR_TYPE_MAGNETIC_FIELD,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("magn", "x") },
+			{ DECLARE_NAMED_CHANNEL("magn", "y") },
+			{ DECLARE_NAMED_CHANNEL("magn", "z") },
+		},
+	},
+	{
+		.tag		= "intensity",
+		.type		= SENSOR_TYPE_LIGHT,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("intensity", "both") },
+		},
+	},
+	{
+		.tag		= "illuminance",
+		.type		= SENSOR_TYPE_LIGHT,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("illuminance") },
+		},
+	},
+	{
+		.tag		= "incli",
+		.type		= SENSOR_TYPE_ORIENTATION,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("incli", "x") },
+			{ DECLARE_NAMED_CHANNEL("incli", "y") },
+			{ DECLARE_NAMED_CHANNEL("incli", "z") },
+		},
+	},
+	{
+		.tag		= "rot",
+		.type		= SENSOR_TYPE_ROTATION_VECTOR,
+		.num_channels	= 4,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_x") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_y") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_z") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_w") },
+		},
+	},
+	{
+		.tag		= "temp",
+		.type		= SENSOR_TYPE_AMBIENT_TEMPERATURE,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("temp") },
+		},
+	},
+	{
+		.tag		= "proximity",
+		.type		= SENSOR_TYPE_PROXIMITY,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("proximity") },
+		},
+	},
+	{
+		.tag		= "",
+		.type		= SENSOR_TYPE_GYROSCOPE_UNCALIBRATED,
+		.num_channels	= 0,
+		.is_virtual	= 1,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("") },
+		},
+
+	},
+	{
+		.tag		= "",
+		.type		= SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED,
+		.num_channels	= 0,
+		.is_virtual	= 1,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("") },
+		},
+	},
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
