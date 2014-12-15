@@ -206,8 +206,7 @@ int sensor_get_version (__attribute__((unused)) int s)
 
 float sensor_get_max_range (int s)
 {
-
-	if (sensor[s].is_virtual)  {
+	if (sensor[s].is_virtual) {
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
@@ -250,7 +249,7 @@ float sensor_get_max_range (int s)
 			return 100;
 
 		default:
-			return 0.0;
+			return 0;
 		}
 }
 
@@ -381,7 +380,7 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	int i;
 	int count = sensor_catalog[sensor[s].catalog_index].num_channels;
 
-	if  (sensor_get_st_prop(s, "order", buf))
+	if (sensor_get_st_prop(s, "order", buf))
 		return 0; /* No order property */
 
 	/* Assume ASCII characters, in the '0'..'9' range */

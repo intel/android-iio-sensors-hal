@@ -306,10 +306,10 @@ void record_sample (int s, const struct sensors_event_t* event)
 
 	cell = &global_history[i];
 
-	cell->sensor	     	= s;
+	cell->sensor = s;
 
-	cell->motion_trigger 	= (sensor[s].selected_trigger ==
-				   sensor[s].motion_trigger_name);
+	cell->motion_trigger = (sensor[s].selected_trigger ==
+				sensor[s].motion_trigger_name);
 
 	memcpy(&cell->data, event, sizeof(sensors_event_t));
 }

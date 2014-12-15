@@ -546,9 +546,9 @@ float acquire_immediate_value(int s, int c)
 		return 0;
 
 	/*
-	There is no transform ops defined yet for Raw sysfs values
-        Use this function to perform transformation as well.
-	*/
+	 * There is no transform ops defined yet for raw sysfs values.
+         * Use this function to perform transformation as well.
+	 */
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
                 return  CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale) *
 			correction;

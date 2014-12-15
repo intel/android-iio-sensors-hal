@@ -484,10 +484,10 @@ static int compass_ready (struct sensor_info_t* info)
     struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
 
     /*
-    *  Some sensors take unrealistically long to calibrate at higher levels.
-    *  We'll use a max_cal_level if we have such a property setup, or go with
-    *  the default settings if not.
-    */
+     *  Some sensors take unrealistically long to calibrate at higher levels.
+     *  We'll use a max_cal_level if we have such a property setup, or go with
+     *  the default settings if not.
+     */
     int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
         info->max_cal_level : CAL_STEPS;
 

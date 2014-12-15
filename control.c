@@ -465,7 +465,7 @@ static int get_field_count (int s)
 			return 1;
 
 		case SENSOR_TYPE_ROTATION_VECTOR:
-			return  4;
+			return 4;
 
 		default:
 			ALOGE("Unknown sensor type!\n");
