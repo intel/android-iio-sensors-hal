@@ -41,18 +41,20 @@ static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
  * - a iio device number if the fd is a iio character device fd
  * - THREAD_REPORT_TAG_BASE + sensor handle if the fd is the receiving end of a
  *   pipe used by a sysfs data acquisition thread
- *  */
+ */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
 #define ENABLE_BUFFER_RETRIES 10
 #define ENABLE_BUFFER_RETRY_DELAY_MS 10
 
-inline int is_enabled(int s)
+
+inline int is_enabled (int s)
 {
-	return (sensor[s].directly_enabled || sensor[s].ref_count);
+	return sensor[s].directly_enabled || sensor[s].ref_count;
 }
 
-static int check_state_change(int s, int enabled, int from_virtual)
+
+static int check_state_change (int s, int enabled, int from_virtual)
 {
 	if(enabled) {
 		if (sensor[s].directly_enabled)
@@ -92,6 +94,8 @@ static int check_state_change(int s, int enabled, int from_virtual)
 
 	return 1;
 }
+
+
 static int enable_buffer(int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
@@ -643,7 +647,8 @@ static void stop_acquisition_thread (int s)
 	pthread_mutex_destroy(&thread_release_mutex[s]);
 }
 
-static void sensor_activate_virtual(int s, int enabled, int from_virtual)
+
+static void sensor_activate_virtual (int s, int enabled, int from_virtual)
 {
 	int i, base;
 
@@ -692,6 +697,7 @@ static int is_fast_accelerometer (int s)
 	return 1;
 }
 
+
 static void tentative_switch_trigger (int s)
 {
 	/*
@@ -710,7 +716,8 @@ static void tentative_switch_trigger (int s)
 		setup_trigger(s, sensor[s].init_trigger_name);
 }
 
-static int setup_delay_sysfs(int s, float new_sampling_rate)
+
+static int setup_delay_sysfs (int s, float new_sampling_rate)
 {
 	/* Set the rate at which a specific sensor should report events */
 
@@ -846,6 +853,8 @@ static int setup_delay_sysfs(int s, float new_sampling_rate)
 
 	return 0;
 }
+
+
 /*
  * We go through all the virtual sensors of the base - and the base itself
  * in order to recompute the maximum requested delay of the group and setup the base
@@ -872,10 +881,11 @@ static int arbitrate_bases (int s)
 	return setup_delay_sysfs(s, arbitrated_rate);
 }
 
+
 /*
  * Re-assesment for delays. We need to re-asses delays for all related groups
  * of sensors everytime a sensor enables / disables / changes frequency.
-*/
+ */
 int arbitrate_delays (int s)
 {
 	int i;
@@ -889,7 +899,9 @@ int arbitrate_delays (int s)
 
 	return 0;
 }
-int sensor_activate(int s, int enabled, int from_virtual)
+
+
+int sensor_activate (int s, int enabled, int from_virtual)
 {
 	char device_name[PATH_MAX];
 	struct epoll_event ev = {0};
@@ -1075,7 +1087,9 @@ static void enable_motion_trigger (int dev_num)
 	enable_buffer(dev_num, 1);
 }
 
-/* CTS acceptable thresholds:
+
+/*
+ *  CTS acceptable thresholds:
  *	EventGapVerification.java: (th <= 1.8)
  *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
  */
@@ -1227,6 +1241,7 @@ static int integrate_device_report (int dev_num)
 	return 0;
 }
 
+
 static int propagate_vsensor_report (int s, struct sensors_event_t  *data)
 {
 	/* There's a new report stored in sensor.sample for this sensor; transmit it */
@@ -1237,6 +1252,7 @@ static int propagate_vsensor_report (int s, struct sensors_event_t  *data)
 	data->type	= sensor[s].type;
 	return 1;
 }
+
 
 static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 {
@@ -1409,7 +1425,7 @@ static int get_poll_wait_timeout (void)
 }
 
 
-int sensor_poll(struct sensors_event_t* data, int count)
+int sensor_poll (struct sensors_event_t* data, int count)
 {
 	int s;
 	int i;
@@ -1499,7 +1515,8 @@ await_event:
 	goto return_available_sensor_reports;
 }
 
-int sensor_set_delay(int s, int64_t ns)
+
+int sensor_set_delay (int s, int64_t ns)
 {
 	float new_sampling_rate; /* Granted sampling rate after arbitration   */
 
@@ -1519,6 +1536,7 @@ int sensor_set_delay(int s, int64_t ns)
 	return arbitrate_delays(s);
 }
 
+
 int sensor_flush (int s)
 {
 	/* If one shot or not enabled return -EINVAL */
@@ -1528,6 +1546,7 @@ int sensor_flush (int s)
 	sensor[s].meta_data_pending++;
 	return 0;
 }
+
 
 int allocate_control_data (void)
 {
