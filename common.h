@@ -167,7 +167,7 @@ struct sensor_info_t
 	/*
 	 * This flag is set if we have a meta data event pending
 	 */
-	volatile int meta_data_pending;
+	int meta_data_pending;
 
 	/*
 	 * Timestamp closely matching the date of sampling, preferably retrieved
