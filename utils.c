@@ -225,39 +225,6 @@ int sysfs_read_float(const char path[PATH_MAX], float *value)
 }
 
 
-int decode_type_spec(	const char type_buf[MAX_TYPE_SPEC_LEN],
-			struct datum_info_t *type_info)
-{
-	/* Return size in bytes for this type specification, or -1 in error */
-	char sign;
-	char endianness;
-	unsigned int realbits, storagebits, shift;
-	int tokens;
-
-	/* Valid specs: "le:u10/16>>0", "le:s16/32>>0" or "le:s32/32>>0" */
-
-	tokens = sscanf(type_buf, "%ce:%c%u/%u>>%u",
-			&endianness, &sign, &realbits, &storagebits, &shift);
-
-	if     (tokens != 5 ||
-		(endianness != 'b' && endianness != 'l') ||
-		(sign != 'u' && sign != 's') ||
-		realbits > storagebits ||
-		(storagebits != 16 && storagebits != 32 && storagebits != 64)) {
-			ALOGE("Invalid iio channel type spec: %s\n", type_buf);
-			return -1;
-		}
-
-	type_info->endianness	=		endianness;
-	type_info->sign		=		sign;
-	type_info->realbits	=	(short)	realbits;
-	type_info->storagebits	=	(short)	storagebits;
-	type_info->shift	=	(short)	shift;
-
-	return storagebits / 8;
-}
-
-
 int64_t get_timestamp_realtime (void)
 {
 	struct timespec ts = {0};
