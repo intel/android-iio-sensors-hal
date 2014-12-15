@@ -39,7 +39,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 					 "quat_x", "quat_y", "quat_z", "quat_w")
 	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
-	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED)
+	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED		       )
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -55,8 +55,9 @@ struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
 struct sensor_info_t sensor[MAX_SENSORS];	/* Internal descriptors      */
 int sensor_count;				/* Detected sensors 	     */
 
-static void setup_properties_from_pld(int s, int panel, int rotation,
-				      int num_channels)
+
+static void setup_properties_from_pld (int s, int panel, int rotation,
+				       int num_channels)
 {
 	/*
 	 * Generate suitable order and opt_scale directives from the PLD panel
@@ -197,7 +198,8 @@ static void decode_placement_information (int dev_num, int num_channels, int s)
 	setup_properties_from_pld(s, panel, rotation, num_channels);
 }
 
-static void populate_descriptors(int s, int sensor_type)
+
+static void populate_descriptors (int s, int sensor_type)
 {
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
@@ -209,26 +211,25 @@ static void populate_descriptors(int s, int sensor_type)
 	sensor_desc[s].maxRange		= sensor_get_max_range(s);
 	sensor_desc[s].resolution	= sensor_get_resolution(s);
 	sensor_desc[s].power		= sensor_get_power(s);
-	sensor_desc[s].stringType = sensor_get_string_type(s);
+	sensor_desc[s].stringType	= sensor_get_string_type(s);
 
-	/* None of our supported sensors requires a special permission.
-	*  If this will be the case we should implement a sensor_get_perm
-	*/
+	/* None of our supported sensors requires a special permission */
 	sensor_desc[s].requiredPermission = "";
+
 	sensor_desc[s].flags = sensor_get_flags(s);
 	sensor_desc[s].minDelay = sensor_get_min_delay(s);
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
 
-	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
+	ALOGV("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
 		s, sensor[s].friendly_name, sensor_desc[s].type,
-		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
+		sensor_desc[s].minDelay, sensor_desc[s].maxDelay,
+		sensor_desc[s].flags);
 
-	/* We currently do not implement batching when we'll so
-	 * these should be overriden appropriately
-	 */
+	/* We currently do not implement batching */
 	sensor_desc[s].fifoReservedEventCount = 0;
 	sensor_desc[s].fifoMaxEventCount = 0;
 }
+
 
 static void add_virtual_sensor (int catalog_index)
 {
@@ -257,6 +258,7 @@ static void add_virtual_sensor (int catalog_index)
 
 	sensor_count++;
 }
+
 
 static void add_sensor (int dev_num, int catalog_index, int use_polling)
 {
@@ -421,6 +423,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	}
 
 	sensor[s].max_cal_level = sensor_get_cal_steps(s);
+
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
 
@@ -518,7 +521,7 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 }
 
 
-static void orientation_sensor_check(void)
+static void orientation_sensor_check (void)
 {
 	/*
 	 * If we have accel + gyro + magn but no rotation vector sensor,
@@ -565,6 +568,7 @@ static void orientation_sensor_check(void)
 				break;
 			}
 }
+
 
 static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 				 int sensor_name_len)
@@ -705,6 +709,7 @@ static void setup_trigger_names (void)
 		}
 }
 
+
 static void uncalibrated_gyro_check (void)
 {
 	unsigned int has_gyr = 0;
@@ -737,6 +742,7 @@ static void uncalibrated_gyro_check (void)
 			}
 	}
 }
+
 
 void enumerate_sensors (void)
 {
@@ -794,26 +800,12 @@ void delete_enumeration_data (void)
 {
 	int i;
 	for (i = 0; i < sensor_count; i++)
-	switch (sensor[i].type) {
-		case SENSOR_TYPE_MAGNETIC_FIELD:
-			if (sensor[i].cal_data != NULL) {
-				free(sensor[i].cal_data);
-				sensor[i].cal_data = NULL;
-				sensor[i].cal_level = 0;
-			}
-			break;
+		if (sensor[i].cal_data) {
+			free(sensor[i].cal_data);
+			sensor[i].cal_data = NULL;
+			sensor[i].cal_level = 0;
+		}
 
-		case SENSOR_TYPE_GYROSCOPE:
-			if (sensor[i].cal_data != NULL) {
-				free(sensor[i].cal_data);
-				sensor[i].cal_data = NULL;
-				sensor[i].cal_level = 0;
-			}
-			break;
-
-		default:
-			break;
-	}
 	/* Reset sensor count */
 	sensor_count = 0;
 }
