@@ -7,7 +7,7 @@
 #include "filtering.h"
 
 
-struct filter_median
+struct filter_median_t
 {
 	float* buff;
 	unsigned int idx;
@@ -83,11 +83,10 @@ static float median (float* queue, unsigned int size)
 static void denoise_median_init(int s, unsigned int num_fields,
 				unsigned int max_samples)
 {
-	struct filter_median* f_data = (struct filter_median*) calloc(1,
-						sizeof(struct filter_median));
+	struct filter_median_t* f_data = (struct filter_median_t*)
+					 malloc(sizeof(struct filter_median_t));
 
-	f_data->buff = (float*)calloc(max_samples,
-		sizeof(float) * num_fields);
+	f_data->buff = (float*) calloc(max_samples, sizeof(float) * num_fields);
 	f_data->sample_size = max_samples;
 	f_data->count = 0;
 	f_data->idx = 0;
@@ -97,7 +96,7 @@ static void denoise_median_init(int s, unsigned int num_fields,
 
 static void denoise_median_reset (struct sensor_info_t* info)
 {
-	struct filter_median* f_data = (struct filter_median*) info->filter;
+	struct filter_median_t* f_data = (struct filter_median_t*) info->filter;
 
 	if (!f_data)
 		return;
@@ -115,7 +114,7 @@ static void denoise_median (	struct sensor_info_t* info,
 	float scale;
 	unsigned int field, offset;
 
-	struct filter_median* f_data = (struct filter_median*) info->filter;
+	struct filter_median_t* f_data = (struct filter_median_t*) info->filter;
 	if (!f_data)
 		return;
 
@@ -251,7 +250,7 @@ void release_noise_filtering_data (int s)
 
 	/* Delete median filter structures */
 	if (sensor[s].filter) {
-		buff = ((struct filter_median*)sensor[s].filter)->buff;
+		buff = ((struct filter_median_t*)sensor[s].filter)->buff;
 
 		if (buff)
 			free(buff);

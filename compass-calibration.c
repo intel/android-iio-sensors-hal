@@ -38,7 +38,7 @@ static const float max_sqr_errs[CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5 };
 static const unsigned int lookback_counts[CAL_STEPS] = {2, 3, 4, 5, 6 };
 
 /* reset calibration algorithm */
-static void reset_sample (struct compass_cal* data)
+static void reset_sample (struct compass_cal_t* data)
 {
     int i,j;
     data->sample_count = 0;
@@ -49,7 +49,7 @@ static void reset_sample (struct compass_cal* data)
     data->average[0] = data->average[1] = data->average[2] = 0;
 }
 
-static double calc_square_err (struct compass_cal* data)
+static double calc_square_err (struct compass_cal_t* data)
 {
     double err = 0;
     double raw[3][1], result[3][1], mat_diff[3][1];
@@ -294,7 +294,7 @@ static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
     raw_data_count = 0;
 #endif
 
-    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
     int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
         info->max_cal_level : CAL_STEPS;
     if (cal_data == NULL)
@@ -346,7 +346,7 @@ static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
 
 static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
 {
-    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
 
     if (data_file == NULL || cal_data == NULL)
         return;
@@ -369,7 +369,7 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     unsigned int lookback_count;
     float min_diff;
 
-    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
 
     if (cal_data == NULL)
         return -1;
@@ -454,7 +454,7 @@ static void scale_event (struct sensors_event_t* event)
 
 static void compass_compute_cal (struct sensors_event_t* event, struct sensor_info_t* info)
 {
-    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
     double result[3][1], raw[3][1], diff[3][1];
 
     if (!info->cal_level || cal_data == NULL)
@@ -481,7 +481,8 @@ static int compass_ready (struct sensor_info_t* info)
     int i;
     float max_sqr_err;
 
-    struct compass_cal* cal_data = (struct compass_cal*) info->cal_data;
+    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
+    struct compass_cal_t new_cal_data;
 
     /*
      *  Some sensors take unrealistically long to calibrate at higher levels.
@@ -509,10 +510,9 @@ static int compass_ready (struct sensor_info_t* info)
        mat[i][2] = cal_data->sample[i][2];
     }
 
-    /* check if result is good */
-    struct compass_cal new_cal_data;
-    /* the sample data must remain the same */
+    /* Check if result is good. The sample data must remain the same */
     new_cal_data = *cal_data;
+
     if (ellipsoid_fit(mat, new_cal_data.offset, new_cal_data.w_invert, &new_cal_data.bfield)) {
         double new_err = calc_square_err (&new_cal_data);
         ALOGI("new err is %f, max sqr err id %f", new_err,max_sqr_err);

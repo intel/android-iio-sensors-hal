@@ -9,7 +9,7 @@
 
 #define MAGN_DS_SIZE 32
 
-struct compass_cal {
+struct compass_cal_t {
     /* hard iron offsets */
     double offset[3][1];
 
@@ -25,7 +25,7 @@ struct compass_cal {
     float average[3];
 };
 
-struct gyro_cal {
+struct gyro_cal_t {
     float bias_x, bias_y, bias_z;
     int count;
     float min_x, min_y, min_z;

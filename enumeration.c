@@ -410,15 +410,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 		strcpy(sensor[s].internal_name, "(null)");
 	}
 
-	if (sensor_type == SENSOR_TYPE_GYROSCOPE) {
-		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
-		sensor[s].cal_data = calibration_data;
+	switch (sensor_type) {
+		case SENSOR_TYPE_GYROSCOPE:
+			sensor[s].cal_data = malloc(sizeof(struct gyro_cal_t));
+			break;
+
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			sensor[s].cal_data = malloc(sizeof(struct compass_cal_t));
+			break;
 	}
 
-	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
-		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
-		sensor[s].cal_data = calibration_data;
-	}
 	sensor[s].max_cal_level = sensor_get_cal_steps(s);
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);

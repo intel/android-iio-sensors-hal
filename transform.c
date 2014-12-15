@@ -222,10 +222,11 @@ static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 
 static void process_event_gyro_uncal(int s, int i, struct sensors_event_t* data)
 {
-	struct gyro_cal* gyro_data = NULL;
+	struct gyro_cal_t* gyro_data;
 
 	if (sensor[s].type == SENSOR_TYPE_GYROSCOPE) {
-		gyro_data = (struct gyro_cal*) sensor[s].cal_data;
+		gyro_data = (struct gyro_cal_t*) sensor[s].cal_data;
+
 		memcpy(&sensor[i].sample, data, sizeof(struct sensors_event_t));
 
 		sensor[i].sample.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
