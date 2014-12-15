@@ -35,7 +35,7 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 		sensor_activate(handle, 0, 0);
 
 		/* Clear flag for this sensor as do this only once */
-		sensor_info[handle].quirks ^= QUIRK_INITIAL_RATE;
+		sensor[handle].quirks ^= QUIRK_INITIAL_RATE;
 	}
 
 	return sensor_activate(handle, enabled, 0);

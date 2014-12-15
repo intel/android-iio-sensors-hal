@@ -52,7 +52,7 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 /* We equate sensor handles to indices in these tables */
 
 struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
-struct sensor_info_t sensor_info[MAX_SENSORS];	/* Internal descriptors      */
+struct sensor_info_t sensor[MAX_SENSORS];	/* Internal descriptors      */
 int sensor_count;				/* Detected sensors 	     */
 
 static void setup_properties_from_pld(int s, int panel, int rotation,
@@ -99,15 +99,15 @@ static void setup_properties_from_pld(int s, int panel, int rotation,
 	}
 
 	if (xy_swap) {
-		sensor_info[s].order[0] = 1;
-		sensor_info[s].order[1] = 0;
-		sensor_info[s].order[2] = 2;
-		sensor_info[s].quirks |= QUIRK_FIELD_ORDERING;
+		sensor[s].order[0] = 1;
+		sensor[s].order[1] = 0;
+		sensor[s].order[2] = 2;
+		sensor[s].quirks |= QUIRK_FIELD_ORDERING;
 	}
 
-	sensor_info[s].channel[0].opt_scale = x;
-	sensor_info[s].channel[1].opt_scale = y;
-	sensor_info[s].channel[2].opt_scale = z;
+	sensor[s].channel[0].opt_scale = x;
+	sensor[s].channel[1].opt_scale = y;
+	sensor[s].channel[2].opt_scale = z;
 }
 
 
@@ -220,7 +220,7 @@ static void populate_descriptors(int s, int sensor_type)
 	sensor_desc[s].maxDelay = sensor_get_max_delay(s);
 
 	ALOGI("Sensor %d (%s) type(%d) minD(%d) maxD(%d) flags(%2.2x)\n",
-		s, sensor_info[s].friendly_name, sensor_desc[s].type,
+		s, sensor[s].friendly_name, sensor_desc[s].type,
 		sensor_desc[s].minDelay, sensor_desc[s].maxDelay, sensor_desc[s].flags);
 
 	/* We currently do not implement batching when we'll so
@@ -244,16 +244,16 @@ static void add_virtual_sensor (int catalog_index)
 
 	s = sensor_count;
 
-	sensor_info[s].is_virtual = 1;
-	sensor_info[s].catalog_index	= catalog_index;
-	sensor_info[s].type		= sensor_type;
+	sensor[s].is_virtual = 1;
+	sensor[s].catalog_index	= catalog_index;
+	sensor[s].type		= sensor_type;
 
 	populate_descriptors(s, sensor_type);
 
 	/* Initialize fields related to sysfs reads offloading */
-	sensor_info[s].thread_data_fd[0]  = -1;
-	sensor_info[s].thread_data_fd[1]  = -1;
-	sensor_info[s].acquisition_thread = -1;
+	sensor[s].thread_data_fd[0]  = -1;
+	sensor[s].thread_data_fd[1]  = -1;
+	sensor[s].acquisition_thread = -1;
 
 	sensor_count++;
 }
@@ -287,16 +287,16 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	s = sensor_count;
 
-	sensor_info[s].dev_num		= dev_num;
-	sensor_info[s].catalog_index	= catalog_index;
-	sensor_info[s].type		= sensor_type;
+	sensor[s].dev_num		= dev_num;
+	sensor[s].catalog_index	= catalog_index;
+	sensor[s].type		= sensor_type;
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
         if (use_polling)
-                sensor_info[s].num_channels = 0;
+                sensor[s].num_channels = 0;
         else
-                sensor_info[s].num_channels = num_channels;
+                sensor[s].num_channels = num_channels;
 
 	prefix = sensor_catalog[catalog_index].tag;
 
@@ -314,12 +314,12 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);
-	sysfs_read_str(sysfs_path, sensor_info[s].internal_name, MAX_NAME_SIZE);
+	sysfs_read_str(sysfs_path, sensor[s].internal_name, MAX_NAME_SIZE);
 
 	/* See if we have general offsets and scale values for this sensor */
 
 	sprintf(sysfs_path, SENSOR_OFFSET_PATH, dev_num, prefix);
-	sysfs_read_float(sysfs_path, &sensor_info[s].offset);
+	sysfs_read_float(sysfs_path, &sensor[s].offset);
 
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sensor_get_fl_prop(s, "scale", &scale)) {
@@ -342,11 +342,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	sprintf(sysfs_path, SENSOR_SCALE_PATH, dev_num, prefix);
 	if (!sysfs_read_float(sysfs_path, &scale)) {
-                sensor_info[s].scale = scale;
+                sensor[s].scale = scale;
 		ALOGI("Scale path:%s scale:%f dev_num:%d\n",
                                         sysfs_path, scale, dev_num);
 	} else {
-                sensor_info[s].scale = 1;
+                sensor[s].scale = 1;
 
                 /* Read channel specific scale if any*/
                 for (c = 0; c < num_channels; c++)
@@ -355,8 +355,8 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
                            sensor_catalog[catalog_index].channel[c].scale_path);
 
                         if (!sysfs_read_float(sysfs_path, &scale)) {
-                                sensor_info[s].channel[c].scale = scale;
-			        sensor_info[s].scale = 0;
+                                sensor[s].channel[c].scale = scale;
+			        sensor[s].scale = 0;
 
 			        ALOGI(  "Scale path:%s "
 					"channel scale:%f dev_num:%d\n",
@@ -367,10 +367,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
         /* Set default scaling - if num_channels is zero, we have one channel */
 
-	sensor_info[s].channel[0].opt_scale = 1;
+	sensor[s].channel[0].opt_scale = 1;
 
 	for (c = 1; c < num_channels; c++)
-		sensor_info[s].channel[c].opt_scale = 1;
+		sensor[s].channel[c].opt_scale = 1;
 
 	/* Read ACPI _PLD attributes for this sensor, if there are any */
 	decode_placement_information(dev_num, num_channels, s);
@@ -389,48 +389,48 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
 			sprintf(suffix, "%s.opt_scale", ch_name);
 			if (!sensor_get_fl_prop(s, suffix, &opt_scale))
-				sensor_info[s].channel[c].opt_scale = opt_scale;
+				sensor[s].channel[c].opt_scale = opt_scale;
 		}
         } else
 		if (!sensor_get_fl_prop(s, "opt_scale", &opt_scale))
-			sensor_info[s].channel[0].opt_scale = opt_scale;
+			sensor[s].channel[0].opt_scale = opt_scale;
 
 	populate_descriptors(s, sensor_type);
 
 	/* Populate the quirks array */
 	sensor_get_quirks(s);
 
-	if (sensor_info[s].internal_name[0] == '\0') {
+	if (sensor[s].internal_name[0] == '\0') {
 		/*
 		 * In case the kernel-mode driver doesn't expose a name for
 		 * the iio device, use (null)-dev%d as the trigger name...
 		 * This can be considered a kernel-mode iio driver bug.
 		 */
 		ALOGW("Using null trigger on sensor %d (dev %d)\n", s, dev_num);
-		strcpy(sensor_info[s].internal_name, "(null)");
+		strcpy(sensor[s].internal_name, "(null)");
 	}
 
 	if (sensor_type == SENSOR_TYPE_GYROSCOPE) {
 		struct gyro_cal* calibration_data = calloc(1, sizeof(struct gyro_cal));
-		sensor_info[s].cal_data = calibration_data;
+		sensor[s].cal_data = calibration_data;
 	}
 
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD) {
 		struct compass_cal* calibration_data = calloc(1, sizeof(struct compass_cal));
-		sensor_info[s].cal_data = calibration_data;
+		sensor[s].cal_data = calibration_data;
 	}
-	sensor_info[s].max_cal_level = sensor_get_cal_steps(s);
+	sensor[s].max_cal_level = sensor_get_cal_steps(s);
 	/* Select one of the available sensor sample processing styles */
 	select_transform(s);
 
 	/* Initialize fields related to sysfs reads offloading */
-	sensor_info[s].thread_data_fd[0]  = -1;
-	sensor_info[s].thread_data_fd[1]  = -1;
-	sensor_info[s].acquisition_thread = -1;
+	sensor[s].thread_data_fd[0]  = -1;
+	sensor[s].thread_data_fd[1]  = -1;
+	sensor[s].acquisition_thread = -1;
 
 	/* Check if we have a special ordering property on this sensor */
-	if (sensor_get_order(s, sensor_info[s].order))
-		sensor_info[s].quirks |= QUIRK_FIELD_ORDERING;
+	if (sensor_get_order(s, sensor[s].order))
+		sensor[s].quirks |= QUIRK_FIELD_ORDERING;
 
 	sensor_count++;
 }
@@ -538,7 +538,7 @@ static void orientation_sensor_check(void)
 	int catalog_size = CATALOG_SIZE;
 
 	for (i=0; i<sensor_count; i++)
-		switch (sensor_info[i].type) {
+		switch (sensor[i].type) {
 			case SENSOR_TYPE_ACCELEROMETER:
 				has_acc = 1;
 				break;
@@ -583,7 +583,7 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 	/* If we found any-motion trigger, record it */
 
 	if (!memcmp(suffix, "any-motion-", 11)) {
-		strcpy(sensor_info[s].motion_trigger_name, trigger_name);
+		strcpy(sensor[s].motion_trigger_name, trigger_name);
 		return;
 	}
 
@@ -592,7 +592,7 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 	 * use this though, as we may not have any other indication of the name
 	 * of the trigger to use with this sensor.
 	 */
-	strcpy(sensor_info[s].init_trigger_name, trigger_name);
+	strcpy(sensor[s].init_trigger_name, trigger_name);
 }
 
 
@@ -636,12 +636,12 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 
 	/* See if that matches a sensor */
 	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].dev_num == dev_num) {
+		if (sensor[s].dev_num == dev_num) {
 
-			sensor_name_len = strlen(sensor_info[s].internal_name);
+			sensor_name_len = strlen(sensor[s].internal_name);
 
 			if (!strncmp(name,
-				     sensor_info[s].internal_name,
+				     sensor[s].internal_name,
 				     sensor_name_len))
 				/* Switch to new trigger if appropriate */
 				propose_new_trigger(s, name, sensor_name_len);
@@ -660,9 +660,9 @@ static void setup_trigger_names (void)
 
 	/* By default, use the name-dev convention that most drivers use */
 	for (s=0; s<sensor_count; s++)
-		snprintf(sensor_info[s].init_trigger_name,
+		snprintf(sensor[s].init_trigger_name,
 			 MAX_NAME_SIZE, "%s-dev%d",
-			 sensor_info[s].internal_name, sensor_info[s].dev_num);
+			 sensor[s].internal_name, sensor[s].dev_num);
 
 	/* Now have a look to /sys/bus/iio/devices/triggerX entries */
 
@@ -687,20 +687,20 @@ static void setup_trigger_names (void)
 	 */
 
 	for (s=0; s<sensor_count; s++)
-		if ((sensor_info[s].quirks & QUIRK_TERSE_DRIVER) &&
-		    sensor_info[s].motion_trigger_name[0] == '\0')
-			strcpy( sensor_info[s].motion_trigger_name,
-				sensor_info[s].init_trigger_name);
+		if ((sensor[s].quirks & QUIRK_TERSE_DRIVER) &&
+		    sensor[s].motion_trigger_name[0] == '\0')
+			strcpy( sensor[s].motion_trigger_name,
+				sensor[s].init_trigger_name);
 
 	for (s=0; s<sensor_count; s++)
-		if (sensor_info[s].num_channels) {
+		if (sensor[s].num_channels) {
 			ALOGI("Sensor %d (%s) default trigger: %s\n", s,
-				sensor_info[s].friendly_name,
-				sensor_info[s].init_trigger_name);
-			if (sensor_info[s].motion_trigger_name[0])
+				sensor[s].friendly_name,
+				sensor[s].init_trigger_name);
+			if (sensor[s].motion_trigger_name[0])
 				ALOGI("Sensor %d (%s) motion trigger: %s\n",
-				s, sensor_info[s].friendly_name,
-				sensor_info[s].motion_trigger_name);
+				s, sensor[s].friendly_name,
+				sensor[s].motion_trigger_name);
 		}
 }
 
@@ -718,7 +718,7 @@ static void uncalibrated_gyro_check (void)
 		return;
 	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
 	for (i=0; i < sensor_count; i++)
-		if (sensor_info[i].type == SENSOR_TYPE_GYROSCOPE) {
+		if (sensor[i].type == SENSOR_TYPE_GYROSCOPE) {
 			has_gyr=1;
 			cal_idx = i;
 			break;
@@ -726,8 +726,8 @@ static void uncalibrated_gyro_check (void)
 
 	if (has_gyr) {
 		uncal_idx = sensor_count;
-		sensor_info[uncal_idx].base_count = 1;
-		sensor_info[uncal_idx].base_idx[0] = cal_idx;
+		sensor[uncal_idx].base_count = 1;
+		sensor[uncal_idx].base_idx[0] = cal_idx;
 
 		for (i=0; i<catalog_size; i++)
 			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
@@ -793,20 +793,20 @@ void delete_enumeration_data (void)
 {
 	int i;
 	for (i = 0; i < sensor_count; i++)
-	switch (sensor_info[i].type) {
+	switch (sensor[i].type) {
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			if (sensor_info[i].cal_data != NULL) {
-				free(sensor_info[i].cal_data);
-				sensor_info[i].cal_data = NULL;
-				sensor_info[i].cal_level = 0;
+			if (sensor[i].cal_data != NULL) {
+				free(sensor[i].cal_data);
+				sensor[i].cal_data = NULL;
+				sensor[i].cal_level = 0;
 			}
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
-			if (sensor_info[i].cal_data != NULL) {
-				free(sensor_info[i].cal_data);
-				sensor_info[i].cal_data = NULL;
-				sensor_info[i].cal_level = 0;
+			if (sensor[i].cal_data != NULL) {
+				free(sensor[i].cal_data);
+				sensor[i].cal_data = NULL;
+				sensor[i].cal_level = 0;
 			}
 			break;
 

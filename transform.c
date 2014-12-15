@@ -200,7 +200,7 @@ static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 
 
 	/* If we're calibrated, don't filter out as much */
-	if (sensor_info[s].cal_level > 0)
+	if (sensor[s].cal_level > 0)
 		near_zero = 0.02; /* rad/s */
 	else
 		near_zero = 0.1;
@@ -224,22 +224,22 @@ static void process_event_gyro_uncal(int s, int i, struct sensors_event_t* data)
 {
 	struct gyro_cal* gyro_data = NULL;
 
-	if (sensor_info[s].type == SENSOR_TYPE_GYROSCOPE) {
-		gyro_data = (struct gyro_cal*) sensor_info[s].cal_data;
-		memcpy(&sensor_info[i].sample, data, sizeof(struct sensors_event_t));
+	if (sensor[s].type == SENSOR_TYPE_GYROSCOPE) {
+		gyro_data = (struct gyro_cal*) sensor[s].cal_data;
+		memcpy(&sensor[i].sample, data, sizeof(struct sensors_event_t));
 
-		sensor_info[i].sample.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
-		sensor_info[i].sample.sensor = s;
+		sensor[i].sample.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
+		sensor[i].sample.sensor = s;
 
-		sensor_info[i].sample.data[0] = data->data[0] + gyro_data->bias_x;
-		sensor_info[i].sample.data[1] = data->data[1] + gyro_data->bias_y;
-		sensor_info[i].sample.data[2] = data->data[2] + gyro_data->bias_z;
+		sensor[i].sample.data[0] = data->data[0] + gyro_data->bias_x;
+		sensor[i].sample.data[1] = data->data[1] + gyro_data->bias_y;
+		sensor[i].sample.data[2] = data->data[2] + gyro_data->bias_z;
 
-		sensor_info[i].sample.uncalibrated_gyro.bias[0] = gyro_data->bias_x;
-		sensor_info[i].sample.uncalibrated_gyro.bias[1] = gyro_data->bias_y;
-		sensor_info[i].sample.uncalibrated_gyro.bias[2] = gyro_data->bias_z;
+		sensor[i].sample.uncalibrated_gyro.bias[0] = gyro_data->bias_x;
+		sensor[i].sample.uncalibrated_gyro.bias[1] = gyro_data->bias_y;
+		sensor[i].sample.uncalibrated_gyro.bias[2] = gyro_data->bias_z;
 
-		sensor_info[i].report_pending = 1;
+		sensor[i].report_pending = 1;
 	}
 }
 
@@ -256,7 +256,7 @@ static void process_event(int s, struct sensors_event_t* data)
 
 	 /* Go through out virtual sensors and check if we can use this event */
 	 for (i = 0; i < sensor_count; i++) {
-		switch (sensor_info[i].type) {
+		switch (sensor[i].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				process_event_gyro_uncal(s, i, data);
  			break;
@@ -270,21 +270,21 @@ static void process_event(int s, struct sensors_event_t* data)
 static int finalize_sample_default (int s, struct sensors_event_t* data)
 {
 	/* Swap fields if we have a custom channel ordering on this sensor */
-	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
-		reorder_fields(data->data, sensor_info[s].order);
+	if (sensor[s].quirks & QUIRK_FIELD_ORDERING)
+		reorder_fields(data->data, sensor[s].order);
 
-	sensor_info[s].event_count++;
-	switch (sensor_info[s].type) {
+	sensor[s].event_count++;
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
-			if (sensor_info[s].quirks & QUIRK_NOISY)
+			if (sensor[s].quirks & QUIRK_NOISY)
 				denoise(s, data);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			calibrate_compass (data, &sensor_info[s]);
-			if (sensor_info[s].quirks & QUIRK_NOISY)
+			calibrate_compass (data, &sensor[s]);
+			if (sensor[s].quirks & QUIRK_NOISY)
 				denoise(s, data);
 			break;
 
@@ -303,19 +303,19 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			 * movement thresholds that may lead us to incorrectly
 			 * estimate bias.
 			 */
-			if (sensor_info[s].selected_trigger !=
-				sensor_info[s].motion_trigger_name)
-					calibrate_gyro(data, &sensor_info[s]);
+			if (sensor[s].selected_trigger !=
+				sensor[s].motion_trigger_name)
+					calibrate_gyro(data, &sensor[s]);
 
 			/*
 			 * For noisy sensors drop a few samples to make sure we
 			 * have at least GYRO_MIN_SAMPLES events in the
 			 * filtering queue. This improves mean and std dev.
 			 */
-			if (sensor_info[s].quirks & QUIRK_NOISY) {
-				if (sensor_info[s].selected_trigger !=
-				    sensor_info[s].motion_trigger_name &&
-				    sensor_info[s].event_count<GYRO_MIN_SAMPLES)
+			if (sensor[s].quirks & QUIRK_NOISY) {
+				if (sensor[s].selected_trigger !=
+				    sensor[s].motion_trigger_name &&
+				    sensor[s].event_count<GYRO_MIN_SAMPLES)
 						return 0;
 
 				denoise(s, data);
@@ -338,17 +338,17 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 			 * These are on change sensors ; drop the sample if it
 			 * has the same value as the previously reported one.
 			 */
-			if (data->data[0] == sensor_info[s].prev_val)
+			if (data->data[0] == sensor[s].prev_val)
 				return 0;
 
-			sensor_info[s].prev_val = data->data[0];
+			sensor[s].prev_val = data->data[0];
 			break;
 	}
 	/* If there are active virtual sensors depending on this one - process the event */
-	if (sensor_info[s].ref_count)
+	if (sensor[s].ref_count)
 		process_event(s, data);
 	/* We will drop samples if the sensor is not directly enabled */
-	if (!sensor_info[s].directly_enabled)
+	if (!sensor[s].directly_enabled)
 		return 0;
 
 	return 1; /* Return sample to Android */
@@ -357,16 +357,16 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 
 static float transform_sample_default(int s, int c, unsigned char* sample_data)
 {
-	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
+	struct datum_info_t* sample_type = &sensor[s].channel[c].type_info;
 	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
-	float scale = sensor_info[s].scale ?
-		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
+	float scale = sensor[s].scale ?
+		        sensor[s].scale : sensor[s].channel[c].scale;
 
 	/* In case correction has been requested using properties, apply it */
-	scale *= sensor_info[s].channel[c].opt_scale;
+	scale *= sensor[s].channel[c].opt_scale;
 
 	/* Apply default scaling rules */
-	return (sensor_info[s].offset + s64) * scale;
+	return (sensor[s].offset + s64) * scale;
 }
 
 
@@ -375,10 +375,10 @@ static int finalize_sample_ISH (int s, struct sensors_event_t* data)
 	float pitch, roll, yaw;
 
 	/* Swap fields if we have a custom channel ordering on this sensor */
-	if (sensor_info[s].quirks & QUIRK_FIELD_ORDERING)
-		reorder_fields(data->data, sensor_info[s].order);
+	if (sensor[s].quirks & QUIRK_FIELD_ORDERING)
+		reorder_fields(data->data, sensor[s].order);
 
-	if (sensor_info[s].type == SENSOR_TYPE_ORIENTATION) {
+	if (sensor[s].type == SENSOR_TYPE_ORIENTATION) {
 
 		pitch = data->data[0];
 		roll = data->data[1];
@@ -398,16 +398,16 @@ static int finalize_sample_ISH (int s, struct sensors_event_t* data)
 
 static float transform_sample_ISH (int s, int c, unsigned char* sample_data)
 {
-	struct datum_info_t* sample_type = &sensor_info[s].channel[c].type_info;
+	struct datum_info_t* sample_type = &sensor[s].channel[c].type_info;
 	int val		= (int) sample_as_int64(sample_data, sample_type);
 	float correction;
 	int data_bytes  = (sample_type->realbits)/8;
-	int exponent    = sensor_info[s].offset;
+	int exponent    = sensor[s].offset;
 
 	/* In case correction has been requested using properties, apply it */
-	correction = sensor_info[s].channel[c].opt_scale;
+	correction = sensor[s].channel[c].opt_scale;
 
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			switch (c) {
 				case 0:
@@ -486,7 +486,7 @@ void select_transform (int s)
 {
 	char prop_name[PROP_NAME_MAX];
 	char prop_val[PROP_VALUE_MAX];
-	int i			= sensor_info[s].catalog_index;
+	int i			= sensor[s].catalog_index;
 	const char *prefix	= sensor_catalog[i].tag;
 
 	sprintf(prop_name, PROP_BASE, prefix, "transform");
@@ -494,16 +494,16 @@ void select_transform (int s)
 	if (property_get(prop_name, prop_val, "")) {
 		if (!strcmp(prop_val, "ISH")) {
 			ALOGI(	"Using Intel Sensor Hub semantics on %s\n",
-				sensor_info[s].friendly_name);
+				sensor[s].friendly_name);
 
-			sensor_info[s].ops.transform = transform_sample_ISH;
-			sensor_info[s].ops.finalize = finalize_sample_ISH;
+			sensor[s].ops.transform = transform_sample_ISH;
+			sensor[s].ops.finalize = finalize_sample_ISH;
 			return;
 		}
 	}
 
-	sensor_info[s].ops.transform = transform_sample_default;
-	sensor_info[s].ops.finalize = finalize_sample_default;
+	sensor[s].ops.transform = transform_sample_default;
+	sensor[s].ops.finalize = finalize_sample_default;
 }
 
 
@@ -512,18 +512,18 @@ float acquire_immediate_value(int s, int c)
 	char sysfs_path[PATH_MAX];
 	float val;
 	int ret;
-	int dev_num = sensor_info[s].dev_num;
-	int i = sensor_info[s].catalog_index;
+	int dev_num = sensor[s].dev_num;
+	int i = sensor[s].catalog_index;
 	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
 	const char* input_path = sensor_catalog[i].channel[c].input_path;
-	float scale = sensor_info[s].scale ?
-		        sensor_info[s].scale : sensor_info[s].channel[c].scale;
-	float offset = sensor_info[s].offset;
+	float scale = sensor[s].scale ?
+		        sensor[s].scale : sensor[s].channel[c].scale;
+	float offset = sensor[s].offset;
 	int sensor_type = sensor_catalog[i].type;
 	float correction;
 
 	/* In case correction has been requested using properties, apply it */
-	correction = sensor_info[s].channel[c].opt_scale;
+	correction = sensor[s].channel[c].opt_scale;
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 

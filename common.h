@@ -104,7 +104,7 @@ struct sample_ops_t
 
 /*
  * Whenever we have sensor data recorded for a sensor in the associated
- * sensor_info cell, its report_pending field is set to a non-zero value
+ * sensor cell, its report_pending field is set to a non-zero value
  * indicating how we got this data.
  */
 #define DATA_TRIGGER	1	/* From /dev/iio:device fd		*/
@@ -260,7 +260,7 @@ struct sensor_info_t
 /* Reference a few commonly used variables... */
 extern int				sensor_count;
 extern struct sensor_t      sensor_desc[MAX_SENSORS];
-extern struct sensor_info_t		sensor_info[MAX_SENSORS];
+extern struct sensor_info_t		sensor[MAX_SENSORS];
 extern struct sensor_catalog_entry_t	sensor_catalog[];
 
 #endif

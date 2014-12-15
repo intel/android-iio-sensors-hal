@@ -91,7 +91,7 @@ static void denoise_median_init(int s, unsigned int num_fields,
 	f_data->sample_size = max_samples;
 	f_data->count = 0;
 	f_data->idx = 0;
-	sensor_info[s].filter = f_data;
+	sensor[s].filter = f_data;
 }
 
 
@@ -212,7 +212,7 @@ static void denoise_average (	struct sensor_info_t* si,
 
 void setup_noise_filtering (int s)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
 			denoise_median_init(s, 3, 5);
 			break;
@@ -222,13 +222,13 @@ void setup_noise_filtering (int s)
 
 void denoise (int s, struct sensors_event_t* data)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
-			denoise_median(&sensor_info[s], data, 3);
+			denoise_median(&sensor[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			denoise_average(&sensor_info[s], data, 3 , 20);
+			denoise_average(&sensor[s], data, 3 , 20);
 			break;
 	}
 }
@@ -239,25 +239,25 @@ void release_noise_filtering_data (int s)
 	void *buff;
 
 	/* Delete moving average structures */
-	if (sensor_info[s].history) {
-		free(sensor_info[s].history);
-		sensor_info[s].history = NULL;
-		sensor_info[s].history_size = 0;
-		if (sensor_info[s].history_sum) {
-			free(sensor_info[s].history_sum);
-			sensor_info[s].history_sum = NULL;
+	if (sensor[s].history) {
+		free(sensor[s].history);
+		sensor[s].history = NULL;
+		sensor[s].history_size = 0;
+		if (sensor[s].history_sum) {
+			free(sensor[s].history_sum);
+			sensor[s].history_sum = NULL;
 		}
 	}
 
 	/* Delete median filter structures */
-	if (sensor_info[s].filter) {
-		buff = ((struct filter_median*)sensor_info[s].filter)->buff;
+	if (sensor[s].filter) {
+		buff = ((struct filter_median*)sensor[s].filter)->buff;
 
 		if (buff)
 			free(buff);
 
-		free(sensor_info[s].filter);
-		sensor_info[s].filter = NULL;
+		free(sensor[s].filter);
+		sensor[s].filter = NULL;
 	}
 }
 
@@ -293,7 +293,7 @@ void record_sample (int s, const struct sensors_event_t* event)
 	int i;
 
 	/* Don't record duplicate samples, as they are not useful for filters */
-	if (sensor_info[s].report_pending == DATA_DUPLICATE)
+	if (sensor[s].report_pending == DATA_DUPLICATE)
 		return;
 
 	if (initialized_entries == GLOBAL_HISTORY_SIZE) {
@@ -308,8 +308,8 @@ void record_sample (int s, const struct sensors_event_t* event)
 
 	cell->sensor	     	= s;
 
-	cell->motion_trigger 	= (sensor_info[s].selected_trigger ==
-				   sensor_info[s].motion_trigger_name);
+	cell->motion_trigger 	= (sensor[s].selected_trigger ==
+				   sensor[s].motion_trigger_name);
 
 	memcpy(&cell->data, event, sizeof(sensors_event_t));
 }
