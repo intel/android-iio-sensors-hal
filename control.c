@@ -715,7 +715,7 @@ static void tentative_switch_trigger (int s)
 }
 
 
-static int setup_delay_sysfs (int s, float requested_rate)
+static int sensor_set_rate (int s, float requested_rate)
 {
 	/* Set the rate at which a specific sensor should report events */
 	/* See Android sensors.h for indication on sensor trigger modes */
@@ -913,7 +913,7 @@ static int arbitrate_bases (int s)
 						arbitrated_rate = sensor[i].requested_rate;
 		}
 
-	return setup_delay_sysfs(s, arbitrated_rate);
+	return sensor_set_rate(s, arbitrated_rate);
 }
 
 
