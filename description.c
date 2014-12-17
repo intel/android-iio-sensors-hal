@@ -148,7 +148,7 @@ char* sensor_get_name (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				strcpy(buf, sensor[sensor[s].base_idx[0]].friendly_name);
+				strcpy(buf, sensor[sensor[s].base[0]].friendly_name);
 				snprintf(sensor[s].friendly_name,
 					 MAX_NAME_SIZE,
 					 "%s %s", "Uncalibrated", buf);
@@ -181,7 +181,7 @@ char* sensor_get_vendor (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor[sensor[s].base_idx[0]].vendor_name;
+				return sensor[sensor[s].base[0]].vendor_name;
 			break;
 
 			default:
@@ -210,7 +210,7 @@ float sensor_get_max_range (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor[sensor[s].base_idx[0]].max_range;
+				return sensor[sensor[s].base[0]].max_range;
 
 			default:
 				return 0.0;
@@ -296,7 +296,7 @@ float sensor_get_resolution (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor[sensor[s].base_idx[0]].resolution;
+				return sensor[sensor[s].base[0]].resolution;
 
 			default:
 				return 0;
@@ -318,7 +318,7 @@ float sensor_get_power (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor[sensor[s].base_idx[0]].power;
+				return sensor[sensor[s].base[0]].power;
 
 			default:
 				return 0;
@@ -524,7 +524,7 @@ max_delay_t sensor_get_max_delay (int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor_desc[sensor[s].base_idx[0]].maxDelay;
+				return sensor_desc[sensor[s].base[0]].maxDelay;
 			default:
 				return 0;
 		}
@@ -602,7 +602,7 @@ int32_t sensor_get_min_delay(int s)
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
-				return sensor_desc[sensor[s].base_idx[0]].minDelay;
+				return sensor_desc[sensor[s].base[0]].minDelay;
 			default:
 				return 0;
 		}

@@ -33,7 +33,7 @@
 
 #define MAX_NAME_SIZE		32
 
-#define MAX_REAL_DEP 3	/* Max number of base sensors a sensor can depend on */
+#define MAX_SENSOR_BASES 3 /* Max number of base sensors a sensor can rely on */
 
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
@@ -213,7 +213,7 @@ struct sensor_info_t
 
 	/* How many base sensors is the sensor depending on */
 	int base_count;
-	int base_idx[MAX_REAL_DEP];
+	int base[MAX_SENSOR_BASES];
 
 	uint32_t quirks; /* Bit mask expressing the need for special tweaks */
 

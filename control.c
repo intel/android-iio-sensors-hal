@@ -660,7 +660,7 @@ static void sensor_activate_virtual (int s, int enabled, int from_virtual)
 	if (enabled) {
 		/* Enable all the base sensors for this virtual one */
 		for (i = 0; i < sensor[s].base_count; i++) {
-			base = sensor[s].base_idx[i];
+			base = sensor[s].base[i];
 			sensor_activate(base, enabled, 1);
 			sensor[base].ref_count++;
 		}
@@ -671,7 +671,7 @@ static void sensor_activate_virtual (int s, int enabled, int from_virtual)
 	sensor[s].report_pending = 0;
 
 	for (i = 0; i < sensor[s].base_count; i++) {
-		base = sensor[s].base_idx[i];
+		base = sensor[s].base[i];
 		sensor_activate(base, enabled, 1);
 		sensor[base].ref_count--;
 	}
@@ -872,7 +872,7 @@ static int arbitrate_bases (int s)
 	 for (i = 0; i < sensor_count; i++) {
 			for (vidx = 0; vidx < sensor[i].base_count; vidx++)
 			/* If we have a virtual sensor depending on this one - handle it */
-				if (sensor[i].base_idx[vidx] == s &&
+				if (sensor[i].base[vidx] == s &&
 					sensor[i].directly_enabled &&
 					sensor[i].requested_rate > arbitrated_rate)
 						arbitrated_rate = sensor[i].requested_rate;
@@ -895,7 +895,7 @@ int arbitrate_delays (int s)
 	}
 	/* Is virtual sensor - go through bases */
 	for (i = 0; i < sensor[s].base_count; i++)
-		arbitrate_bases(sensor[s].base_idx[i]);
+		arbitrate_bases(sensor[s].base[i]);
 
 	return 0;
 }

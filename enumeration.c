@@ -733,7 +733,7 @@ static void uncalibrated_gyro_check (void)
 	if (has_gyr) {
 		uncal_idx = sensor_count;
 		sensor[uncal_idx].base_count = 1;
-		sensor[uncal_idx].base_idx[0] = cal_idx;
+		sensor[uncal_idx].base[0] = cal_idx;
 
 		for (i=0; i<catalog_size; i++)
 			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
