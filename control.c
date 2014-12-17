@@ -767,8 +767,9 @@ static int setup_delay_sysfs (int s, float requested_rate)
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor[s].num_channels) {
-		/* Wake up thread so the new sampling rate gets used */
-		pthread_cond_signal(&thread_release_cond[s]);
+		if (is_enabled(s))
+			/* Wake up thread so the new sampling rate gets used */
+			pthread_cond_signal(&thread_release_cond[s]);
 		return 0;
 	}
 
