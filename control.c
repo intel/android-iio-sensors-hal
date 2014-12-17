@@ -560,7 +560,7 @@ static void* acquisition_routine (void* param)
 			goto exit;
 		}
 
-		period = (int64_t) (1000000000LL / sensor[s].sampling_rate);
+		period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
 		timestamp += period;
 		set_timestamp(&target_time, timestamp);
 
@@ -1148,7 +1148,7 @@ void set_report_ts(int s, int64_t ts)
 	if (sensor[s].report_ts && sensor[s].sampling_rate &&
 		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
 	{
-		period = (int64_t) (1000000000LL / sensor[s].sampling_rate);
+		period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
 		maxTs = sensor[s].report_ts + THRESHOLD * period;
 		/* If we're too far behind get back on track */
 		if (ts - maxTs >= MAX_DELAY)
@@ -1379,7 +1379,7 @@ static void synthetize_duplicate_samples (void)
 		if (!sensor[s].sampling_rate)
 			continue;
 
-		period = (int64_t) (1000000000.0/ sensor[s].sampling_rate);
+		period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
 
 		current_ts = get_timestamp_boot();
 		target_ts = sensor[s].report_ts + period;
@@ -1563,7 +1563,7 @@ int sensor_set_delay (int s, int64_t ns)
 		return -EINVAL;
 	}
 
-	requested_sampling_rate = 1000000000.0/ns;
+	requested_sampling_rate = 1000000000.0 / ns;
 
 	ALOGV("Entering set delay S%d (%s): current rate: %f, requested: %f\n",
 		s, sensor[s].friendly_name, sensor[s].sampling_rate,

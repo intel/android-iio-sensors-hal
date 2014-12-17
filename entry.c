@@ -31,7 +31,7 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 	if (enabled && sensor_get_quirks(handle) & QUIRK_INITIAL_RATE) {
 		ALOGI("Forcing initial sampling rate\n");
 		sensor_activate(handle, 1, 0);
-		sensor_set_delay(handle, 100000000L);	/* Start with 100 ms */
+		sensor_set_delay(handle, 100000000);	/* Start with 100 ms */
 		sensor_activate(handle, 0, 0);
 
 		/* Clear flag for this sensor as do this only once */
