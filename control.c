@@ -56,31 +56,31 @@ inline int is_enabled (int s)
 
 static int check_state_change (int s, int enabled, int from_virtual)
 {
-	if(enabled) {
+	if (enabled) {
 		if (sensor[s].directly_enabled)
-			return 0;
+					/*
+					 * We're being enabled but already were
+					 * directly activated: no change.
+					 */
+					return 0;
 
-		/* If we were enabled by Android no sample drops */
 		if (!from_virtual)
+			/* We're being directly enabled */
 			sensor[s].directly_enabled = 1;
 
-		/*
-		* If we got here it means we were not previously directly enabled - we may
-		* or may not be now, whatever the case if we already had references we
-		* were already in use
-		*/
 		if (sensor[s].ref_count)
+			/* We were already indirectly enabled */
 			return 0;
 
-		return 1;
-
+		return 1; /* Do continue enabling this sensor */
 	}
-	/* Spurious disable call */
+
 	if (!is_enabled(s))
+		/* We are being disabled but already were: no change */
 		return 0;
 
-	/* We're requesting disable for a virtual sensor but the base is still active */
 	if (from_virtual && sensor[s].directly_enabled)
+		/* We're indirectly disabled but the base is still active */
 		return 0;
 
 	/* If it's disable, and it's from Android, and we still have ref counts */
@@ -92,7 +92,7 @@ static int check_state_change (int s, int enabled, int from_virtual)
 	/*If perhaps we are from virtual but we're disabling it*/
 	sensor[s].directly_enabled = 0;
 
-	return 1;
+	return 1; /* Do continue disabling this sensor */
 }
 
 
@@ -389,7 +389,6 @@ int adjust_counters (int s, int enabled, int from_virtual)
 {
 	/*
 	 * Adjust counters based on sensor enable action. Return values are:
-	 * -1 if there's an inconsistency: abort action in this case
 	 *  0 if the operation was completed and we're all set
 	 *  1 if we toggled the state of the sensor and there's work left
 	 */
@@ -397,6 +396,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 	int dev_num = sensor[s].dev_num;
 
 	if (!check_state_change(s, enabled, from_virtual))
+		/* The state of the sensor remains the same: we're done */
 		return 0;
 
 	if (enabled) {
@@ -422,12 +422,12 @@ int adjust_counters (int s, int enabled, int from_virtual)
 		if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
 			compass_store_data(&sensor[s]);
 
-		if(sensor[s].type == SENSOR_TYPE_GYROSCOPE)
+		if (sensor[s].type == SENSOR_TYPE_GYROSCOPE)
 			gyro_store_data(&sensor[s]);
 	}
 
-	/* We changed the state of a sensor - adjust per iio device counters */
-	/* If this is a regular event-driven sensor */
+	/* We changed the state of a sensor: adjust device ref counts */
+
 	if (sensor[s].num_channels) {
 
 			if (enabled)
@@ -436,7 +436,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				trig_sensors_per_dev[dev_num]--;
 
 			return 1;
-		}
+	}
 
 	if (enabled) {
 		active_poll_sensors++;
@@ -502,11 +502,11 @@ static void* acquisition_routine (void* param)
 		return NULL;
 	}
 
-	ALOGI("Entering data acquisition thread S%d (%s): rate(%f), ts(%lld)\n", s,
-		sensor[s].friendly_name, sensor[s].sampling_rate, sensor[s].report_ts);
+	ALOGI("Entering data acquisition thread S%d (%s), rate:%g\n",
+	      s, sensor[s].friendly_name, sensor[s].sampling_rate);
 
 	if (sensor[s].sampling_rate <= 0) {
-		ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+		ALOGE("Invalid rate in acquisition routine for sensor %d: %g\n",
 			s, sensor[s].sampling_rate);
 		return NULL;
 	}
@@ -546,8 +546,8 @@ static void* acquisition_routine (void* param)
 					&data.timestamp, sample_size);
 
 			if (ret != sample_size)
-				ALOGE("S%d acquisition thread: tried to write %d, ret: %d\n",
-					s, sample_size, ret);
+				ALOGE("S%d write failure: wrote %d, got %d\n",
+				      s, sample_size, ret);
 		}
 
 		/* Check and honor termination requests */
@@ -557,7 +557,7 @@ static void* acquisition_routine (void* param)
 		/* Recalculate period asumming sensor[s].sampling_rate
 		 * can be changed dynamically during the thread run */
 		if (sensor[s].sampling_rate <= 0) {
-			ALOGE("Non-positive rate in acquisition routine for sensor %d: %f\n",
+			ALOGE("Unexpected sampling rate for sensor %d: %g\n",
 				s, sensor[s].sampling_rate);
 			goto exit;
 		}
@@ -717,15 +717,13 @@ static void tentative_switch_trigger (int s)
 }
 
 
-static int setup_delay_sysfs (int s, float new_sampling_rate)
+static int setup_delay_sysfs (int s, float requested_rate)
 {
 	/* Set the rate at which a specific sensor should report events */
-
 	/* See Android sensors.h for indication on sensor trigger modes */
 
 	char sysfs_path[PATH_MAX];
 	char avail_sysfs_path[PATH_MAX];
-	float cur_sampling_rate; /* Currently used sampling rate	      */
 	int dev_num		=	sensor[s].dev_num;
 	int i			=	sensor[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
@@ -733,27 +731,42 @@ static int setup_delay_sysfs (int s, float new_sampling_rate)
 	int per_device_sampling_rate;
 	int32_t min_delay_us = sensor_desc[s].minDelay;
 	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
-	float min_supported_rate = max_delay_us ? (1000000.0 / max_delay_us) : 1;
+	float min_supported_rate = max_delay_us ? 1000000.0/max_delay_us : 1;
 	float max_supported_rate =
-		(min_delay_us && min_delay_us != -1) ? (1000000.0 / min_delay_us) : 0;
+		min_delay_us && min_delay_us != -1 ? 1000000.0/min_delay_us : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
 	float sr;
+	float cur_sampling_rate; /* Currently used sampling rate	      */
+	float arb_sampling_rate; /* Granted sampling rate after arbitration   */
 
-	if (new_sampling_rate < min_supported_rate)
-		new_sampling_rate = min_supported_rate;
+	ALOGV("Sampling rate %g requested on sensor %d (%s)\n", requested_rate,
+	      s, sensor[s].friendly_name);
 
-	if (max_supported_rate &&
-		new_sampling_rate > max_supported_rate) {
-		new_sampling_rate = max_supported_rate;
+	sensor[s].requested_rate = requested_rate;
+
+	arb_sampling_rate = requested_rate;
+
+	if (arb_sampling_rate < min_supported_rate) {
+		ALOGV("Sampling rate %g too low for %s, using %g instead\n",
+		       arb_sampling_rate, sensor[s].friendly_name,
+		       min_supported_rate);
+
+		arb_sampling_rate = min_supported_rate;
 	}
 
-	sensor[s].sampling_rate = new_sampling_rate;
+	if (max_supported_rate && arb_sampling_rate > max_supported_rate) {
+		ALOGV("Sampling rate %g too high for %s, using %g instead\n",
+		arb_sampling_rate, sensor[s].friendly_name, max_supported_rate);
+		arb_sampling_rate = max_supported_rate;
+	}
+
+	sensor[s].sampling_rate = arb_sampling_rate;
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor[s].num_channels) {
-		/* Interrupt current sleep so the new sampling gets used */
+		/* Wake up thread so the new sampling rate gets used */
 		pthread_cond_signal(&thread_release_cond[s]);
 		return 0;
 	}
@@ -785,8 +798,8 @@ static int setup_delay_sysfs (int s, float new_sampling_rate)
 			if (n != s && sensor[n].dev_num == dev_num &&
 			    sensor[n].num_channels &&
 			    is_enabled(s) &&
-			    sensor[n].sampling_rate > new_sampling_rate)
-				new_sampling_rate= sensor[n].sampling_rate;
+			    sensor[n].sampling_rate > arb_sampling_rate)
+				arb_sampling_rate = sensor[n].sampling_rate;
 
 	/* Check if we have contraints on allowed sampling rates */
 
@@ -804,7 +817,7 @@ static int setup_delay_sysfs (int s, float new_sampling_rate)
 			sr = strtod(cursor, NULL);
 
 			/* If this matches the selected rate, we're happy */
-			if (new_sampling_rate == sr)
+			if (arb_sampling_rate == sr)
 				break;
 
 			/*
@@ -814,8 +827,8 @@ static int setup_delay_sysfs (int s, float new_sampling_rate)
 			 * assumption that rates are sorted by increasing value
 			 * in the allowed frequencies string.
 			 */
-			if (sr > new_sampling_rate) {
-				new_sampling_rate = sr;
+			if (sr > arb_sampling_rate) {
+				arb_sampling_rate = sr;
 				break;
 			}
 
@@ -830,20 +843,21 @@ static int setup_delay_sysfs (int s, float new_sampling_rate)
 	}
 
 	if (max_supported_rate &&
-		new_sampling_rate > max_supported_rate) {
-		new_sampling_rate = max_supported_rate;
+		arb_sampling_rate > max_supported_rate) {
+		arb_sampling_rate = max_supported_rate;
 	}
 
 	/* If the desired rate is already active we're all set */
-	if (new_sampling_rate == cur_sampling_rate)
+	if (arb_sampling_rate == cur_sampling_rate)
 		return 0;
 
-	ALOGI("Sensor %d sampling rate set to %g\n", s, new_sampling_rate);
+	ALOGI("Sensor %d (%s) sampling rate set to %g\n",
+	      s, sensor[s].friendly_name, arb_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
-	sysfs_write_float(sysfs_path, new_sampling_rate);
+	sysfs_write_float(sysfs_path, arb_sampling_rate);
 
 	/* Check if it makes sense to use an alternate trigger */
 	tentative_switch_trigger(s);
@@ -918,6 +932,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor[s].report_ts = 0;
+
 	ret = adjust_counters(s, enabled, from_virtual);
 
 	/* If the operation was neutral in terms of state, we're done */
@@ -1518,20 +1533,20 @@ await_event:
 
 int sensor_set_delay (int s, int64_t ns)
 {
-	float new_sampling_rate; /* Granted sampling rate after arbitration   */
+	float requested_sampling_rate;
 
 	if (ns <= 0) {
-		ALOGE("Rejecting non-positive delay request on sensor %d,required delay: %lld\n", s, ns);
+		ALOGE("Invalid delay requested on sensor %d: %lld\n", s, ns);
 		return -EINVAL;
 	}
 
-	new_sampling_rate = 1000000000LL/ns;
+	requested_sampling_rate = 1000000000LL/ns;
 
-	ALOGV("Entering set delay S%d (%s): old rate(%f), new rate(%f)\n",
+	ALOGV("Entering set delay S%d (%s): current rate: %f, requested: %f\n",
 		s, sensor[s].friendly_name, sensor[s].sampling_rate,
-		new_sampling_rate);
+		requested_sampling_rate);
 
-	sensor[s].requested_rate = new_sampling_rate;
+	sensor[s].requested_rate = requested_sampling_rate;
 
 	return arbitrate_delays(s);
 }
