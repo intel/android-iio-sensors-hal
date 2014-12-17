@@ -84,14 +84,11 @@ static int check_state_change (int s, int enabled, int from_virtual)
 		/* We're indirectly disabled but the base is still active */
 		return 0;
 
-	/* If it's disable, and it's from Android, and we still have ref counts */
-	if (!from_virtual && sensor[s].ref_count) {
-		sensor[s].directly_enabled = 0;
-		return 0;
-	}
-
-	/*If perhaps we are from virtual but we're disabling it*/
+	/* We're now directly disabled */
 	sensor[s].directly_enabled = 0;
+
+	if (!from_virtual && sensor[s].ref_count)
+		return 0; /* We still have ref counts */
 
 	return 1; /* Do continue disabling this sensor */
 }
