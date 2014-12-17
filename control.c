@@ -7,6 +7,7 @@
 #include <fcntl.h>
 #include <pthread.h>
 #include <time.h>
+#include <math.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
@@ -816,9 +817,15 @@ static int setup_delay_sysfs (int s, float requested_rate)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			/* If this matches the selected rate, we're happy */
-			if (arb_sampling_rate == sr)
+			/*
+			 * If this matches the selected rate, we're happy.
+			 * Have some tolerance to counter rounding errors and
+			 * avoid needless jumps to higher rates.
+			 */
+			if (fabs(arb_sampling_rate - sr) <= 0.001) {
+				arb_sampling_rate = sr;
 				break;
+			}
 
 			/*
 			 * If we reached a higher value than the desired rate,
@@ -1540,7 +1547,7 @@ int sensor_set_delay (int s, int64_t ns)
 		return -EINVAL;
 	}
 
-	requested_sampling_rate = 1000000000LL/ns;
+	requested_sampling_rate = 1000000000.0/ns;
 
 	ALOGV("Entering set delay S%d (%s): current rate: %f, requested: %f\n",
 		s, sensor[s].friendly_name, sensor[s].sampling_rate,
