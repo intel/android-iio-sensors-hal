@@ -45,8 +45,18 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 static int set_delay (__attribute__((unused)) struct sensors_poll_device_t* dev,
 		      int handle, int64_t ns)
 {
+	int i;
+
 	if (init_count == 0 || handle < 0 || handle >= sensor_count)
 		return -EINVAL;
+
+	/*
+	 * If this sensor relies on other sensors, try to propagate the
+	 * requested sampling rate to the base sensors.
+	 */
+
+	for (i=0; i<sensor[handle].base_count; i++)
+		sensor_set_delay(sensor[handle].base[i], ns);
 
 	return sensor_set_delay(handle, ns);
 }

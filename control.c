@@ -684,6 +684,42 @@ static void tentative_switch_trigger (int s)
 }
 
 
+static float get_group_max_sampling_rate (int s)
+{
+	/* Review the sampling rates of linked sensors and return the maximum */
+
+	int i, vi;
+
+	float arbitrated_rate = 0;
+
+	if (is_enabled(s))
+		arbitrated_rate = sensor[s].requested_rate;
+
+	/*
+	 * If any of the currently active sensors built on top of this one need
+	 * a higher sampling rate, switch to this rate.
+	 */
+	for (i = 0; i < sensor_count; i++)
+		for (vi = 0; vi < sensor[i].base_count; vi++)
+			/* If sensor i depends on sensor s */
+			if (sensor[i].base[vi] == s && is_enabled(i) &&
+			    sensor[i].requested_rate > arbitrated_rate)
+				arbitrated_rate = sensor[i].requested_rate;
+
+	/*
+	 * If any of the currently active sensors we rely on is using a higher
+	 * sampling rate, switch to this rate.
+	 */
+	for (vi = 0; vi < sensor[s].base_count; vi++) {
+		i = sensor[s].base[vi];
+		if (is_enabled(i) && sensor[i].requested_rate > arbitrated_rate)
+			arbitrated_rate = sensor[i].requested_rate;
+	}
+
+	return arbitrated_rate;
+}
+
+
 static int sensor_set_rate (int s, float requested_rate)
 {
 	/* Set the rate at which a specific sensor should report events */
@@ -705,6 +741,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	char* cursor;
 	int n;
 	float sr;
+	float group_max_sampling_rate;
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	float arb_sampling_rate; /* Granted sampling rate after arbitration   */
 
@@ -723,6 +760,15 @@ static int sensor_set_rate (int s, float requested_rate)
 		arb_sampling_rate = min_supported_rate;
 	}
 
+	/* If one of the linked sensors uses a higher rate, adopt it */
+	group_max_sampling_rate = get_group_max_sampling_rate(s);
+
+	if (arb_sampling_rate < group_max_sampling_rate) {
+		ALOGV("Using %s sampling rate to %g too due to dependency\n",
+		       sensor[s].friendly_name, arb_sampling_rate);
+		arb_sampling_rate = group_max_sampling_rate;
+	}
+
 	if (max_supported_rate && arb_sampling_rate > max_supported_rate) {
 		ALOGV("Sampling rate %g too high for %s, using %g instead\n",
 		arb_sampling_rate, sensor[s].friendly_name, max_supported_rate);
@@ -730,6 +776,10 @@ static int sensor_set_rate (int s, float requested_rate)
 	}
 
 	sensor[s].sampling_rate = arb_sampling_rate;
+
+	/* If the sensor is virtual, we're done */
+	if (sensor[s].is_virtual)
+		return 0;
 
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor[s].num_channels) {
@@ -859,49 +909,33 @@ static int sensor_set_rate (int s, float requested_rate)
 }
 
 
-/*
- * We go through all the virtual sensors of the base - and the base itself
- * in order to recompute the maximum requested delay of the group and setup the base
- * at that specific delay.
- */
-static int arbitrate_bases (int s)
+static void reapply_sampling_rates (int s)
 {
-	int i, vidx;
+	/*
+	 * The specified sensor was either enabled or disabled. Other sensors
+	 * in the same group may have constraints related to this sensor
+	 * sampling rate on their own sampling rate, so reevaluate them by
+	 * retrying to use their requested sampling rate, rather than the one
+	 * that ended up being used after arbitration.
+	 */
 
-	float arbitrated_rate = 0;
+	int i, j, base, user;
 
-	if (sensor[s].directly_enabled)
-		arbitrated_rate = sensor[s].requested_rate;
-
-	 for (i = 0; i < sensor_count; i++) {
-			for (vidx = 0; vidx < sensor[i].base_count; vidx++)
-			/* If we have a virtual sensor depending on this one - handle it */
-				if (sensor[i].base[vidx] == s &&
-					sensor[i].directly_enabled &&
-					sensor[i].requested_rate > arbitrated_rate)
-						arbitrated_rate = sensor[i].requested_rate;
+	if (sensor[s].is_virtual) {
+		/* Take care of downwards dependencies */
+		for (i=0; i<sensor[s].base_count; i++) {
+			base = sensor[s].base[i];
+			sensor_set_rate(base, sensor[base].requested_rate);
 		}
-
-	return sensor_set_rate(s, arbitrated_rate);
-}
-
-
-/*
- * Re-assesment for delays. We need to re-asses delays for all related groups
- * of sensors everytime a sensor enables / disables / changes frequency.
- */
-int arbitrate_delays (int s)
-{
-	int i;
-
-	if (!sensor[s].is_virtual) {
-		return arbitrate_bases(s);
+		return;
 	}
-	/* Is virtual sensor - go through bases */
-	for (i = 0; i < sensor[s].base_count; i++)
-		arbitrate_bases(sensor[s].base[i]);
 
-	return 0;
+	/* Upwards too */
+	for (i=0; i<sensor_count; i++)
+		for (j=0; j<sensor[i].base_count; j++)
+			/* If sensor i depends on sensor s */
+			if (sensor[i].base[j] == s)
+				sensor_set_rate(i, sensor[i].requested_rate);
 }
 
 
@@ -934,6 +968,8 @@ static int sensor_activate_virtual (int s, int enabled, int from_virtual)
 			sensor[base].ref_count--;
 	}
 
+	/* Reevaluate sampling rates of linked sensors */
+	reapply_sampling_rates(s);
 	return 0;
 }
 
@@ -947,11 +983,8 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	int dev_num = sensor[s].dev_num;
 	int is_poll_sensor = !sensor[s].num_channels;
 
-	if (sensor[s].is_virtual) {
-		sensor_activate_virtual(s, enabled, from_virtual);
-		arbitrate_delays(s);
-		return 0;
-	}
+	if (sensor[s].is_virtual)
+		return sensor_activate_virtual(s, enabled, from_virtual);
 
 	/* Prepare the report timestamp field for the first event, see set_report_ts method */
 	sensor[s].report_ts = 0;
@@ -961,8 +994,6 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	/* If the operation was neutral in terms of state, we're done */
 	if (ret <= 0)
 		return ret;
-
-	arbitrate_delays(s);
 
 	sensor[s].event_count = 0;
 	sensor[s].meta_data_pending = 0;
@@ -1013,6 +1044,8 @@ int sensor_activate (int s, int enabled, int from_virtual)
 		/* Release any filtering data we may have accumulated */
 		release_noise_filtering_data(s);
 
+		/* Reevaluate sampling rates of linked sensors */
+		reapply_sampling_rates(s);
 		return 0;
 	}
 
@@ -1055,6 +1088,9 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 	if (is_poll_sensor)
 		start_acquisition_thread(s);
+
+	/* Reevaluate sampling rates of linked sensors */
+	reapply_sampling_rates(s);
 
 	return 0;
 }
@@ -1568,9 +1604,20 @@ int sensor_set_delay (int s, int64_t ns)
 		s, sensor[s].friendly_name, sensor[s].sampling_rate,
 		requested_sampling_rate);
 
-	sensor[s].requested_rate = requested_sampling_rate;
+	/*
+	 * Only try to adjust the low level sampling rate if it's different
+	 * from the current one, as set by the HAL. This saves a few sysfs
+	 * reads and writes as well as buffer enable/disable operations, since
+	 * at the iio level most drivers require the buffer to be turned off
+	 * in order to accept a sampling rate change. Of course that implies
+	 * that this field has to be kept up to date and that only this library
+	 * is changing the sampling rate.
+	 */
 
-	return arbitrate_delays(s);
+	if (requested_sampling_rate != sensor[s].sampling_rate)
+		return sensor_set_rate(s, requested_sampling_rate);
+
+	return 0;
 }
 
 
