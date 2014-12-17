@@ -794,15 +794,6 @@ static int setup_delay_sysfs (int s, float requested_rate)
 		return -ENOSYS;
 	}
 
-	/* Coordinate with others active sensors on the same device, if any */
-	if (per_device_sampling_rate)
-		for (n=0; n<sensor_count; n++)
-			if (n != s && sensor[n].dev_num == dev_num &&
-			    sensor[n].num_channels &&
-			    is_enabled(s) &&
-			    sensor[n].sampling_rate > arb_sampling_rate)
-				arb_sampling_rate = sensor[n].sampling_rate;
-
 	/* Check if we have contraints on allowed sampling rates */
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
@@ -854,6 +845,31 @@ static int setup_delay_sysfs (int s, float requested_rate)
 		arb_sampling_rate > max_supported_rate) {
 		arb_sampling_rate = max_supported_rate;
 	}
+
+
+	/* Coordinate with others active sensors on the same device, if any */
+	if (per_device_sampling_rate)
+		for (n=0; n<sensor_count; n++)
+			if (n != s && sensor[n].dev_num == dev_num &&
+			    sensor[n].num_channels && is_enabled(n) &&
+			    sensor[n].sampling_rate > arb_sampling_rate) {
+	ALOGV("Sampling rate shared between %s and %s, using %g instead of %g\n"
+	      , sensor[s].friendly_name, sensor[n].friendly_name,
+	      sensor[n].sampling_rate, arb_sampling_rate);
+				arb_sampling_rate = sensor[n].sampling_rate;
+			}
+
+	sensor[s].sampling_rate = arb_sampling_rate;
+
+	/*
+	 * Update actual sampling rate field for this sensor and others which
+	 * may be sharing the same sampling rate.
+	 */
+	if (per_device_sampling_rate)
+		for (n=0; n<sensor_count; n++)
+			if (sensor[n].dev_num == dev_num && n != s &&
+			    sensor[n].num_channels)
+				sensor[n].sampling_rate = arb_sampling_rate;
 
 	/* If the desired rate is already active we're all set */
 	if (arb_sampling_rate == cur_sampling_rate)
