@@ -905,7 +905,7 @@ int arbitrate_delays (int s)
 }
 
 
-static void sensor_activate_virtual (int s, int enabled, int from_virtual)
+static int sensor_activate_virtual (int s, int enabled, int from_virtual)
 {
 	int i, base;
 
@@ -913,25 +913,28 @@ static void sensor_activate_virtual (int s, int enabled, int from_virtual)
 	sensor[s].meta_data_pending = 0;
 
 	if (!check_state_change(s, enabled, from_virtual))
-		return;
-	if (enabled) {
-		/* Enable all the base sensors for this virtual one */
-		for (i = 0; i < sensor[s].base_count; i++) {
-			base = sensor[s].base[i];
-			sensor_activate(base, enabled, 1);
-			sensor[base].ref_count++;
-		}
-		return;
-	}
+		/* The state of the sensor remains the same ; we're done */
+		return 0;
 
-	/* Sensor disabled, lower report available flag */
+	if (enabled)
+		ALOGI("Enabling sensor %d (%s)\n", s, sensor[s].friendly_name);
+	else
+		ALOGI("Disabling sensor %d (%s)\n", s, sensor[s].friendly_name);
+
 	sensor[s].report_pending = 0;
 
-	for (i = 0; i < sensor[s].base_count; i++) {
+	for (i=0; i<sensor[s].base_count; i++) {
+
 		base = sensor[s].base[i];
 		sensor_activate(base, enabled, 1);
-		sensor[base].ref_count--;
+
+		if (enabled)
+			sensor[base].ref_count++;
+		else
+			sensor[base].ref_count--;
 	}
+
+	return 0;
 }
 
 
