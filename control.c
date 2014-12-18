@@ -1326,10 +1326,9 @@ static int propagate_sensor_report (int s, struct sensors_event_t  *data)
 	/* Convert the data into the expected Android-level format */
 	for (c=0; c<num_fields; c++) {
 
-		data->data[c] = sensor[s].ops.transform
-							(s, c, current_sample);
+		data->data[c] = sensor[s].ops.transform (s, c, current_sample);
 
-		ALOGV("\tfield %d: %f\n", c, data->data[c]);
+		ALOGV("\tfield %d: %g\n", c, data->data[c]);
 		current_sample += sensor[s].channel[c].size;
 	}
 
@@ -1565,7 +1564,7 @@ int sensor_set_delay (int s, int64_t ns)
 
 	requested_sampling_rate = 1000000000.0 / ns;
 
-	ALOGV("Entering set delay S%d (%s): current rate: %f, requested: %f\n",
+	ALOGV("Entering set delay S%d (%s): current rate: %g, requested: %g\n",
 		s, sensor[s].friendly_name, sensor[s].sampling_rate,
 		requested_sampling_rate);
 
