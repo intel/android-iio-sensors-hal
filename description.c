@@ -397,6 +397,7 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	return 1;	/* OK to use modified ordering map */
 }
 
+
 char* sensor_get_string_type (int s)
 {
 	switch (sensor[s].type) {
@@ -438,6 +439,7 @@ char* sensor_get_string_type (int s)
 		}
 }
 
+
 flag_t sensor_get_flags (int s)
 {
 	flag_t flags = 0x0;
@@ -471,7 +473,8 @@ flag_t sensor_get_flags (int s)
 	return flags;
 }
 
-int get_cdd_freq (int s, int must)
+
+static int get_cdd_freq (int s, int must)
 {
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
@@ -568,7 +571,7 @@ max_delay_t sensor_get_max_delay (int s)
 		return 0;
 
 	/* Return microseconds */
-	return (max_delay_t)(1000000.0 / min_supported_rate);
+	return (max_delay_t) (1000000.0 / min_supported_rate);
 }
 
 /* this value depends on the reporting mode:
@@ -578,7 +581,7 @@ max_delay_t sensor_get_max_delay (int s)
  *   one-shot  :-1
  *   special   : 0, unless otherwise noted
  */
-int32_t sensor_get_min_delay(int s)
+int32_t sensor_get_min_delay (int s)
 {
 	char avail_sysfs_path[PATH_MAX];
 	int dev_num	= sensor[s].dev_num;
@@ -641,5 +644,5 @@ int32_t sensor_get_min_delay(int s)
 		return 0;
 
 	/* Return microseconds */
-	return (int32_t)(1000000.0 / max_supported_rate);
+	return (int32_t) (1000000.0 / max_supported_rate);
 }

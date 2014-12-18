@@ -38,14 +38,6 @@
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
-#ifdef __LP64__
-	typedef uint64_t flag_t;
-	typedef int64_t max_delay_t;
-#else
-	typedef uint32_t flag_t;
-	typedef int32_t max_delay_t;
-#endif
-
 
 typedef struct
 {
@@ -146,6 +138,9 @@ typedef struct
 
 	float requested_rate;   /* requested events / second				*/
 	float sampling_rate;	/* setup events / second				*/
+
+	float min_supported_rate;
+	float max_supported_rate;
 
 	int dev_num;		/* Associated iio dev num, ex: 3 for /dev/iio:device3	*/
 

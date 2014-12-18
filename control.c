@@ -661,10 +661,6 @@ static int sensor_set_rate (int s, float requested_rate)
 	const char *prefix	=	sensor_catalog[i].tag;
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	int32_t min_delay_us = sensor_desc[s].minDelay;
-	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
-	float min_supported_rate = max_delay_us ? 1000000.0/max_delay_us : 1;
-	float max_supported_rate = min_delay_us && min_delay_us != -1 ? 1000000.0/min_delay_us : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -679,9 +675,9 @@ static int sensor_set_rate (int s, float requested_rate)
 
 	arb_sampling_rate = requested_rate;
 
-	if (arb_sampling_rate < min_supported_rate) {
-		ALOGV("Sampling rate %g too low for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, min_supported_rate);
-		arb_sampling_rate = min_supported_rate;
+	if (arb_sampling_rate < sensor[s].min_supported_rate) {
+		ALOGV("Sampling rate %g too low for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, sensor[s].min_supported_rate);
+		arb_sampling_rate = sensor[s].min_supported_rate;
 	}
 
 	/* If one of the linked sensors uses a higher rate, adopt it */
@@ -692,9 +688,9 @@ static int sensor_set_rate (int s, float requested_rate)
 		arb_sampling_rate = group_max_sampling_rate;
 	}
 
-	if (max_supported_rate && arb_sampling_rate > max_supported_rate) {
-		ALOGV("Sampling rate %g too high for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, max_supported_rate);
-		arb_sampling_rate = max_supported_rate;
+	if (sensor[s].max_supported_rate && arb_sampling_rate > sensor[s].max_supported_rate) {
+		ALOGV("Sampling rate %g too high for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, sensor[s].max_supported_rate);
+		arb_sampling_rate = sensor[s].max_supported_rate;
 	}
 
 	sensor[s].sampling_rate = arb_sampling_rate;
@@ -772,9 +768,9 @@ static int sensor_set_rate (int s, float requested_rate)
 		}
 	}
 
-	if (max_supported_rate &&
-		arb_sampling_rate > max_supported_rate) {
-		arb_sampling_rate = max_supported_rate;
+	if (sensor[s].max_supported_rate &&
+		arb_sampling_rate > sensor[s].max_supported_rate) {
+		arb_sampling_rate = sensor[s].max_supported_rate;
 	}
 
 

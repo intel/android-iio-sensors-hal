@@ -14,6 +14,14 @@
 #define QUIRK_NOISY		0x10  /* High noise level on readings	      */
 #define QUIRK_FORCE_CONTINUOUS	0x20  /* Force usage of continuous trigger    */
 
+#ifdef __LP64__
+	typedef uint64_t	flag_t;
+	typedef int64_t		max_delay_t;
+#else
+	typedef uint32_t	flag_t;
+	typedef int32_t		max_delay_t;
+#endif
+
 char*		sensor_get_name		(int s);
 char*		sensor_get_vendor	(int s);
 int		sensor_get_version	(int s);

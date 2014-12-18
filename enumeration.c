@@ -201,6 +201,9 @@ static void decode_placement_information (int dev_num, int num_channels, int s)
 
 static void populate_descriptors (int s, int sensor_type)
 {
+	int32_t		min_delay_us;
+	max_delay_t	max_delay_us;
+
 	/* Initialize Android-visible descriptor */
 	sensor_desc[s].name		= sensor_get_name(s);
 	sensor_desc[s].vendor		= sensor_get_vendor(s);
@@ -228,6 +231,12 @@ static void populate_descriptors (int s, int sensor_type)
 	/* We currently do not implement batching */
 	sensor_desc[s].fifoReservedEventCount = 0;
 	sensor_desc[s].fifoMaxEventCount = 0;
+
+	min_delay_us = sensor_desc[s].minDelay;
+	max_delay_us = sensor_desc[s].maxDelay;
+
+	sensor[s].min_supported_rate = max_delay_us ? 1000000.0 / max_delay_us : 1;
+	sensor[s].max_supported_rate = min_delay_us && min_delay_us != -1 ? 1000000.0 / min_delay_us : 0;
 }
 
 
