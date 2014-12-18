@@ -14,6 +14,9 @@
 
 #define IIO_SENSOR_HAL_VERSION	1
 
+#define MIN_ON_CHANGE_SAMPLING_PERIOD_US   200000 /* For on change sensors (temperature, proximity, ALS, etc.) report we support 5 Hz max (0.2 s min period) */
+#define MAX_ON_CHANGE_SAMPLING_PERIOD_US 10000000 /* 0.1 Hz min (10 s max period)*/
+
 /*
  * About properties
  *
@@ -479,32 +482,29 @@ static int get_cdd_freq (int s, int must)
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
+
 		case SENSOR_TYPE_GYROSCOPE:
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			return (must ? 200 : 200); /* must 200 Hz, should 200 Hz, CDD compliant */
+
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			return (must ? 10 : 50);   /* must 10 Hz, should 50 Hz, CDD compliant */
+
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
 			return (must ? 1 : 2);     /* must 1 Hz, should 2Hz, not mentioned in CDD */
+
 		default:
-			return 0;
+			return 1; /* Use 1 Hz by default, e.g. for proximity */
 	}
 }
 
-/* This value is defined only for continuous mode and on-change sensors. It is the delay between
- * two sensor events corresponding to the lowest frequency that this sensor supports. When lower
- * frequencies are requested through batch()/setDelay() the events will be generated at this
- * frequency instead. It can be used by the framework or applications to estimate when the batch
- * FIFO may be full.
- *
- * NOTE: 1) period_ns is in nanoseconds where as maxDelay/minDelay are in microseconds.
- *              continuous, on-change: maximum sampling period allowed in microseconds.
- *              one-shot, special : 0
- *   2) maxDelay should always fit within a 32 bit signed integer. It is declared as 64 bit
- *      on 64 bit architectures only for binary compatibility reasons.
- * Availability: SENSORS_DEVICE_API_VERSION_1_3
+/* 
+ * This value is defined only for continuous mode and on-change sensors. It is the delay between two sensor events corresponding to the lowest frequency that
+ * this sensor supports. When lower frequencies are requested through batch()/setDelay() the events will be generated at this frequency instead. It can be used
+ * by the framework or applications to estimate when the batch FIFO may be full. maxDelay should always fit within a 32 bit signed integer. It is declared as
+ * 64 bit on 64 bit architectures only for binary compatibility reasons. Availability: SENSORS_DEVICE_API_VERSION_1_3
  */
 max_delay_t sensor_get_max_delay (int s)
 {
@@ -516,12 +516,21 @@ max_delay_t sensor_get_max_delay (int s)
 	float rate_cap;
 	float sr;
 
-	/* continuous, on-change: maximum sampling period allowed in microseconds.
+	/*
+	 * continuous, on-change: maximum sampling period allowed in microseconds.
 	 * one-shot, special : 0
 	 */
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE ||
-	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
-		return 0;
+	switch (REPORTING_MODE(sensor_desc[s].flags)) {
+		case SENSOR_FLAG_ONE_SHOT_MODE:
+		case SENSOR_FLAG_SPECIAL_REPORTING_MODE:
+			return 0;
+
+		case SENSOR_FLAG_ON_CHANGE_MODE:
+			return MAX_ON_CHANGE_SAMPLING_PERIOD_US;
+
+		default:
+			break;
+	}
 
 	if (sensor[s].is_virtual) {
 		switch (sensor[s].type) {
@@ -574,13 +583,7 @@ max_delay_t sensor_get_max_delay (int s)
 	return (max_delay_t) (1000000.0 / min_supported_rate);
 }
 
-/* this value depends on the reporting mode:
- *
- *   continuous: minimum sample period allowed in microseconds
- *   on-change : 0
- *   one-shot  :-1
- *   special   : 0, unless otherwise noted
- */
+
 int32_t sensor_get_min_delay (int s)
 {
 	char avail_sysfs_path[PATH_MAX];
@@ -590,16 +593,23 @@ int32_t sensor_get_min_delay (int s)
 	float max_supported_rate = 0;
 	float sr;
 
-	/* continuous: minimum sampling period allowed in microseconds.
-	 * on-change, special : 0
-	 * one-shot  :-1
+	/* continuous, on change: minimum sampling period allowed in microseconds.
+	 * special : 0, unless otherwise noted
+	 * one-shot:-1
 	 */
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ON_CHANGE_MODE ||
-	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
-		return 0;
+	switch (REPORTING_MODE(sensor_desc[s].flags)) {
+		case SENSOR_FLAG_ON_CHANGE_MODE:
+			return MIN_ON_CHANGE_SAMPLING_PERIOD_US;
 
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE)
-		return -1;
+		case SENSOR_FLAG_SPECIAL_REPORTING_MODE:
+			return 0;
+
+		case SENSOR_FLAG_ONE_SHOT_MODE:
+			return -1;
+
+		default:
+			break;
+	}
 
 	if (sensor[s].is_virtual) {
 		switch (sensor[s].type) {
