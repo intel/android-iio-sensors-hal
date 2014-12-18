@@ -46,7 +46,8 @@
 	typedef int32_t max_delay_t;
 #endif
 
-struct channel_descriptor_t
+
+typedef struct
 {
 	const char *name;	/* channel name ; ex: x */
 
@@ -59,48 +60,58 @@ struct channel_descriptor_t
 	const char *raw_path;	/* _raw sysfs file name  */
 	const char *input_path;	/* _input sysfs file name */
 	const char *scale_path;	/* _scale sysfs file name */
-};
+}
+channel_descriptor_t;
 
-struct sensor_catalog_entry_t
+
+typedef struct
 {
 	const char *tag; /* Prefix such as "accel", "gyro", "temp"... */
 	const int type;	 /* Sensor type ; ex: SENSOR_TYPE_ACCELEROMETER */
 	const int num_channels;	/* Expected iio channels for this sensor */
 	const int is_virtual;  /* Is the sensor virtual or not */
-	struct channel_descriptor_t channel[MAX_CHANNELS];
-};
+	channel_descriptor_t channel[MAX_CHANNELS];
+}
+sensor_catalog_entry_t;
 
-struct datum_info_t
+
+typedef struct
 {
 	char sign;
 	char endianness;
 	short realbits;
 	short storagebits;
 	short shift;
-};
+}
+datum_info_t;
 
-struct channel_info_t
+
+typedef struct
 {
 	int offset; /* Offset in bytes within the iio character device report */
 	int size;			/* Field size in bytes */
 	float scale;			/* scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN]; /* From driver; ex: le:u10/16>>0 */
-	struct datum_info_t type_info;	   /* Decoded contents of type spec */
+	datum_info_t type_info;	   	/* Decoded contents of type spec */
 	float opt_scale; /* Optional correction scale read from a property such
 			  * as iio.accel.x.scale, allowing late compensation of
 			  * problems such as misconfigured axes ; set to 1 by
 			  * default. Applied at the end of the scaling process.
 			  */
-};
+}
+channel_info_t;
 
-struct sample_ops_t
+
+typedef struct
 {
 	/* Conversion function called once per channel */
-	float (*transform)(int s, int c, unsigned char* sample_data);
+	float (*transform) (int s, int c, unsigned char* sample_data);
 
 	/* Function called once per sample */
-	int (*finalize)(int s, struct sensors_event_t* data);
-};
+	int (*finalize) (int s, sensors_event_t* data);
+}
+sample_ops_t;
+
 
 /*
  * Whenever we have sensor data recorded for a sensor in the associated
@@ -111,7 +122,8 @@ struct sample_ops_t
 #define DATA_SYSFS	2	/* Through polling    			*/
 #define DATA_DUPLICATE	3	/* Duplicate of triggered motion sample	*/
 
-struct sensor_info_t
+
+typedef struct
 {
 	char friendly_name[MAX_NAME_SIZE];	/* ex: Accelerometer	     */
 	char internal_name[MAX_NAME_SIZE];	/* ex: accel_3d	             */
@@ -154,7 +166,7 @@ struct sensor_info_t
 	 * should be zero for disabled channels. The type field indicates how a
 	 * specific channel data item is structured.
 	 */
-	struct channel_info_t channel[MAX_CHANNELS];
+	channel_info_t channel[MAX_CHANNELS];
 
 	/*
 	 * This flag is set if we acquired data from the sensor but did not
@@ -184,7 +196,7 @@ struct sensor_info_t
 	int report_initialized;
 
 	/* Channel and sample finalization callbacks for this sensor */
-	struct sample_ops_t ops;
+	sample_ops_t ops;
 
 	int cal_level; /* 0 means not calibrated */
 
@@ -236,7 +248,7 @@ struct sensor_info_t
 	 * keep the data here until it's finally processed. Can be modified for
 	 * more than one at a later time.
 	 */
-	struct sensors_event_t sample;
+	sensors_event_t sample;
 
 	/*
 	 * If the QUIRK_FIELD_ORDERING bit is set in quirks, the contents of
@@ -260,12 +272,14 @@ struct sensor_info_t
 	 * events before filtering kicks in. We can also use it for statistics.
 	 */
 	uint64_t event_count;
-};
+}
+sensor_info_t;
+
 
 /* Reference a few commonly used variables... */
-extern int				sensor_count;
-extern struct sensor_t      sensor_desc[MAX_SENSORS];
-extern struct sensor_info_t		sensor[MAX_SENSORS];
-extern struct sensor_catalog_entry_t	sensor_catalog[];
+extern int			sensor_count;
+extern struct sensor_t		sensor_desc[MAX_SENSORS];
+extern sensor_info_t		sensor[MAX_SENSORS];
+extern sensor_catalog_entry_t	sensor_catalog[];
 
 #endif

@@ -7,13 +7,14 @@
 #include "filtering.h"
 
 
-struct filter_median_t
+typedef struct
 {
 	float* buff;
 	unsigned int idx;
 	unsigned int count;
 	unsigned int sample_size;
-};
+}
+filter_median_t;
 
 
 static unsigned int partition (	float* list, unsigned int left,
@@ -83,8 +84,8 @@ static float median (float* queue, unsigned int size)
 static void denoise_median_init(int s, unsigned int num_fields,
 				unsigned int max_samples)
 {
-	struct filter_median_t* f_data = (struct filter_median_t*)
-					 malloc(sizeof(struct filter_median_t));
+	filter_median_t* f_data = (filter_median_t*)
+					 malloc(sizeof(filter_median_t));
 
 	f_data->buff = (float*) calloc(max_samples, sizeof(float) * num_fields);
 	f_data->sample_size = max_samples;
@@ -94,9 +95,9 @@ static void denoise_median_init(int s, unsigned int num_fields,
 }
 
 
-static void denoise_median_reset (struct sensor_info_t* info)
+static void denoise_median_reset (sensor_info_t* info)
 {
-	struct filter_median_t* f_data = (struct filter_median_t*) info->filter;
+	filter_median_t* f_data = (filter_median_t*) info->filter;
 
 	if (!f_data)
 		return;
@@ -106,15 +107,15 @@ static void denoise_median_reset (struct sensor_info_t* info)
 }
 
 
-static void denoise_median (	struct sensor_info_t* info,
-				struct sensors_event_t* data,
+static void denoise_median (	sensor_info_t* info,
+				sensors_event_t* data,
 				unsigned int num_fields)
 {
 	float x, y, z;
 	float scale;
 	unsigned int field, offset;
 
-	struct filter_median_t* f_data = (struct filter_median_t*) info->filter;
+	filter_median_t* f_data = (filter_median_t*) info->filter;
 	if (!f_data)
 		return;
 
@@ -136,8 +137,8 @@ static void denoise_median (	struct sensor_info_t* info,
 }
 
 
-static void denoise_average (	struct sensor_info_t* si,
-				struct sensors_event_t* data,
+static void denoise_average (	sensor_info_t* si,
+				sensors_event_t* data,
 				int num_fields, int max_samples)
 {
 	/*
@@ -219,7 +220,7 @@ void setup_noise_filtering (int s)
 }
 
 
-void denoise (int s, struct sensors_event_t* data)
+void denoise (int s, sensors_event_t* data)
 {
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
@@ -250,7 +251,7 @@ void release_noise_filtering_data (int s)
 
 	/* Delete median filter structures */
 	if (sensor[s].filter) {
-		buff = ((struct filter_median_t*)sensor[s].filter)->buff;
+		buff = ((filter_median_t*) sensor[s].filter)->buff;
 
 		if (buff)
 			free(buff);
@@ -263,12 +264,13 @@ void release_noise_filtering_data (int s)
 
 #define GLOBAL_HISTORY_SIZE 100
 
-struct recorded_sample_t
+typedef struct
 {
 	int sensor;
 	int motion_trigger;
 	sensors_event_t data;
-};
+}
+recorded_sample_t;
 
 /*
  * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events,
@@ -280,15 +282,15 @@ struct recorded_sample_t
  * be a delay between acquisition and insertion into this table.
  */
 
-static struct recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
+static recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
 
 static int initialized_entries;	/* How many of these are initialized	      */
 static int insertion_index;	/* Index of sample to evict next time	      */
 
 
-void record_sample (int s, const struct sensors_event_t* event)
+void record_sample (int s, const sensors_event_t* event)
 {
-	struct recorded_sample_t *cell;
+	recorded_sample_t *cell;
 	int i;
 
 	/* Don't record duplicate samples, as they are not useful for filters */

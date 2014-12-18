@@ -37,8 +37,9 @@ static const float min_diffs[CAL_STEPS] =  {0.2,  0.25, 0.4, 0.6, 1.0 };
 static const float max_sqr_errs[CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5 };
 static const unsigned int lookback_counts[CAL_STEPS] = {2, 3, 4, 5, 6 };
 
-/* reset calibration algorithm */
-static void reset_sample (struct compass_cal_t* data)
+
+/* Reset calibration algorithm */
+static void reset_sample (compass_cal_t* data)
 {
     int i,j;
     data->sample_count = 0;
@@ -49,7 +50,8 @@ static void reset_sample (struct compass_cal_t* data)
     data->average[0] = data->average[1] = data->average[2] = 0;
 }
 
-static double calc_square_err (struct compass_cal_t* data)
+
+static double calc_square_err (compass_cal_t* data)
 {
     double err = 0;
     double raw[3][1], result[3][1], mat_diff[3][1];
@@ -89,8 +91,9 @@ static double calc_square_err (struct compass_cal_t* data)
     return err;
 }
 
+
 /* Given an real symmetric 3x3 matrix A, compute the eigenvalues */
-static void compute_eigenvalues(double mat[3][3], double* eig1, double* eig2, double* eig3)
+static void compute_eigenvalues (double mat[3][3], double* eig1, double* eig2, double* eig3)
 {
     double p = mat[0][1] * mat[0][1] + mat[0][2] * mat[0][2] + mat[1][2] * mat[1][2];
 
@@ -133,7 +136,8 @@ static void compute_eigenvalues(double mat[3][3], double* eig1, double* eig2, do
     *eig2 = 3 * q - *eig1 - *eig3;
 }
 
-static void calc_evector(double mat[3][3], double eig, double vec[3][1])
+
+static void calc_evector (double mat[3][3], double eig, double vec[3][1])
 {
     double h[3][3];
     double x_tmp[2][2];
@@ -158,6 +162,7 @@ static void calc_evector(double mat[3][3], double eig, double vec[3][1])
     vec[1][0] = temp1 / norm;
     vec[2][0] = temp2 / norm;
 }
+
 
 static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3][3], double* bfield)
 {
@@ -271,7 +276,8 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     return 1;
 }
 
-static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
+
+static void compass_cal_init (FILE* data_file, sensor_info_t* info)
 {
 
 #ifdef DBG_RAW_DATA
@@ -294,7 +300,7 @@ static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
     raw_data_count = 0;
 #endif
 
-    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
+    compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
     int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
         info->max_cal_level : CAL_STEPS;
     if (cal_data == NULL)
@@ -344,9 +350,10 @@ static void compass_cal_init (FILE* data_file, struct sensor_info_t* info)
 
 }
 
-static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
+
+static void compass_store_result (FILE* data_file, sensor_info_t* info)
 {
-    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
+    compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
 
     if (data_file == NULL || cal_data == NULL)
         return;
@@ -362,14 +369,15 @@ static void compass_store_result(FILE* data_file, struct sensor_info_t* info)
         ALOGE ("compass calibration - store data failed!");
 }
 
-static int compass_collect (struct sensors_event_t* event, struct sensor_info_t* info)
+
+static int compass_collect (sensors_event_t* event, sensor_info_t* info)
 {
     float data[3] = {event->magnetic.x, event->magnetic.y, event->magnetic.z};
     unsigned int index,j;
     unsigned int lookback_count;
     float min_diff;
 
-    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
+    compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
 
     if (cal_data == NULL)
         return -1;
@@ -429,7 +437,8 @@ static int compass_collect (struct sensors_event_t* event, struct sensor_info_t*
     return 1;
 }
 
-static void scale_event (struct sensors_event_t* event)
+
+static void scale_event (sensors_event_t* event)
 {
     float sqr_norm = 0;
     float sanity_norm = 0;
@@ -448,13 +457,13 @@ static void scale_event (struct sensors_event_t* event)
         event->magnetic.x = event->magnetic.x * scale;
         event->magnetic.y = event->magnetic.y * scale;
         event->magnetic.z = event->magnetic.z * scale;
-
     }
 }
 
-static void compass_compute_cal (struct sensors_event_t* event, struct sensor_info_t* info)
+
+static void compass_compute_cal (sensors_event_t* event, sensor_info_t* info)
 {
-    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
+    compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
     double result[3][1], raw[3][1], diff[3][1];
 
     if (!info->cal_level || cal_data == NULL)
@@ -475,14 +484,14 @@ static void compass_compute_cal (struct sensors_event_t* event, struct sensor_in
 }
 
 
-static int compass_ready (struct sensor_info_t* info)
+static int compass_ready (sensor_info_t* info)
 {
     mat_input_t mat;
     int i;
     float max_sqr_err;
 
-    struct compass_cal_t* cal_data = (struct compass_cal_t*) info->cal_data;
-    struct compass_cal_t new_cal_data;
+    compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
+    compass_cal_t new_cal_data;
 
     /*
      *  Some sensors take unrealistically long to calibrate at higher levels.
@@ -538,7 +547,7 @@ static int compass_ready (struct sensor_info_t* info)
 }
 
 
-void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* info)
+void calibrate_compass (sensors_event_t* event, sensor_info_t* info)
 {
     int cal_level;
 
@@ -571,7 +580,7 @@ void calibrate_compass (struct sensors_event_t* event, struct sensor_info_t* inf
     }
 }
 
-void compass_read_data (struct sensor_info_t* info)
+void compass_read_data (sensor_info_t* info)
 {
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "r");
 
@@ -580,7 +589,8 @@ void compass_read_data (struct sensor_info_t* info)
         fclose(data_file);
 }
 
-void compass_store_data (struct sensor_info_t* info)
+
+void compass_store_data (sensor_info_t* info)
 {
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "w");
 

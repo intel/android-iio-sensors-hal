@@ -17,7 +17,7 @@
 #define GYRO_CALIBRATION_PATH "/data/gyro.conf"
 
 
-static void reset (struct gyro_cal_t* cal_data)
+static void reset (gyro_cal_t* cal_data)
 {
 	cal_data->count = 0;
 
@@ -28,10 +28,10 @@ static void reset (struct gyro_cal_t* cal_data)
 }
 
 
-void gyro_cal_init (struct sensor_info_t* info)
+void gyro_cal_init (sensor_info_t* info)
 {
 	int ret;
-	struct gyro_cal_t* cal_data = (struct gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
 	FILE* data_file;
 
 	info->cal_level = 0;
@@ -51,10 +51,10 @@ void gyro_cal_init (struct sensor_info_t* info)
 }
 
 
-void gyro_store_data (struct sensor_info_t* info)
+void gyro_store_data (sensor_info_t* info)
 {
 	int ret;
-	struct gyro_cal_t* cal_data = (struct gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
 	FILE* data_file;
 
 	if (cal_data == NULL)
@@ -75,7 +75,7 @@ void gyro_store_data (struct sensor_info_t* info)
 }
 
 
-static int gyro_collect (float x, float y, float z, struct gyro_cal_t* cal_data)
+static int gyro_collect (float x, float y, float z, gyro_cal_t* cal_data)
 {
 	/* Analyze gyroscope data */
 
@@ -126,9 +126,9 @@ static int gyro_collect (float x, float y, float z, struct gyro_cal_t* cal_data)
 }
 
 
-void calibrate_gyro (struct sensors_event_t* event, struct sensor_info_t* info)
+void calibrate_gyro (sensors_event_t* event, sensor_info_t* info)
 {
-	struct gyro_cal_t* cal_data = (struct gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
 
 	if (cal_data == NULL)
 		return;

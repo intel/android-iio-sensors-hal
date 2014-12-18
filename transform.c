@@ -123,7 +123,8 @@ inline float convert_from_vtf_format(int size, int exponent, unsigned int value)
 
 /*----------------------------------------------------------------------------*/
 
-static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
+
+static int64_t sample_as_int64 (unsigned char* sample, datum_info_t* type)
 {
 	uint64_t u64;
 	int i;
@@ -176,7 +177,7 @@ static int64_t sample_as_int64(unsigned char* sample, struct datum_info_t* type)
 }
 
 
-static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
+static void reorder_fields (float* data, unsigned char map[MAX_CHANNELS])
 {
 	int i;
 	float temp[MAX_CHANNELS];
@@ -189,7 +190,7 @@ static void reorder_fields(float* data,	unsigned char map[MAX_CHANNELS])
 }
 
 
-static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
+static void clamp_gyro_readings_to_zero (int s, sensors_event_t* data)
 {
 	float x, y, z;
 	float near_zero;
@@ -220,14 +221,15 @@ static void clamp_gyro_readings_to_zero (int s, struct sensors_event_t* data)
 	}
 }
 
-static void process_event_gyro_uncal(int s, int i, struct sensors_event_t* data)
+
+static void process_event_gyro_uncal (int s, int i, sensors_event_t* data)
 {
-	struct gyro_cal_t* gyro_data;
+	gyro_cal_t* gyro_data;
 
 	if (sensor[s].type == SENSOR_TYPE_GYROSCOPE) {
-		gyro_data = (struct gyro_cal_t*) sensor[s].cal_data;
+		gyro_data = (gyro_cal_t*) sensor[s].cal_data;
 
-		memcpy(&sensor[i].sample, data, sizeof(struct sensors_event_t));
+		memcpy(&sensor[i].sample, data, sizeof(sensors_event_t));
 
 		sensor[i].sample.type = SENSOR_TYPE_GYROSCOPE_UNCALIBRATED;
 		sensor[i].sample.sensor = s;
@@ -244,7 +246,8 @@ static void process_event_gyro_uncal(int s, int i, struct sensors_event_t* data)
 	}
 }
 
-static void process_event(int s, struct sensors_event_t* data)
+
+static void process_event (int s, sensors_event_t* data)
 {
 	/*
 	 * This gets the real event (post process - calibration, filtering & co.)
@@ -268,7 +271,8 @@ static void process_event(int s, struct sensors_event_t* data)
 	}
 }
 
-static int finalize_sample_default (int s, struct sensors_event_t* data)
+
+static int finalize_sample_default (int s, sensors_event_t* data)
 {
 	/* Swap fields if we have a custom channel ordering on this sensor */
 	if (sensor[s].quirks & QUIRK_FIELD_ORDERING)
@@ -358,8 +362,8 @@ static int finalize_sample_default (int s, struct sensors_event_t* data)
 
 static float transform_sample_default(int s, int c, unsigned char* sample_data)
 {
-	struct datum_info_t* sample_type = &sensor[s].channel[c].type_info;
-	int64_t		     s64 = sample_as_int64(sample_data, sample_type);
+	datum_info_t* sample_type = &sensor[s].channel[c].type_info;
+	int64_t s64 = sample_as_int64(sample_data, sample_type);
 	float scale = sensor[s].scale ?
 		        sensor[s].scale : sensor[s].channel[c].scale;
 
@@ -371,7 +375,7 @@ static float transform_sample_default(int s, int c, unsigned char* sample_data)
 }
 
 
-static int finalize_sample_ISH (int s, struct sensors_event_t* data)
+static int finalize_sample_ISH (int s, sensors_event_t* data)
 {
 	float pitch, roll, yaw;
 
@@ -399,7 +403,7 @@ static int finalize_sample_ISH (int s, struct sensors_event_t* data)
 
 static float transform_sample_ISH (int s, int c, unsigned char* sample_data)
 {
-	struct datum_info_t* sample_type = &sensor[s].channel[c].type_info;
+	datum_info_t* sample_type = &sensor[s].channel[c].type_info;
 	int val		= (int) sample_as_int64(sample_data, sample_type);
 	float correction;
 	int data_bytes  = (sample_type->realbits)/8;

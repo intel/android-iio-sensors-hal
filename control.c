@@ -196,7 +196,7 @@ static void enable_iio_timestamp (int dev_num, int known_channels)
 
 
 static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN],
-			     struct datum_info_t *type_info)
+			     datum_info_t *type_info)
 {
 	/* Return size in bytes for this type specification, or -1 in error */
 	char sign;
@@ -251,7 +251,7 @@ void build_sensor_report_maps (int dev_num)
 	int ch_index;
 	char* ch_spec;
 	char spec_buf[MAX_TYPE_SPEC_LEN];
-	struct datum_info_t* ch_info;
+	datum_info_t* ch_info;
 	int size;
 	char sysfs_path[PATH_MAX];
 	int known_channels;
@@ -489,7 +489,7 @@ static void* acquisition_routine (void* param)
 
 	int s = (int) (size_t) param;
 	int num_fields, sample_size;
-	struct sensors_event_t data = {0};
+	sensors_event_t data = {0};
 	int c;
 	int ret;
 	struct timespec target_time;
@@ -1316,11 +1316,11 @@ static int integrate_device_report (int dev_num)
 }
 
 
-static int propagate_vsensor_report (int s, struct sensors_event_t  *data)
+static int propagate_vsensor_report (int s, sensors_event_t *data)
 {
 	/* There's a new report stored in sensor.sample for this sensor; transmit it */
 
-	memcpy(data, &sensor[s].sample, sizeof(struct sensors_event_t));
+	memcpy(data, &sensor[s].sample, sizeof(sensors_event_t));
 
 	data->sensor	= s;
 	data->type	= sensor[s].type;
@@ -1328,7 +1328,7 @@ static int propagate_vsensor_report (int s, struct sensors_event_t  *data)
 }
 
 
-static int propagate_sensor_report (int s, struct sensors_event_t  *data)
+static int propagate_sensor_report (int s, sensors_event_t *data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
@@ -1498,7 +1498,7 @@ static int get_poll_wait_timeout (void)
 }
 
 
-int sensor_poll (struct sensors_event_t* data, int count)
+int sensor_poll (sensors_event_t* data, int count)
 {
 	int s;
 	int i;

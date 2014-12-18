@@ -28,7 +28,7 @@
   * from the same iio device as the base one.
   */
 
-struct sensor_catalog_entry_t sensor_catalog[] = {
+sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
 	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
 	DECLARE_SENSOR3("magn",       SENSOR_TYPE_MAGNETIC_FIELD, "x", "y", "z")
@@ -51,9 +51,9 @@ struct sensor_catalog_entry_t sensor_catalog[] = {
 
 /* We equate sensor handles to indices in these tables */
 
-struct sensor_t      sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
-struct sensor_info_t sensor[MAX_SENSORS];	/* Internal descriptors      */
-int sensor_count;				/* Detected sensors 	     */
+struct sensor_t	sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
+sensor_info_t	sensor[MAX_SENSORS];		/* Internal descriptors      */
+int		sensor_count;			/* Detected sensors 	     */
 
 
 static void setup_properties_from_pld (int s, int panel, int rotation,
@@ -414,11 +414,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	switch (sensor_type) {
 		case SENSOR_TYPE_GYROSCOPE:
-			sensor[s].cal_data = malloc(sizeof(struct gyro_cal_t));
+			sensor[s].cal_data = malloc(sizeof(gyro_cal_t));
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			sensor[s].cal_data = malloc(sizeof(struct compass_cal_t));
+			sensor[s].cal_data = malloc(sizeof(compass_cal_t));
 			break;
 	}
 
