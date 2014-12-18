@@ -21,13 +21,13 @@
 #include "filtering.h"
 
 /* Currently active sensors count, per device */
-static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors */
-static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based */
+static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors	*/
+static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based	*/
 
-static int device_fd[MAX_DEVICES];   /* fd on the /dev/iio:deviceX file */
-static int has_iio_ts[MAX_DEVICES];  /* ts channel available on this iio dev */
-static int expected_dev_report_size[MAX_DEVICES]; /* expected iio scan len */
-static int poll_fd; /* epoll instance covering all enabled sensors */
+static int device_fd[MAX_DEVICES];			/* fd on the /dev/iio:deviceX file		*/
+static int has_iio_ts[MAX_DEVICES];			/* ts channel available on this iio dev		*/
+static int expected_dev_report_size[MAX_DEVICES];	/* expected iio scan len			*/
+static int poll_fd;					/* epoll instance covering all enabled sensors	*/
 
 static int active_poll_sensors; /* Number of enabled poll-mode sensors */
 
@@ -40,8 +40,7 @@ static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
  * We associate tags to each of our poll set entries. These tags have the
  * following values:
  * - a iio device number if the fd is a iio character device fd
- * - THREAD_REPORT_TAG_BASE + sensor handle if the fd is the receiving end of a
- *   pipe used by a sysfs data acquisition thread
+ * - THREAD_REPORT_TAG_BASE + sensor handle if the fd is the receiving end of a pipe used by a sysfs data acquisition thread
  */
 #define THREAD_REPORT_TAG_BASE	0x00010000
 
@@ -59,38 +58,29 @@ static int check_state_change (int s, int enabled, int from_virtual)
 {
 	if (enabled) {
 		if (sensor[s].directly_enabled)
-					/*
-					 * We're being enabled but already were
-					 * directly activated: no change.
-					 */
-					return 0;
+			return 0;			/* We're being enabled but already were directly activated: no change. */
 
 		if (!from_virtual)
-			/* We're being directly enabled */
-			sensor[s].directly_enabled = 1;
+			sensor[s].directly_enabled = 1;	/* We're being directly enabled */
 
 		if (sensor[s].ref_count)
-			/* We were already indirectly enabled */
-			return 0;
+			return 0;			/* We were already indirectly enabled */
 
-		return 1; /* Do continue enabling this sensor */
+		return 1; 				/* Do continue enabling this sensor */
 	}
 
 	if (!is_enabled(s))
-		/* We are being disabled but already were: no change */
-		return 0;
+		return 0;				/* We are being disabled but already were: no change */
 
 	if (from_virtual && sensor[s].directly_enabled)
-		/* We're indirectly disabled but the base is still active */
-		return 0;
+		return 0;				/* We're indirectly disabled but the base is still active */
 
-	/* We're now directly disabled */
-	sensor[s].directly_enabled = 0;
+	sensor[s].directly_enabled = 0;			/* We're now directly disabled */
 
 	if (!from_virtual && sensor[s].ref_count)
-		return 0; /* We still have ref counts */
+		return 0;				/* We still have ref counts */
 
-	return 1; /* Do continue disabling this sensor */
+	return 1;					/* Do continue disabling this sensor */
 }
 
 
@@ -134,8 +124,7 @@ static int setup_trigger (int s, const char* trigger_val)
 	sprintf(sysfs_path, TRIGGER_PATH, sensor[s].dev_num);
 
 	if (trigger_val[0] != '\n')
-		ALOGI("Setting S%d (%s) trigger to %s\n", s,
-			sensor[s].friendly_name, trigger_val);
+		ALOGI("Setting S%d (%s) trigger to %s\n", s, sensor[s].friendly_name, trigger_val);
 
 	while (ret == -1 && attempts) {
 		ret = sysfs_write_str(sysfs_path, trigger_val);
@@ -145,8 +134,7 @@ static int setup_trigger (int s, const char* trigger_val)
 	if (ret != -1)
 		sensor[s].selected_trigger = trigger_val;
 	else
-		ALOGE("Setting S%d (%s) trigger to %s FAILED.\n", s,
-			sensor[s].friendly_name, trigger_val);
+		ALOGE("Setting S%d (%s) trigger to %s FAILED.\n", s, sensor[s].friendly_name, trigger_val);
 	return ret;
 }
 
@@ -206,17 +194,13 @@ static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN],
 
 	/* Valid specs: "le:u10/16>>0", "le:s16/32>>0" or "le:s32/32>>0" */
 
-	tokens = sscanf(type_buf, "%ce:%c%u/%u>>%u",
-			&endianness, &sign, &realbits, &storagebits, &shift);
+	tokens = sscanf(type_buf, "%ce:%c%u/%u>>%u", &endianness, &sign, &realbits, &storagebits, &shift);
 
-	if     (tokens != 5 ||
-		(endianness != 'b' && endianness != 'l') ||
-		(sign != 'u' && sign != 's') ||
-		realbits > storagebits ||
-		(storagebits != 16 && storagebits != 32 && storagebits != 64)) {
+	if     (tokens != 5 || (endianness != 'b' && endianness != 'l') || (sign != 'u' && sign != 's') ||
+		realbits > storagebits || (storagebits != 16 && storagebits != 32 && storagebits != 64)) {
 			ALOGE("Invalid iio channel type spec: %s\n", type_buf);
 			return -1;
-		}
+	}
 
 	type_info->endianness	=		endianness;
 	type_info->sign		=		sign;
@@ -231,16 +215,11 @@ static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN],
 void build_sensor_report_maps (int dev_num)
 {
 	/*
-	 * Read sysfs files from a iio device's scan_element directory, and
-	 * build a couple of tables from that data. These tables will tell, for
-	 * each sensor, where to gather relevant data in a device report, i.e.
-	 * the structure that we read from the /dev/iio:deviceX file in order to
-	 * sensor report, itself being the data that we return to Android when a
-	 * sensor poll completes. The mapping should be straightforward in the
-	 * case where we have a single sensor active per iio device but, this is
-	 * not the general case. In general several sensors can be handled
-	 * through a single iio device, and the _en, _index and _type syfs
-	 * entries all concur to paint a picture of what the structure of the
+	 * Read sysfs files from a iio device's scan_element directory, and build a couple of tables from that data. These tables will tell, for
+	 * each sensor, where to gather relevant data in a device report, i.e. the structure that we read from the /dev/iio:deviceX file in order to
+	 * sensor report, itself being the data that we return to Android when a sensor poll completes. The mapping should be straightforward in the
+	 * case where we have a single sensor active per iio device but, this is not the general case. In general several sensors can be handled
+	 * through a single iio device, and the _en, _index and _type syfs entries all concur to paint a picture of what the structure of the
 	 * device report is.
 	 */
 
@@ -273,18 +252,14 @@ void build_sensor_report_maps (int dev_num)
 		for (c=0; c<sensor[s].num_channels; c++) {
 
 			/* Read _type file */
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor[s].dev_num,
-				sensor_catalog[i].channel[c].type_path);
+			sprintf(sysfs_path, CHANNEL_PATH "%s", sensor[s].dev_num, sensor_catalog[i].channel[c].type_path);
 
-			n = sysfs_read_str(sysfs_path, spec_buf, 
-						sizeof(spec_buf));
+			n = sysfs_read_str(sysfs_path, spec_buf, sizeof(spec_buf));
 
 			if (n == -1) {
-					ALOGW(	"Failed to read type: %s\n",
-					sysfs_path);
+					ALOGW(	"Failed to read type: %s\n", sysfs_path);
 					continue;
-				}
+			}
 
 			ch_spec = sensor[s].channel[c].type_spec;
 
@@ -295,17 +270,14 @@ void build_sensor_report_maps (int dev_num)
 			size = decode_type_spec(ch_spec, ch_info);
 
 			/* Read _index file */
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor[s].dev_num,
-				sensor_catalog[i].channel[c].index_path);
+			sprintf(sysfs_path, CHANNEL_PATH "%s", sensor[s].dev_num, sensor_catalog[i].channel[c].index_path);
 
 			n = sysfs_read_int(sysfs_path, &ch_index);
 
 			if (n == -1) {
-					ALOGW(	"Failed to read index: %s\n",
-						sysfs_path);
+					ALOGW(	"Failed to read index: %s\n", sysfs_path);
 					continue;
-				}
+			}
 
 			if (ch_index >= MAX_SENSORS) {
 				ALOGE("Index out of bounds!: %s\n", sysfs_path);
@@ -327,9 +299,7 @@ void build_sensor_report_maps (int dev_num)
 
 		/* Turn on channels we're aware of */
 		for (c=0;c<sensor[s].num_channels; c++) {
-			sprintf(sysfs_path, CHANNEL_PATH "%s",
-				sensor[s].dev_num,
-				sensor_catalog[i].channel[c].en_path);
+			sprintf(sysfs_path, CHANNEL_PATH "%s", sensor[s].dev_num, sensor_catalog[i].channel[c].en_path);
 			sysfs_write_int(sysfs_path, 1);
 		}
 	}
@@ -337,14 +307,10 @@ void build_sensor_report_maps (int dev_num)
 	ALOGI("Found %d channels on iio device %d\n", known_channels, dev_num);
 
 	/*
-	 * Now that we know which channels are defined, their sizes and their
-	 * ordering, update channels offsets within device report. Note: there
-	 * is a possibility that several sensors share the same index, with
-	 * their data fields being isolated by masking and shifting as specified
-	 * through the real bits and shift values in type attributes. This case
-	 * is not currently supported. Also, the code below assumes no hole in
-	 * the sequence of indices, so it is dependent on discovery of all
-	 * sensors.
+	 * Now that we know which channels are defined, their sizes and their ordering, update channels offsets within device report. Note: there
+	 * is a possibility that several sensors share the same index, with their data fields being isolated by masking and shifting as specified
+	 * through the real bits and shift values in type attributes. This case is not currently supported. Also, the code below assumes no hole in
+	 * the sequence of indices, so it is dependent on discovery of all sensors.
 	 */
 	 offset = 0;
 	 for (i=0; i<MAX_SENSORS * MAX_CHANNELS; i++) {
@@ -355,8 +321,7 @@ void build_sensor_report_maps (int dev_num)
 		if (!size)
 			continue;
 
-		ALOGI("S%d C%d : offset %d, size %d, type %s\n",
-		      s, c, offset, size, sensor[s].channel[c].type_spec);
+		ALOGI("S%d C%d : offset %d, size %d, type %s\n", s, c, offset, size, sensor[s].channel[c].type_spec);
 
 		sensor[s].channel[c].offset	= offset;
 		sensor[s].channel[c].size		= size;
@@ -375,8 +340,7 @@ void build_sensor_report_maps (int dev_num)
 	ALOGI("Expecting %d scan length on iio dev %d\n", offset, dev_num);
 
 	if (expected_dev_report_size[dev_num] > MAX_DEVICE_REPORT_SIZE) {
-		ALOGE("Unexpectedly large scan buffer on iio dev%d: %d bytes\n",
-		      dev_num, expected_dev_report_size[dev_num]);
+		ALOGE("Unexpectedly large scan buffer on iio dev%d: %d bytes\n", dev_num, expected_dev_report_size[dev_num]);
 
 		expected_dev_report_size[dev_num] = MAX_DEVICE_REPORT_SIZE;
 	}
@@ -394,12 +358,10 @@ int adjust_counters (int s, int enabled, int from_virtual)
 	int dev_num = sensor[s].dev_num;
 
 	if (!check_state_change(s, enabled, from_virtual))
-		/* The state of the sensor remains the same: we're done */
-		return 0;
+		return 0; /* The state of the sensor remains the same: we're done */
 
 	if (enabled) {
-		ALOGI("Enabling sensor %d (iio device %d: %s)\n",
-			s, dev_num, sensor[s].friendly_name);
+		ALOGI("Enabling sensor %d (iio device %d: %s)\n", s, dev_num, sensor[s].friendly_name);
 
 		switch (sensor[s].type) {
 			case SENSOR_TYPE_MAGNETIC_FIELD:
@@ -411,8 +373,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				break;
 		}
 	} else {
-		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num,
-		      sensor[s].friendly_name);
+		ALOGI("Disabling sensor %d (iio device %d: %s)\n", s, dev_num, sensor[s].friendly_name);
 
 		/* Sensor disabled, lower report available flag */
 		sensor[s].report_pending = 0;
@@ -479,12 +440,9 @@ static int get_field_count (int s)
 static void* acquisition_routine (void* param)
 {
 	/*
-	 * Data acquisition routine run in a dedicated thread, covering a single
-	 * sensor. This loop will periodically retrieve sampling data through
-	 * sysfs, then package it as a sample and transfer it to our master poll
-	 * loop through a report fd. Checks for a cancellation signal quite
-	 * frequently, as the thread may be disposed of at any time. Note that
-	 * Bionic does not provide pthread_cancel / pthread_testcancel...
+	 * Data acquisition routine run in a dedicated thread, covering a single sensor. This loop will periodically retrieve sampling data through
+	 * sysfs, then package it as a sample and transfer it to our master poll loop through a report fd. Checks for a cancellation signal quite
+	 * frequently, as the thread may be disposed of at any time. Note that Bionic does not provide pthread_cancel / pthread_testcancel...
 	 */
 
 	int s = (int) (size_t) param;
@@ -500,12 +458,10 @@ static void* acquisition_routine (void* param)
 		return NULL;
 	}
 
-	ALOGI("Entering data acquisition thread S%d (%s), rate:%g\n",
-	      s, sensor[s].friendly_name, sensor[s].sampling_rate);
+	ALOGI("Entering data acquisition thread S%d (%s), rate:%g\n", s, sensor[s].friendly_name, sensor[s].sampling_rate);
 
 	if (sensor[s].sampling_rate <= 0) {
-		ALOGE("Invalid rate in acquisition routine for sensor %d: %g\n",
-			s, sensor[s].sampling_rate);
+		ALOGE("Invalid rate in acquisition routine for sensor %d: %g\n", s, sensor[s].sampling_rate);
 		return NULL;
 	}
 
@@ -513,10 +469,8 @@ static void* acquisition_routine (void* param)
 	sample_size = sizeof(int64_t) + num_fields * sizeof(float);
 
 	/*
-	 * Each condition variable is associated to a mutex that has to be
-	 * locked by the thread that's waiting on it. We use these condition
-	 * variables to get the acquisition threads out of sleep quickly after
-	 * the sampling rate is adjusted, or the sensor is disabled.
+	 * Each condition variable is associated to a mutex that has to be locked by the thread that's waiting on it. We use these condition
+	 * variables to get the acquisition threads out of sleep quickly after the sampling rate is adjusted, or the sensor is disabled.
 	 */
 	pthread_mutex_lock(&thread_release_mutex[s]);
 
@@ -540,23 +494,19 @@ static void* acquisition_routine (void* param)
 		if (sensor[s].ops.finalize(s, &data)) {
 
 			/* Pipe it for transmission to poll loop */
-			ret = write(	sensor[s].thread_data_fd[1],
-					&data.timestamp, sample_size);
+			ret = write(sensor[s].thread_data_fd[1], &data.timestamp, sample_size);
 
 			if (ret != sample_size)
-				ALOGE("S%d write failure: wrote %d, got %d\n",
-				      s, sample_size, ret);
+				ALOGE("S%d write failure: wrote %d, got %d\n", s, sample_size, ret);
 		}
 
 		/* Check and honor termination requests */
 		if (sensor[s].thread_data_fd[1] == -1)
 			goto exit;
 
-		/* Recalculate period asumming sensor[s].sampling_rate
-		 * can be changed dynamically during the thread run */
+		/* Recalculate period assuming sensor[s].sampling_rate can be changed dynamically during the thread run */
 		if (sensor[s].sampling_rate <= 0) {
-			ALOGE("Unexpected sampling rate for sensor %d: %g\n",
-				s, sensor[s].sampling_rate);
+			ALOGE("Unexpected sampling rate for sensor %d: %g\n", s, sensor[s].sampling_rate);
 			goto exit;
 		}
 
@@ -564,13 +514,9 @@ static void* acquisition_routine (void* param)
 		timestamp += period;
 		set_timestamp(&target_time, timestamp);
 
-		/*
-		 * Wait until the sampling time elapses, or a rate change is
-		 * signaled, or a thread exit is requested.
+		/* Wait until the sampling time elapses, or a rate change is signaled, or a thread exit is requested.
 		 */
-		ret = pthread_cond_timedwait(	&thread_release_cond[s],
-						&thread_release_mutex[s],
-						&target_time);
+		ret = pthread_cond_timedwait(&thread_release_cond[s], &thread_release_mutex[s], &target_time);
 	}
 
 exit:
@@ -608,10 +554,7 @@ static void start_acquisition_thread (int s)
 	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, incoming_data_fd , &ev);
 
 	/* Create and start worker thread */
-	ret = pthread_create(	&sensor[s].acquisition_thread,
-				NULL,
-				acquisition_routine,
-				(void*) (size_t) s);
+	ret = pthread_create(	&sensor[s].acquisition_thread, NULL, acquisition_routine, (void*) (size_t) s);
 }
 
 
@@ -668,18 +611,13 @@ static int is_fast_accelerometer (int s)
 static void tentative_switch_trigger (int s)
 {
 	/*
-	 * Under certain situations it may be beneficial to use an alternate
-	 * trigger:
+	 * Under certain situations it may be beneficial to use an alternate trigger:
 	 *
-	 * - for applications using the accelerometer with high sampling rates,
-	 *   prefer the continuous trigger over the any-motion one, to avoid
+	 * - for applications using the accelerometer with high sampling rates, prefer the continuous trigger over the any-motion one, to avoid
 	 *   jumps related to motion thresholds
 	 */
 
-	if (is_fast_accelerometer(s) &&
-		!(sensor[s].quirks & QUIRK_TERSE_DRIVER) &&
-			sensor[s].selected_trigger ==
-				sensor[s].motion_trigger_name)
+	if (is_fast_accelerometer(s) && !(sensor[s].quirks & QUIRK_TERSE_DRIVER) && sensor[s].selected_trigger == sensor[s].motion_trigger_name)
 		setup_trigger(s, sensor[s].init_trigger_name);
 }
 
@@ -695,21 +633,13 @@ static float get_group_max_sampling_rate (int s)
 	if (is_enabled(s))
 		arbitrated_rate = sensor[s].requested_rate;
 
-	/*
-	 * If any of the currently active sensors built on top of this one need
-	 * a higher sampling rate, switch to this rate.
-	 */
+	/* If any of the currently active sensors built on top of this one need a higher sampling rate, switch to this rate */
 	for (i = 0; i < sensor_count; i++)
 		for (vi = 0; vi < sensor[i].base_count; vi++)
-			/* If sensor i depends on sensor s */
-			if (sensor[i].base[vi] == s && is_enabled(i) &&
-			    sensor[i].requested_rate > arbitrated_rate)
+			if (sensor[i].base[vi] == s && is_enabled(i) && sensor[i].requested_rate > arbitrated_rate)	/* If sensor i depends on sensor s */
 				arbitrated_rate = sensor[i].requested_rate;
 
-	/*
-	 * If any of the currently active sensors we rely on is using a higher
-	 * sampling rate, switch to this rate.
-	 */
+	/* If any of the currently active sensors we rely on is using a higher sampling rate, switch to this rate */
 	for (vi = 0; vi < sensor[s].base_count; vi++) {
 		i = sensor[s].base[vi];
 		if (is_enabled(i) && sensor[i].requested_rate > arbitrated_rate)
@@ -722,8 +652,7 @@ static float get_group_max_sampling_rate (int s)
 
 static int sensor_set_rate (int s, float requested_rate)
 {
-	/* Set the rate at which a specific sensor should report events */
-	/* See Android sensors.h for indication on sensor trigger modes */
+	/* Set the rate at which a specific sensor should report events. See Android sensors.h for indication on sensor trigger modes */
 
 	char sysfs_path[PATH_MAX];
 	char avail_sysfs_path[PATH_MAX];
@@ -735,8 +664,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	int32_t min_delay_us = sensor_desc[s].minDelay;
 	max_delay_t max_delay_us = sensor_desc[s].maxDelay;
 	float min_supported_rate = max_delay_us ? 1000000.0/max_delay_us : 1;
-	float max_supported_rate =
-		min_delay_us && min_delay_us != -1 ? 1000000.0/min_delay_us : 0;
+	float max_supported_rate = min_delay_us && min_delay_us != -1 ? 1000000.0/min_delay_us : 0;
 	char freqs_buf[100];
 	char* cursor;
 	int n;
@@ -745,18 +673,14 @@ static int sensor_set_rate (int s, float requested_rate)
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	float arb_sampling_rate; /* Granted sampling rate after arbitration   */
 
-	ALOGV("Sampling rate %g requested on sensor %d (%s)\n", requested_rate,
-	      s, sensor[s].friendly_name);
+	ALOGV("Sampling rate %g requested on sensor %d (%s)\n", requested_rate, s, sensor[s].friendly_name);
 
 	sensor[s].requested_rate = requested_rate;
 
 	arb_sampling_rate = requested_rate;
 
 	if (arb_sampling_rate < min_supported_rate) {
-		ALOGV("Sampling rate %g too low for %s, using %g instead\n",
-		       arb_sampling_rate, sensor[s].friendly_name,
-		       min_supported_rate);
-
+		ALOGV("Sampling rate %g too low for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, min_supported_rate);
 		arb_sampling_rate = min_supported_rate;
 	}
 
@@ -764,14 +688,12 @@ static int sensor_set_rate (int s, float requested_rate)
 	group_max_sampling_rate = get_group_max_sampling_rate(s);
 
 	if (arb_sampling_rate < group_max_sampling_rate) {
-		ALOGV("Using %s sampling rate to %g too due to dependency\n",
-		       sensor[s].friendly_name, arb_sampling_rate);
+		ALOGV("Using %s sampling rate to %g too due to dependency\n", sensor[s].friendly_name, arb_sampling_rate);
 		arb_sampling_rate = group_max_sampling_rate;
 	}
 
 	if (max_supported_rate && arb_sampling_rate > max_supported_rate) {
-		ALOGV("Sampling rate %g too high for %s, using %g instead\n",
-		arb_sampling_rate, sensor[s].friendly_name, max_supported_rate);
+		ALOGV("Sampling rate %g too high for %s, using %g instead\n", arb_sampling_rate, sensor[s].friendly_name, max_supported_rate);
 		arb_sampling_rate = max_supported_rate;
 	}
 
@@ -784,8 +706,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	/* If we're dealing with a poll-mode sensor */
 	if (!sensor[s].num_channels) {
 		if (is_enabled(s))
-			/* Wake up thread so the new sampling rate gets used */
-			pthread_cond_signal(&thread_release_cond[s]);
+			pthread_cond_signal(&thread_release_cond[s]); /* Wake up thread so the new sampling rate gets used */
 		return 0;
 	}
 
@@ -825,21 +746,15 @@ static int sensor_set_rate (int s, float requested_rate)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			/*
-			 * If this matches the selected rate, we're happy.
-			 * Have some tolerance to counter rounding errors and
-			 * avoid needless jumps to higher rates.
-			 */
+			/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
 			if (fabs(arb_sampling_rate - sr) <= 0.001) {
 				arb_sampling_rate = sr;
 				break;
 			}
 
 			/*
-			 * If we reached a higher value than the desired rate,
-			 * adjust selected rate so it matches the first higher
-			 * available one and stop parsing - this makes the
-			 * assumption that rates are sorted by increasing value
+			 * If we reached a higher value than the desired rate, adjust selected rate so it matches the first higher
+			 * available one and stop parsing - this makes the assumption that rates are sorted by increasing value
 			 * in the allowed frequencies string.
 			 */
 			if (sr > arb_sampling_rate) {
@@ -866,25 +781,18 @@ static int sensor_set_rate (int s, float requested_rate)
 	/* Coordinate with others active sensors on the same device, if any */
 	if (per_device_sampling_rate)
 		for (n=0; n<sensor_count; n++)
-			if (n != s && sensor[n].dev_num == dev_num &&
-			    sensor[n].num_channels && is_enabled(n) &&
-			    sensor[n].sampling_rate > arb_sampling_rate) {
-	ALOGV("Sampling rate shared between %s and %s, using %g instead of %g\n"
-	      , sensor[s].friendly_name, sensor[n].friendly_name,
-	      sensor[n].sampling_rate, arb_sampling_rate);
+			if (n != s && sensor[n].dev_num == dev_num && sensor[n].num_channels && is_enabled(n) && sensor[n].sampling_rate > arb_sampling_rate) {
+				ALOGV("Sampling rate shared between %s and %s, using %g instead of %g\n", sensor[s].friendly_name, sensor[n].friendly_name,
+													  sensor[n].sampling_rate, arb_sampling_rate);
 				arb_sampling_rate = sensor[n].sampling_rate;
 			}
 
 	sensor[s].sampling_rate = arb_sampling_rate;
 
-	/*
-	 * Update actual sampling rate field for this sensor and others which
-	 * may be sharing the same sampling rate.
-	 */
+	/* Update actual sampling rate field for this sensor and others which may be sharing the same sampling rate */
 	if (per_device_sampling_rate)
 		for (n=0; n<sensor_count; n++)
-			if (sensor[n].dev_num == dev_num && n != s &&
-			    sensor[n].num_channels)
+			if (sensor[n].dev_num == dev_num && n != s && sensor[n].num_channels)
 				sensor[n].sampling_rate = arb_sampling_rate;
 
 	/* If the desired rate is already active we're all set */
@@ -912,10 +820,8 @@ static int sensor_set_rate (int s, float requested_rate)
 static void reapply_sampling_rates (int s)
 {
 	/*
-	 * The specified sensor was either enabled or disabled. Other sensors
-	 * in the same group may have constraints related to this sensor
-	 * sampling rate on their own sampling rate, so reevaluate them by
-	 * retrying to use their requested sampling rate, rather than the one
+	 * The specified sensor was either enabled or disabled. Other sensors in the same group may have constraints related to this sensor
+	 * sampling rate on their own sampling rate, so reevaluate them by retrying to use their requested sampling rate, rather than the one
 	 * that ended up being used after arbitration.
 	 */
 
@@ -933,8 +839,7 @@ static void reapply_sampling_rates (int s)
 	/* Upwards too */
 	for (i=0; i<sensor_count; i++)
 		for (j=0; j<sensor[i].base_count; j++)
-			/* If sensor i depends on sensor s */
-			if (sensor[i].base[j] == s)
+			if (sensor[i].base[j] == s) /* If sensor i depends on sensor s */
 				sensor_set_rate(i, sensor[i].requested_rate);
 }
 
@@ -947,8 +852,7 @@ static int sensor_activate_virtual (int s, int enabled, int from_virtual)
 	sensor[s].meta_data_pending = 0;
 
 	if (!check_state_change(s, enabled, from_virtual))
-		/* The state of the sensor remains the same ; we're done */
-		return 0;
+		return 0;	/* The state of the sensor remains the same ; we're done */
 
 	if (enabled)
 		ALOGI("Enabling sensor %d (%s)\n", s, sensor[s].friendly_name);
@@ -999,8 +903,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	sensor[s].meta_data_pending = 0;
 
 	if (enabled && (sensor[s].quirks & QUIRK_NOISY))
-		/* Initialize filtering data if required */
-		setup_noise_filtering(s);
+		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
 	if (!is_poll_sensor) {
 
@@ -1018,10 +921,8 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	}
 
 	/*
-	 * Make sure we have a fd on the character device ; conversely, close
-	 * the fd if no one is using associated sensors anymore. The assumption
-	 * here is that the underlying driver will power on the relevant
-	 * hardware block while someone holds a fd on the device.
+	 * Make sure we have a fd on the character device ; conversely, close the fd if no one is using associated sensors anymore. The assumption
+	 * here is that the underlying driver will power on the relevant hardware block while someone holds a fd on the device.
 	 */
 	dev_fd = device_fd[dev_num];
 
@@ -1029,17 +930,13 @@ int sensor_activate (int s, int enabled, int from_virtual)
 		if (is_poll_sensor)
 			stop_acquisition_thread(s);
 
-		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] &&
-			!trig_sensors_per_dev[dev_num]) {
-				/*
-				 * Stop watching this fd. This should be a no-op
-				 * in case this fd was not in the poll set.
-				 */
+		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
+				/* Stop watching this fd. This should be a no-op in case this fd was not in the poll set. */
 				epoll_ctl(poll_fd, EPOLL_CTL_DEL, dev_fd, NULL);
 
 				close(dev_fd);
 				device_fd[dev_num] = -1;
-			}
+		}
 
 		/* Release any filtering data we may have accumulated */
 		release_noise_filtering_data(s);
@@ -1057,8 +954,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 		device_fd[dev_num] = dev_fd;
 
 		if (dev_fd == -1) {
-			ALOGE("Could not open fd on %s (%s)\n",
-			      device_name, strerror(errno));
+			ALOGE("Could not open fd on %s (%s)\n", device_name, strerror(errno));
 			adjust_counters(s, 0, from_virtual);
 			return -1;
 		}
@@ -1074,8 +970,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, dev_fd, &ev);
 
 			if (ret == -1) {
-				ALOGE(	"Failed adding %d to poll set (%s)\n",
-					dev_fd, strerror(errno));
+				ALOGE("Failed adding %d to poll set (%s)\n", dev_fd, strerror(errno));
 				return -1;
 			}
 
@@ -1099,18 +994,12 @@ int sensor_activate (int s, int enabled, int from_virtual)
 static void enable_motion_trigger (int dev_num)
 {
 	/*
-	 * In the ideal case, we enumerate two triggers per iio device ; the
-	 * default (periodically firing) trigger, and another one (the motion
-	 * trigger) that only fires up when motion is detected. This second one
-	 * allows for lesser energy consumption, but requires periodic sample
-	 * duplication at the HAL level for sensors that Android defines as
-	 * continuous. This "duplicate last sample" logic can only be engaged
-	 * once we got a first sample for the driver, so we start with the
-	 * default trigger when an iio device is first opened, then adjust the
-	 * trigger when we got events for all active sensors. Unfortunately in
-	 * the general case several sensors can be associated to a given iio
-	 * device, they can independently be controlled, and we have to adjust
-	 * the trigger in use at the iio device level depending on whether or
+	 * In the ideal case, we enumerate two triggers per iio device ; the default (periodically firing) trigger, and another one (the motion
+	 * trigger) that only fires up when motion is detected. This second one allows for lesser energy consumption, but requires periodic sample
+	 * duplication at the HAL level for sensors that Android defines as continuous. This "duplicate last sample" logic can only be engaged
+	 * once we got a first sample for the driver, so we start with the default trigger when an iio device is first opened, then adjust the
+	 * trigger when we got events for all active sensors. Unfortunately in the general case several sensors can be associated to a given iio
+	 * device, they can independently be controlled, and we have to adjust the trigger in use at the iio device level depending on whether or
 	 * not appropriate conditions are met at the sensor level.
 	 */
 
@@ -1126,24 +1015,15 @@ static void enable_motion_trigger (int dev_num)
 	/* Check that all active sensors are ready to switch */
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num &&
-		    is_enabled(s) &&
-		    sensor[s].num_channels &&
-		    (!sensor[s].motion_trigger_name[0] ||
-		     !sensor[s].report_initialized ||
-		     is_fast_accelerometer(s) ||
-		     (sensor[s].quirks & QUIRK_FORCE_CONTINUOUS))
-		    )
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].num_channels &&
+		    (!sensor[s].motion_trigger_name[0] || !sensor[s].report_initialized || is_fast_accelerometer(s) ||
+		     (sensor[s].quirks & QUIRK_FORCE_CONTINUOUS)))
 			return; /* Nope */
 
 	/* Record which particular sensors need to switch */
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num &&
-		    is_enabled(s) &&
-		    sensor[s].num_channels &&
-		    sensor[s].selected_trigger !=
-			sensor[s].motion_trigger_name)
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].num_channels && sensor[s].selected_trigger != sensor[s].motion_trigger_name)
 				candidate[candidate_count++] = s;
 
 	if (!candidate_count)
@@ -1235,8 +1115,7 @@ static int integrate_device_report (int dev_num)
 	len = read(device_fd[dev_num], buf, expected_dev_report_size[dev_num]);
 
 	if (len == -1) {
-		ALOGE("Could not read report from iio device %d (%s)\n",
-		      dev_num, strerror(errno));
+		ALOGE("Could not read report from iio device %d (%s)\n", dev_num, strerror(errno));
 		return -1;
 	}
 
@@ -1245,16 +1124,14 @@ static int integrate_device_report (int dev_num)
 	/* Map device report to sensor reports */
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num &&
-		    is_enabled(s)) {
+		if (sensor[s].dev_num == dev_num && is_enabled(s)) {
 
 			sr_offset = 0;
 
 			/* Copy data from device to sensor report buffer */
 			for (c=0; c<sensor[s].num_channels; c++) {
 
-				target = sensor[s].report_buffer +
-					sr_offset;
+				target = sensor[s].report_buffer + sr_offset;
 
 				source = buf + sensor[s].channel[c].offset;
 
@@ -1265,8 +1142,7 @@ static int integrate_device_report (int dev_num)
 				sr_offset += size;
 			}
 
-			ALOGV("Sensor %d report available (%d bytes)\n", s,
-			      sr_offset);
+			ALOGV("Sensor %d report available (%d bytes)\n", s, sr_offset);
 
 			sensor[s].report_pending = DATA_TRIGGER;
 			sensor[s].report_initialized = 1;
@@ -1285,13 +1161,10 @@ static int integrate_device_report (int dev_num)
 
 	/* Don't trust the timestamp channel in any-motion mode */
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num &&
-		    is_enabled(s) &&
-		    sensor[s].selected_trigger ==
-					sensor[s].motion_trigger_name) {
-		stamp_reports(dev_num, get_timestamp_boot());
-		return 0;
-	}
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].selected_trigger == sensor[s].motion_trigger_name) {
+			stamp_reports(dev_num, get_timestamp_boot());
+			return 0;
+		}
 
 	/* Align on a 64 bits boundary */
 	ts_offset = (ts_offset + 7)/8*8;
@@ -1368,10 +1241,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 		current_sample += sensor[s].channel[c].size;
 	}
 
-	/*
-	 * The finalize routine, in addition to its late sample processing duty,
-	 * has the final say on whether or not the sample gets sent to Android.
-	 */
+	/* The finalize routine, in addition to its late sample processing duty, has the final say on whether or not the sample gets sent to Android */
 	return sensor[s].ops.finalize(s, data);
 }
 
@@ -1379,10 +1249,8 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 static void synthetize_duplicate_samples (void)
 {
 	/*
-	 * Some sensor types (ex: gyroscope) are defined as continuously firing
-	 * by Android, despite the fact that we can be dealing with iio drivers
-	 * that only report events for new samples. For these we generate
-	 * reports periodically, duplicating the last data we got from the
+	 * Some sensor types (ex: gyroscope) are defined as continuously firing by Android, despite the fact that we can be dealing with iio drivers
+	 * that only report events for new samples. For these we generate reports periodically, duplicating the last data we got from the
 	 * driver. This is not necessary for polling sensors.
 	 */
 
@@ -1398,8 +1266,7 @@ static void synthetize_duplicate_samples (void)
 			continue;
 
 		/* If the sensor is continuously firing, leave it alone */
-		if (sensor[s].selected_trigger !=
-		    sensor[s].motion_trigger_name)
+		if (sensor[s].selected_trigger != sensor[s].motion_trigger_name)
 			continue;
 
 		/* If we haven't seen a sample, there's nothing to duplicate */
@@ -1443,8 +1310,7 @@ static void integrate_thread_report (uint32_t tag)
 		   expected_len);
 
 	memcpy(&timestamp, current_sample, sizeof(int64_t));
-	memcpy(sensor[s].report_buffer, sizeof(int64_t) + current_sample,
-			expected_len - sizeof(int64_t));
+	memcpy(sensor[s].report_buffer, sizeof(int64_t) + current_sample, expected_len - sizeof(int64_t));
 
 	if (len == expected_len) {
 		set_report_ts(s, timestamp);
@@ -1456,9 +1322,8 @@ static void integrate_thread_report (uint32_t tag)
 static int get_poll_wait_timeout (void)
 {
 	/*
-	 * Compute an appropriate timeout value, in ms, for the epoll_wait
-	 * call that's going to await for iio device reports and incoming
-	 * reports from our sensor sysfs data reader threads.
+	 * Compute an appropriate timeout value, in ms, for the epoll_wait call that's going to await
+	 * for iio device reports and incoming reports from our sensor sysfs data reader threads.
 	 */
 
 	int s;
@@ -1467,18 +1332,12 @@ static int get_poll_wait_timeout (void)
 	int64_t period;
 
 	/*
-	 * Check if we're dealing with a driver that only send events when
-	 * there is motion, despite the fact that the associated Android sensor
-	 * type is continuous rather than on-change. In that case we have to
-	 * duplicate events. Check deadline for the nearest upcoming event.
+	 * Check if we're dealing with a driver that only send events when there is motion, despite the fact that the associated Android sensor
+	 * type is continuous rather than on-change. In that case we have to duplicate events. Check deadline for the nearest upcoming event.
 	 */
 	for (s=0; s<sensor_count; s++)
-		if (is_enabled(s) &&
-		    sensor[s].selected_trigger ==
-		    sensor[s].motion_trigger_name &&
-		    sensor[s].sampling_rate) {
-			period = (int64_t) (1000000000.0 /
-						sensor[s].sampling_rate);
+		if (is_enabled(s) && sensor[s].selected_trigger == sensor[s].motion_trigger_name && sensor[s].sampling_rate) {
+			period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
 
 			if (sensor[s].report_ts + period < target_ts)
 				target_ts = sensor[s].report_ts + period;
@@ -1522,20 +1381,20 @@ return_available_sensor_reports:
 
 			if (sensor[s].is_virtual)
 				event_count = propagate_vsensor_report(s, &data[returned_events]);
-			else {
+			else
 				/* Report this event if it looks OK */
 				event_count = propagate_sensor_report(s, &data[returned_events]);
-			}
 
 			/* Lower flag */
 			sensor[s].report_pending = 0;
 			returned_events += event_count;
+
 			/*
-			 * If the sample was deemed invalid or unreportable,
-			 * e.g. had the same value as the previously reported
+			 * If the sample was deemed invalid or unreportable, e.g. had the same value as the previously reported
 			 * value for a 'on change' sensor, silently drop it.
 			 */
 		}
+
 		while (sensor[s].meta_data_pending) {
 			/* See sensors.h on these */
 			data[returned_events].version = META_DATA_VERSION;
@@ -1549,6 +1408,7 @@ return_available_sensor_reports:
 			sensor[s].meta_data_pending--;
 		}
 	}
+
 	if (returned_events)
 		return returned_events;
 
@@ -1600,17 +1460,12 @@ int sensor_set_delay (int s, int64_t ns)
 
 	requested_sampling_rate = 1000000000.0 / ns;
 
-	ALOGV("Entering set delay S%d (%s): current rate: %g, requested: %g\n",
-		s, sensor[s].friendly_name, sensor[s].sampling_rate,
-		requested_sampling_rate);
+	ALOGV("Entering set delay S%d (%s): current rate: %g, requested: %g\n", s, sensor[s].friendly_name, sensor[s].sampling_rate, requested_sampling_rate);
 
 	/*
-	 * Only try to adjust the low level sampling rate if it's different
-	 * from the current one, as set by the HAL. This saves a few sysfs
-	 * reads and writes as well as buffer enable/disable operations, since
-	 * at the iio level most drivers require the buffer to be turned off
-	 * in order to accept a sampling rate change. Of course that implies
-	 * that this field has to be kept up to date and that only this library
+	 * Only try to adjust the low level sampling rate if it's different from the current one, as set by the HAL. This saves a few sysfs
+	 * reads and writes as well as buffer enable/disable operations, since at the iio level most drivers require the buffer to be turned off
+	 * in order to accept a sampling rate change. Of course that implies that this field has to be kept up to date and that only this library
 	 * is changing the sampling rate.
 	 */
 
