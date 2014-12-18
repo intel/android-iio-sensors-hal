@@ -1,7 +1,8 @@
-#include <stdlib.h>
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
 #include <hardware/sensors.h>
-#include <math.h>
-#include <pthread.h>
 #include <utils/Log.h>
 #include "common.h"
 #include "filtering.h"

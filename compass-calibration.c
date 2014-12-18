@@ -279,7 +279,6 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
 
 static void compass_cal_init (FILE* data_file, sensor_info_t* info)
 {
-
 #ifdef DBG_RAW_DATA
     if (raw_data) {
         fclose(raw_data);
@@ -322,7 +321,6 @@ static void compass_cal_init (FILE* data_file, sensor_info_t* info)
         }
     }
 
-
     if (info->cal_level) {
         ALOGV("CompassCalibration: load old data, caldata: %f %f %f %f %f %f %f %f %f %f %f %f %f",
             cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0],
@@ -347,7 +345,6 @@ static void compass_cal_init (FILE* data_file, sensor_info_t* info)
 
         cal_data->bfield = 0;
     }
-
 }
 
 
@@ -366,7 +363,7 @@ static void compass_store_result (FILE* data_file, sensor_info_t* info)
         cal_data->bfield);
 
     if (ret < 0)
-        ALOGE ("compass calibration - store data failed!");
+        ALOGE ("Compass calibration - store data failed!");
 }
 
 
@@ -407,17 +404,14 @@ static int compass_collect (sensors_event_t* event, sensor_info_t* info)
      * enough to the last several collected points.
      */
     if (cal_data->sample_count > 0 && cal_data->sample_count < MAGN_DS_SIZE) {
-        unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count :
-                        cal_data->sample_count;
-        for (index = 0; index < lookback; index++){
-            for (j = 0; j < 3; j++) {
+        unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count : cal_data->sample_count;
+        for (index = 0; index < lookback; index++)
+            for (j = 0; j < 3; j++)
                 if (fabsf(data[j] - cal_data->sample[cal_data->sample_count-1-index][j]) < min_diff) {
                     ALOGV("CompassCalibration:point reject: [%f,%f,%f], selected_count=%d",
                        data[0], data[1], data[2], cal_data->sample_count);
                        return 0;
                 }
-            }
-        }
     }
 
     if (cal_data->sample_count < MAGN_DS_SIZE) {
@@ -528,7 +522,7 @@ static int compass_ready (sensor_info_t* info)
         if (new_err < max_sqr_err) {
             double err = calc_square_err(cal_data);
             if (new_err < err) {
-                /* new cal data is better, so we switch to the new */
+                /* New cal data is better, so we switch to the new */
                 memcpy(cal_data->offset, new_cal_data.offset, sizeof(cal_data->offset));
                 memcpy(cal_data->w_invert, new_cal_data.w_invert, sizeof(cal_data->w_invert));
                 cal_data->bfield = new_cal_data.bfield;
@@ -557,7 +551,6 @@ void calibrate_compass (sensors_event_t* event, sensor_info_t* info)
     cal_level = compass_ready(info);
 
     switch (cal_level) {
-
         case 0:
             scale_event(event);
             event->magnetic.status = SENSOR_STATUS_UNRELIABLE;
@@ -597,5 +590,4 @@ void compass_store_data (sensor_info_t* info)
     compass_store_result(data_file, info);
     if (data_file)
         fclose(data_file);
-
 }

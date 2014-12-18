@@ -4,7 +4,7 @@
 
 #include "matrix-ops.h"
 #include <math.h>
-#include <stdio.h>
+
 
 void transpose (int rows, int cols, double m[rows][cols], double m_trans[cols][rows])
 {
@@ -27,6 +27,8 @@ void multiply (int m, int n, int p, double m1[m][n], double m2[n][p], double res
                 result [i][k] += m1[i][j] * m2 [j][k];
         }
 }
+
+
 void invert (int s, double m[s][s],  double m_inv[s][s])
 {
     double t;
@@ -36,6 +38,7 @@ void invert (int s, double m[s][s],  double m_inv[s][s])
     for (i = 0; i < s; i++)
         for (j = 0; j < s; j++)
             m_inv[i][j] = 0;
+
     for (i = 0; i < s; i++)
         m_inv[i][i] = 1;
 
@@ -62,12 +65,13 @@ void invert (int s, double m[s][s],  double m_inv[s][s])
         }
 
         t = 1 / tmp[i][i];
+
         for (k = 0 ; k < s ; k++) {
             tmp[k][i] *= t;
             m_inv[k][i] *= t;
         }
 
-        for (j = 0 ; j < s ; j++) {
+        for (j = 0 ; j < s ; j++)
             if (j != i) {
                 t = tmp[i][j];
                 for (k = 0 ; k < s; k++) {
@@ -75,10 +79,10 @@ void invert (int s, double m[s][s],  double m_inv[s][s])
                     m_inv[k][j] -= m_inv[k][i] * t;
                 }
             }
-        }
-
     }
 }
+
+
 void multiply_scalar_inplace(int rows, int cols, double m[rows][cols], double scalar)
 {
     int i,j;
@@ -87,6 +91,8 @@ void multiply_scalar_inplace(int rows, int cols, double m[rows][cols], double sc
         for (j = 0; j < cols; j++)
             m[i][j] = m[i][j] * scalar;
 }
+
+
 void assign (int rows, int cols, double m[rows][cols], double m1[rows][cols])
 {
     int i,j;
