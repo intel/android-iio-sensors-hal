@@ -2,40 +2,26 @@
  * Copyright (C) 2014 Intel Corporation.
  */
 
-#include <errno.h>
-#include <fcntl.h>
 #include <math.h>
 #include <hardware/sensors.h>
-#include <sys/stat.h>
-#include <string.h>
+#include <stdio.h>
 #include <utils/Log.h>
 #include "calibration.h"
 #include "matrix-ops.h"
 #include "description.h"
 
-#ifdef DBG_RAW_DATA
-#define MAX_RAW_DATA_COUNT 2000
-#define RAW_DATA_FULL_PATH "/data/raw_compass_data_full_%d.txt"
-#define RAW_DATA_SELECTED_PATH "/data/raw_compass_data_selected_%d.txt"
-static FILE *raw_data = NULL;
-static FILE *raw_data_selected = NULL;
-static int raw_data_count = 0;
-int file_no = 0;
-#endif
 
-/* compass defines */
-#define COMPASS_CALIBRATION_PATH "/data/compass.conf"
-#define EPSILON 0.000000001
+/* Compass defines */
+#define COMPASS_CALIBRATION_PATH    "/data/compass.conf"
+#define EPSILON                     0.000000001
 
-#define MAGNETIC_LOW 960 /* 31 micro tesla squared */
-#define CAL_STEPS 5
+#define MAGNETIC_LOW                960 /* 31 micro tesla squared */
+#define CAL_STEPS                   5
 
-/* We'll have multiple calibration levels
-*  so that we can provide an estimation as fast as possible
-*/
-static const float min_diffs[CAL_STEPS] =  {0.2,  0.25, 0.4, 0.6, 1.0 };
-static const float max_sqr_errs[CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5 };
-static const unsigned int lookback_counts[CAL_STEPS] = {2, 3, 4, 5, 6 };
+/* We'll have multiple calibration levels so that we can provide an estimation as fast as possible */
+static const float          min_diffs       [CAL_STEPS] = {0.2,  0.25, 0.4, 0.6, 1.0};
+static const float          max_sqr_errs    [CAL_STEPS] = {10.0, 10.0, 8.0, 5.0, 3.5};
+static const unsigned int   lookback_counts [CAL_STEPS] = {2,    3,    4,   5,   6  };
 
 
 /* Reset calibration algorithm */
@@ -57,6 +43,7 @@ static double calc_square_err (compass_cal_t* data)
     double raw[3][1], result[3][1], mat_diff[3][1];
     int i;
     float stdev[3] = {0,0,0};
+    double diff;
 
     for (i = 0; i < MAGN_DS_SIZE; i++) {
         raw[0][0] = data->sample[i][0];
@@ -70,8 +57,7 @@ static double calc_square_err (compass_cal_t* data)
         substract (3, 1, raw, data->offset, mat_diff);
         multiply(3, 3, 1, data->w_invert, mat_diff, result);
 
-        double diff = sqrt(result[0][0] * result[0][0] + result[1][0] * result[1][0]
-             + result[2][0] * result[2][0]) - data->bfield;
+        diff = sqrt(result[0][0] * result[0][0] + result[1][0] * result[1][0] + result[2][0] * result[2][0]) - data->bfield;
 
         err += diff * diff;
     }
@@ -80,10 +66,7 @@ static double calc_square_err (compass_cal_t* data)
     stdev[1] = sqrt(stdev[1] / MAGN_DS_SIZE);
     stdev[2] = sqrt(stdev[2] / MAGN_DS_SIZE);
 
-    /*
-     * A sanity check - if we have too little variation for an axis
-     * it's best to reject the calibration than risking a wrong calibration.
-     */
+    /* A sanity check - if we have too little variation for an axis it's best to reject the calibration than risking a wrong calibration */
     if (stdev[0] <= 1 || stdev[1] <= 1 || stdev[2] <= 1)
         return max_sqr_errs[0];
 
@@ -127,9 +110,9 @@ static void compute_eigenvalues (double mat[3][3], double* eig1, double* eig2, d
     if (r <= -1.0)
         phi = M_PI/3;
     else if (r >= 1.0)
-        phi = 0;
-    else
-        phi = acos(r) / 3;
+            phi = 0;
+        else
+            phi = acos(r) / 3;
 
     *eig3 = q + 2 * p * cos(phi);
     *eig1 = q + 2 * p * cos(phi + 2 * M_PI / 3);
@@ -192,6 +175,7 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
         h[i][7] = -1 * m[i][2] * m[i][2];
         h[i][8] = 1;
     }
+
     transpose (MAGN_DS_SIZE, 9, h, h_trans);
     multiply (9, MAGN_DS_SIZE, 9, h_trans, h, result);
     invert (9, result, p_temp1);
@@ -217,7 +201,6 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     double off_x = offset[0][0];
     double off_y = offset[1][0];
     double off_z = offset[2][0];
-
 
     a[0][0] = 1.0 / (p[8][0] + off_x * off_x + p[6][0] * off_y * off_y
             + p[7][0] * off_z * off_z + p[3][0] * off_x * off_y
@@ -266,6 +249,7 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
     transpose(3, 3, evecs, evecs_trans);
     multiply (3, 3, 3, temp1, evecs_trans, temp);
     transpose (3, 3, temp, w_invert);
+
     *bfield = pow(sqrt(1/eig1) * sqrt(1/eig2) * sqrt(1/eig3), 1.0/3.0);
 
     if (*bfield < 0)
@@ -279,29 +263,8 @@ static int ellipsoid_fit (mat_input_t m, double offset[3][1], double w_invert[3]
 
 static void compass_cal_init (FILE* data_file, sensor_info_t* info)
 {
-#ifdef DBG_RAW_DATA
-    if (raw_data) {
-        fclose(raw_data);
-        raw_data = NULL;
-    }
-
-    if (raw_data_selected) {
-        fclose(raw_data_selected);
-        raw_data_selected = NULL;
-    }
-
-    char path[64];
-    snprintf(path, 64, RAW_DATA_FULL_PATH, file_no);
-    raw_data = fopen(path,"w+");
-    snprintf(path, 64, RAW_DATA_SELECTED_PATH, file_no);
-    raw_data_selected = fopen(path,"w+");
-    file_no++;
-    raw_data_count = 0;
-#endif
-
     compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
-    int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
-        info->max_cal_level : CAL_STEPS;
+    int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ? info->max_cal_level : CAL_STEPS;
     if (cal_data == NULL)
         return;
 
@@ -316,9 +279,8 @@ static void compass_cal_init (FILE* data_file, sensor_info_t* info)
             &cal_data->w_invert[2][0], &cal_data->w_invert[2][1], &cal_data->w_invert[2][2],
             &cal_data->bfield);
 
-        if (ret != data_count || info->cal_level >= cal_steps) {
+        if (ret != data_count || info->cal_level >= cal_steps)
             info->cal_level = 0;
-        }
     }
 
     if (info->cal_level) {
@@ -327,7 +289,6 @@ static void compass_cal_init (FILE* data_file, sensor_info_t* info)
             cal_data->w_invert[0][0], cal_data->w_invert[0][1], cal_data->w_invert[0][2], cal_data->w_invert[1][0],
             cal_data->w_invert[1][1], cal_data->w_invert[1][2], cal_data->w_invert[2][0], cal_data->w_invert[2][1],
             cal_data->w_invert[2][2], cal_data->bfield);
-
     } else {
         cal_data->offset[0][0] = 0;
         cal_data->offset[1][0] = 0;
@@ -383,34 +344,17 @@ static int compass_collect (sensors_event_t* event, sensor_info_t* info)
     if (data[0] == 0 || data[1] == 0 || data[2] == 0)
         return -1;
 
-#ifdef DBG_RAW_DATA
-    if (raw_data && raw_data_count < MAX_RAW_DATA_COUNT) {
-        fprintf(raw_data, "%f %f %f\n", (double)data[0], (double)data[1],
-                 (double)data[2]);
-        raw_data_count++;
-    }
-
-    if (raw_data && raw_data_count >= MAX_RAW_DATA_COUNT) {
-        fclose(raw_data);
-        raw_data = NULL;
-    }
-#endif
-
     lookback_count = lookback_counts[info->cal_level];
     min_diff = min_diffs[info->cal_level];
 
-    /*
-     * For the current point to be accepted, each x/y/z value must be different
-     * enough to the last several collected points.
-     */
+    /* For the current point to be accepted, each x/y/z value must be different enough to the last several collected points */
     if (cal_data->sample_count > 0 && cal_data->sample_count < MAGN_DS_SIZE) {
         unsigned int lookback = lookback_count < cal_data->sample_count ? lookback_count : cal_data->sample_count;
         for (index = 0; index < lookback; index++)
             for (j = 0; j < 3; j++)
                 if (fabsf(data[j] - cal_data->sample[cal_data->sample_count-1-index][j]) < min_diff) {
-                    ALOGV("CompassCalibration:point reject: [%f,%f,%f], selected_count=%d",
-                       data[0], data[1], data[2], cal_data->sample_count);
-                       return 0;
+                    ALOGV("CompassCalibration:point reject: [%f,%f,%f], selected_count=%d", data[0], data[1], data[2], cal_data->sample_count);
+                    return 0;
                 }
     }
 
@@ -420,13 +364,7 @@ static int compass_collect (sensors_event_t* event, sensor_info_t* info)
         cal_data->average[0] += data[0];
         cal_data->average[1] += data[1];
         cal_data->average[2] += data[2];
-        ALOGV("CompassCalibration:point collected [%f,%f,%f], selected_count=%d",
-            (double)data[0], (double)data[1], (double)data[2], cal_data->sample_count);
-#ifdef DBG_RAW_DATA
-        if (raw_data_selected) {
-            fprintf(raw_data_selected, "%f %f %f\n", (double)data[0], (double)data[1], (double)data[2]);
-        }
-#endif
+        ALOGV("CompassCalibration:point collected [%f,%f,%f], selected_count=%d", (double)data[0], (double)data[1], (double)data[2], cal_data->sample_count);
     }
     return 1;
 }
@@ -488,12 +426,10 @@ static int compass_ready (sensor_info_t* info)
     compass_cal_t new_cal_data;
 
     /*
-     *  Some sensors take unrealistically long to calibrate at higher levels.
-     *  We'll use a max_cal_level if we have such a property setup, or go with
-     *  the default settings if not.
+     * Some sensors take unrealistically long to calibrate at higher levels. We'll use a max_cal_level if we have such a property setup,
+     * or go with the default settings if not.
      */
-    int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ?
-        info->max_cal_level : CAL_STEPS;
+    int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ? info->max_cal_level : CAL_STEPS;
 
     if (cal_data->sample_count < MAGN_DS_SIZE)
         return info->cal_level;
@@ -578,6 +514,7 @@ void compass_read_data (sensor_info_t* info)
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "r");
 
     compass_cal_init(data_file, info);
+
     if (data_file)
         fclose(data_file);
 }
@@ -588,6 +525,7 @@ void compass_store_data (sensor_info_t* info)
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "w");
 
     compass_store_result(data_file, info);
+
     if (data_file)
         fclose(data_file);
 }
