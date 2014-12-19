@@ -298,9 +298,10 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 
 	s = sensor_count;
 
-	sensor[s].dev_num		= dev_num;
+	sensor[s].dev_num	= dev_num;
 	sensor[s].catalog_index	= catalog_index;
 	sensor[s].type		= sensor_type;
+	sensor[s].is_polling	= use_polling;
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
@@ -474,12 +475,13 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 
 		/* If the name matches a catalog entry, flag it */
 		for (i = 0; i < CATALOG_SIZE; i++) {
-		/* No discovery for virtual sensors */
-		if (sensor_catalog[i].is_virtual)
-			continue;
-		for (c=0; c<sensor_catalog[i].num_channels; c++)
-			if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) ||
-				!strcmp(d->d_name, sensor_catalog[i].channel[c].input_path)) {
+
+			/* No discovery for virtual sensors */
+			if (sensor_catalog[i].is_virtual)
+				continue;
+
+			for (c=0; c<sensor_catalog[i].num_channels; c++)
+				if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) || !strcmp(d->d_name, sensor_catalog[i].channel[c].input_path)) {
 					map[i] = 1;
 					break;
 			}
@@ -515,11 +517,12 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 		/* Compare en entry to known ones and create matching sensors */
 
 		for (i = 0; i<CATALOG_SIZE; i++) {
+
 			/* No discovery for virtual sensors */
 			if (sensor_catalog[i].is_virtual)
 				continue;
-			if (!strcmp(d->d_name,
-					sensor_catalog[i].channel[0].en_path)) {
+
+			if (!strcmp(d->d_name, sensor_catalog[i].channel[0].en_path)) {
 					map[i] = 1;
 					break;
 			}
@@ -533,13 +536,10 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 static void orientation_sensor_check (void)
 {
 	/*
-	 * If we have accel + gyro + magn but no rotation vector sensor,
-	 * SensorService replaces the HAL provided orientation sensor by the
-	 * AOSP version... provided we report one. So initialize a virtual
-	 * orientation sensor with zero values, which will get replaced. See:
-	 * frameworks/native/services/sensorservice/SensorService.cpp, looking
-	 * for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
-	 * back to mUserSensorList.add instead of replaceAt, but accommodate it.
+	 * If we have accel + gyro + magn but no rotation vector sensor, SensorService replaces the HAL provided orientation sensor by the
+	 * AOSP version... provided we report one. So initialize a virtual orientation sensor with zero values, which will get replaced.
+	 * See: frameworks/native/services/sensorservice/SensorService.cpp, looking for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably
+	 * fall ack to mUserSensorList.add instead of replaceAt, but accommodate it.
 	 */
 
 	int i;
@@ -583,9 +583,8 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 				 int sensor_name_len)
 {
 	/*
-	 * A new trigger has been enumerated for this sensor. Check if it makes
-	 * sense to use it over the currently selected one, and select it if it
-	 * is so. The format is something like sensor_name-dev0.
+	 * A new trigger has been enumerated for this sensor. Check if it makes sense to use it over the currently selected one,
+	 *  and select it if it is so. The format is something like sensor_name-dev0.
 	 */
 
 	const char *suffix = trigger_name + sensor_name_len + 1;
@@ -602,8 +601,7 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 	}
 
 	/*
-	 * It's neither the default "dev" nor an "any-motion" one. Make sure we
-	 * use this though, as we may not have any other indication of the name
+	 * It's neither the default "dev" nor an "any-motion" one. Make sure we use this though, as we may not have any other indication of the name
 	 * of the trigger to use with this sensor.
 	 */
 	strcpy(sensor[s].init_trigger_name, trigger_name);
@@ -613,10 +611,8 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 {
 	/*
-	 * Check if we have a sensor matching the specified trigger name,
-	 * which should then begin with the sensor name, and end with a number
-	 * equal to the iio device number the sensor is associated to. If so,
-	 * update the string we're going to write to trigger/current_trigger
+	 * Check if we have a sensor matching the specified trigger name, which should then begin with the sensor name, and end with a number
+	 * equal to the iio device number the sensor is associated to. If so, update the string we're going to write to trigger/current_trigger
 	 * when enabling this sensor.
 	 */
 
@@ -627,8 +623,7 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 	int sensor_name_len;
 
 	/*
-	 * First determine the iio device number this trigger refers to. We
-	 * expect the last few characters (typically one) of the trigger name
+	 * First determine the iio device number this trigger refers to. We expect the last few characters (typically one) of the trigger name
 	 * to be this number, so perform a few checks.
 	 */
 	len = strnlen(name, MAX_NAME_SIZE);
@@ -654,9 +649,7 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 
 			sensor_name_len = strlen(sensor[s].internal_name);
 
-			if (!strncmp(name,
-				     sensor[s].internal_name,
-				     sensor_name_len))
+			if (!strncmp(name, sensor[s].internal_name, sensor_name_len))
 				/* Switch to new trigger if appropriate */
 				propose_new_trigger(s, name, sensor_name_len);
 		}
@@ -674,9 +667,7 @@ static void setup_trigger_names (void)
 
 	/* By default, use the name-dev convention that most drivers use */
 	for (s=0; s<sensor_count; s++)
-		snprintf(sensor[s].init_trigger_name,
-			 MAX_NAME_SIZE, "%s-dev%d",
-			 sensor[s].internal_name, sensor[s].dev_num);
+		snprintf(sensor[s].init_trigger_name, MAX_NAME_SIZE, "%s-dev%d", sensor[s].internal_name, sensor[s].dev_num);
 
 	/* Now have a look to /sys/bus/iio/devices/triggerX entries */
 
@@ -694,27 +685,19 @@ static void setup_trigger_names (void)
 	}
 
 	/*
-	 * Certain drivers expose only motion triggers even though they should
-	 * be continous. For these, use the default trigger name as the motion
-	 * trigger. The code generating intermediate events is dependent on
-	 * motion_trigger_name being set to a non empty string.
+	 * Certain drivers expose only motion triggers even though they should be continous. For these, use the default trigger name as the motion
+	 * trigger. The code generating intermediate events is dependent on motion_trigger_name being set to a non empty string.
 	 */
 
 	for (s=0; s<sensor_count; s++)
-		if ((sensor[s].quirks & QUIRK_TERSE_DRIVER) &&
-		    sensor[s].motion_trigger_name[0] == '\0')
-			strcpy( sensor[s].motion_trigger_name,
-				sensor[s].init_trigger_name);
+		if ((sensor[s].quirks & QUIRK_TERSE_DRIVER) && sensor[s].motion_trigger_name[0] == '\0')
+			strcpy(sensor[s].motion_trigger_name, sensor[s].init_trigger_name);
 
 	for (s=0; s<sensor_count; s++)
-		if (sensor[s].num_channels) {
-			ALOGI("Sensor %d (%s) default trigger: %s\n", s,
-				sensor[s].friendly_name,
-				sensor[s].init_trigger_name);
+		if (!sensor[s].is_polling) {
+			ALOGI("Sensor %d (%s) default trigger: %s\n", s, sensor[s].friendly_name, sensor[s].init_trigger_name);
 			if (sensor[s].motion_trigger_name[0])
-				ALOGI("Sensor %d (%s) motion trigger: %s\n",
-				s, sensor[s].friendly_name,
-				sensor[s].motion_trigger_name);
+				ALOGI("Sensor %d (%s) motion trigger: %s\n", s, sensor[s].friendly_name, sensor[s].motion_trigger_name);
 		}
 }
 
@@ -756,10 +739,8 @@ static void uncalibrated_gyro_check (void)
 void enumerate_sensors (void)
 {
 	/*
-	 * Discover supported sensors and allocate control structures for them.
-	 * Multiple sensors can potentially rely on a single iio device (each
-	 * using their own channels). We can't have multiple sensors of the same
-	 * type on the same device. In case of detection as both a poll-mode
+	 * Discover supported sensors and allocate control structures for them. Multiple sensors can potentially rely on a single iio device (each
+	 * using their own channels). We can't have multiple sensors of the same type on the same device. In case of detection as both a poll-mode
 	 * and trigger-based sensor, use the trigger usage mode.
 	 */
 	char poll_sensors[CATALOG_SIZE];
@@ -783,9 +764,8 @@ void enumerate_sensors (void)
 				if (poll_sensors[i])
 					add_sensor(dev_num, i, 1);
 
-		if (trig_found) {
+		if (trig_found)
 			build_sensor_report_maps(dev_num);
-		}
 	}
 
 	ALOGI("Discovered %d sensors\n", sensor_count);
@@ -796,12 +776,8 @@ void enumerate_sensors (void)
 	/* Make sure Android fall backs to its own orientation sensor */
 	orientation_sensor_check();
 
-	/*
-	 * Create the uncalibrated counterpart to the compensated gyroscope.
-	 * This is is a new sensor type in Android 4.4.
-	 */
-
-	  uncalibrated_gyro_check();
+	/* Create the uncalibrated counterpart to the compensated gyroscope. This is is a new sensor type in Android 4.4. */
+	 uncalibrated_gyro_check();
 }
 
 

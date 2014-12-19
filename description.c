@@ -544,8 +544,7 @@ max_delay_t sensor_get_max_delay (int s)
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		/* If poll mode sensor */
-		if (!sensor[s].num_channels) {
+		if (sensor[s].is_polling) {
 			/* The must rate */
 			min_supported_rate = get_cdd_freq(s, 1);
 		}
@@ -624,8 +623,7 @@ int32_t sensor_get_min_delay (int s)
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		/* If poll mode sensor */
-		if (!sensor[s].num_channels) {
+		if (sensor[s].is_polling) {
 			/* The should rate */
 			max_supported_rate = get_cdd_freq(s, 0);
 		}

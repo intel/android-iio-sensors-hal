@@ -313,6 +313,7 @@ void build_sensor_report_maps (int dev_num)
 	 * the sequence of indices, so it is dependent on discovery of all sensors.
 	 */
 	 offset = 0;
+
 	 for (i=0; i<MAX_SENSORS * MAX_CHANNELS; i++) {
 		s =	sensor_handle_from_index[i];
 		c =	channel_number_from_index[i];
@@ -387,7 +388,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 
 	/* We changed the state of a sensor: adjust device ref counts */
 
-	if (sensor[s].num_channels) {
+	if (!sensor[s].is_polling) {
 
 			if (enabled)
 				trig_sensors_per_dev[dev_num]++;
@@ -700,7 +701,7 @@ static int sensor_set_rate (int s, float requested_rate)
 		return 0;
 
 	/* If we're dealing with a poll-mode sensor */
-	if (!sensor[s].num_channels) {
+	if (sensor[s].is_polling) {
 		if (is_enabled(s))
 			pthread_cond_signal(&thread_release_cond[s]); /* Wake up thread so the new sampling rate gets used */
 		return 0;
@@ -881,7 +882,6 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	int dev_fd;
 	int ret;
 	int dev_num = sensor[s].dev_num;
-	int is_poll_sensor = !sensor[s].num_channels;
 
 	if (sensor[s].is_virtual)
 		return sensor_activate_virtual(s, enabled, from_virtual);
@@ -901,7 +901,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	if (enabled && (sensor[s].quirks & QUIRK_NOISY))
 		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
-	if (!is_poll_sensor) {
+	if (!sensor[s].is_polling) {
 
 		/* Stop sampling */
 		enable_buffer(dev_num, 0);
@@ -923,7 +923,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	dev_fd = device_fd[dev_num];
 
 	if (!enabled) {
-		if (is_poll_sensor)
+		if (sensor[s].is_polling)
 			stop_acquisition_thread(s);
 
 		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
@@ -957,7 +957,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
 
-		if (!is_poll_sensor) {
+		if (!sensor[s].is_polling) {
 
 			/* Add this iio device fd to the set of watched fds */
 			ev.events = EPOLLIN;
@@ -977,7 +977,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	/* Ensure that on-change sensors send at least one event after enable */
 	sensor[s].prev_val = -1;
 
-	if (is_poll_sensor)
+	if (sensor[s].is_polling)
 		start_acquisition_thread(s);
 
 	/* Reevaluate sampling rates of linked sensors */
@@ -1221,7 +1221,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	current_sample = sensor[s].report_buffer;
 
 	/* If this is a poll sensor */
-	if (!sensor[s].num_channels) {
+	if (sensor[s].is_polling) {
 		/* Use the data provided by the acquisition thread */
 		ALOGV("Reporting data from worker thread for S%d\n", s);
 		memcpy(data->data, current_sample, num_fields * sizeof(float));

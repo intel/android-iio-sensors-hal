@@ -149,6 +149,8 @@ typedef struct
 
 	int num_channels;	/* Actual channel count ; 0 for poll mode sensors	*/
 
+	int is_polling;		/* 1 if we use the sensor in poll mode, 0 if triggered	*/
+
 	/*
 	 * The array below indicates where to gather report data for this sensor inside the reports that we read from the iio character device.
 	 * It is updated whenever channels are enabled or disabled on the same device. Channel size indicates the size in bytes of fields, and
