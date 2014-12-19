@@ -426,6 +426,38 @@ static int get_field_count (int s)
 	}
 }
 
+/*
+ *  CTS acceptable thresholds:
+ *	EventGapVerification.java: (th <= 1.8)
+ *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
+ */
+#define THRESHOLD 1.10
+#define MAX_DELAY 500000000 /* 500 ms */
+
+void set_report_ts(int s, int64_t ts)
+{
+	int64_t maxTs, period;
+
+	/*
+	*  A bit of a hack to please a bunch of cts tests. They
+	*  expect the timestamp to be exacly according to the set-up
+	*  frequency but if we're simply getting the timestamp at hal level
+	*  this may not be the case. Perhaps we'll get rid of this when
+	*  we'll be reading the timestamp from the iio channel for all sensors
+	*/
+	if (sensor[s].report_ts && sensor[s].sampling_rate &&
+		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
+	{
+		period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
+		maxTs = sensor[s].report_ts + THRESHOLD * period;
+		/* If we're too far behind get back on track */
+		if (ts - maxTs >= MAX_DELAY)
+			maxTs = ts;
+		sensor[s].report_ts = (ts < maxTs ? ts : maxTs);
+	} else {
+		sensor[s].report_ts = ts;
+	}
+}
 
 static void* acquisition_routine (void* param)
 {
@@ -484,8 +516,8 @@ static void* acquisition_routine (void* param)
 				goto exit;
 		}
 		stop = get_timestamp_boot();
-		data.timestamp = start/2 + stop/2;
-
+		set_report_ts(s, start/2 + stop/2);
+		data.timestamp = sensor[s].report_ts;
 		/* If the sample looks good */
 		if (sensor[s].ops.finalize(s, &data)) {
 
@@ -1026,41 +1058,6 @@ static void enable_motion_trigger (int dev_num)
 	enable_buffer(dev_num, 1);
 }
 
-
-/*
- *  CTS acceptable thresholds:
- *	EventGapVerification.java: (th <= 1.8)
- *	FrequencyVerification.java: (0.9)*(expected freq) => (th <= 1.1111)
- */
-#define THRESHOLD 1.10
-#define MAX_DELAY 500000000 /* 500 ms */
-
-void set_report_ts(int s, int64_t ts)
-{
-	int64_t maxTs, period;
-
-	/*
-	*  A bit of a hack to please a bunch of cts tests. They
-	*  expect the timestamp to be exacly according to the set-up
-	*  frequency but if we're simply getting the timestamp at hal level
-	*  this may not be the case. Perhaps we'll get rid of this when
-	*  we'll be reading the timestamp from the iio channel for all sensors
-	*/
-	if (sensor[s].report_ts && sensor[s].sampling_rate &&
-		REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_CONTINUOUS_MODE)
-	{
-		period = (int64_t) (1000000000.0 / sensor[s].sampling_rate);
-		maxTs = sensor[s].report_ts + THRESHOLD * period;
-		/* If we're too far behind get back on track */
-		if (ts - maxTs >= MAX_DELAY)
-			maxTs = ts;
-		sensor[s].report_ts = (ts < maxTs ? ts : maxTs);
-	} else {
-		sensor[s].report_ts = ts;
-	}
-}
-
-
 static void stamp_reports (int dev_num, int64_t ts)
 {
 	int s;
@@ -1192,6 +1189,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	int num_fields	  = get_field_count(s);
 	int c;
 	unsigned char* current_sample;
+	int ret;
 
 	/* If there's nothing to return... we're done */
 	if (!num_fields)
@@ -1200,6 +1198,9 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor[s].type);
 
 	if (sensor[s].is_polling) {
+		/* We received a good sample but we're not directly enabled so we'll drop */
+		if (!sensor[s].directly_enabled)
+			return 0;
 		/* Use the data provided by the acquisition thread */
 		ALOGV("Reporting data from worker thread for S%d\n", s);
 		memcpy(data, &sensor[s].sample, sizeof(sensors_event_t));
@@ -1226,8 +1227,14 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 		current_sample += sensor[s].channel[c].size;
 	}
 
+	ret = sensor[s].ops.finalize(s, data);
+
+	/* We will drop samples if the sensor is not directly enabled */
+	if (!sensor[s].directly_enabled)
+		return 0;
+
 	/* The finalize routine, in addition to its late sample processing duty, has the final say on whether or not the sample gets sent to Android */
-	return sensor[s].ops.finalize(s, data);
+	return ret;
 }
 
 
@@ -1287,10 +1294,8 @@ static void integrate_thread_report (uint32_t tag)
 
 	len = read(sensor[s].thread_data_fd[0], &sensor[s].sample, sizeof(sensors_event_t));
 
-	if (len == sizeof(sensors_event_t)) {
-		set_report_ts(s, sensor[s].sample.timestamp);
+	if (len == sizeof(sensors_event_t))
 		sensor[s].report_pending = DATA_SYSFS;
-	}
 }
 
 

@@ -410,6 +410,9 @@ char* sensor_get_string_type (int s)
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			return SENSOR_STRING_TYPE_MAGNETIC_FIELD;
 
+		case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+			return SENSOR_STRING_TYPE_MAGNETIC_FIELD_UNCALIBRATED;
+
 		case SENSOR_TYPE_ORIENTATION:
 			return SENSOR_STRING_TYPE_ORIENTATION;
 
@@ -475,7 +478,6 @@ static int get_cdd_freq (int s, int must)
 			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
 
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			return (must ? 200 : 200); /* must 200 Hz, should 200 Hz, CDD compliant */
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:

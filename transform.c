@@ -240,6 +240,29 @@ static void process_event_gyro_uncal (int s, int i, sensors_event_t* data)
 	}
 }
 
+static void process_event_magn_uncal (int s, int i, sensors_event_t* data)
+{
+	compass_cal_t* magn_data;
+
+	if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD) {
+		magn_data = (compass_cal_t*) sensor[s].cal_data;
+
+		memcpy(&sensor[i].sample, data, sizeof(sensors_event_t));
+
+		sensor[i].sample.type = SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED;
+		sensor[i].sample.sensor = s;
+
+		sensor[i].sample.data[0] = data->data[0] + magn_data->offset[0][0];
+		sensor[i].sample.data[1] = data->data[1] + magn_data->offset[1][0];
+		sensor[i].sample.data[2] = data->data[2] + magn_data->offset[2][0];
+
+		sensor[i].sample.uncalibrated_magnetic.bias[0] = magn_data->offset[0][0];
+		sensor[i].sample.uncalibrated_magnetic.bias[1] = magn_data->offset[1][0];
+		sensor[i].sample.uncalibrated_magnetic.bias[2] = magn_data->offset[2][0];
+
+		sensor[i].report_pending = 1;
+	}
+}
 
 static void process_event (int s, sensors_event_t* data)
 {
@@ -256,7 +279,9 @@ static void process_event (int s, sensors_event_t* data)
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				process_event_gyro_uncal(s, i, data);
 				break;
-
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				process_event_magn_uncal(s, i, data);
+				break;
  			default:
 				break;
 		}
@@ -335,9 +360,6 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 	if (sensor[s].ref_count)
 		process_event(s, data);
 
-	/* We will drop samples if the sensor is not directly enabled */
-	if (!sensor[s].directly_enabled)
-		return 0;
 
 	return 1; /* Return sample to Android */
 }
