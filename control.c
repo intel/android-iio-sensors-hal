@@ -436,7 +436,7 @@ static void* acquisition_routine (void* param)
 	 */
 
 	int s = (int) (size_t) param;
-	int num_fields, sample_size;
+	int num_fields;
 	sensors_event_t data = {0};
 	int c;
 	int ret;
@@ -455,8 +455,12 @@ static void* acquisition_routine (void* param)
 		return NULL;
 	}
 
+	/* Initialize data fields that will be shared by all sensor reports */
+	data.version	= sizeof(sensors_event_t);
+	data.sensor	= s;
+	data.type	= sensor[s].type;
+
 	num_fields = get_field_count(s);
-	sample_size = sizeof(int64_t) + num_fields * sizeof(float);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be locked by the thread that's waiting on it. We use these condition
@@ -486,10 +490,10 @@ static void* acquisition_routine (void* param)
 		if (sensor[s].ops.finalize(s, &data)) {
 
 			/* Pipe it for transmission to poll loop */
-			ret = write(sensor[s].thread_data_fd[1], &data.timestamp, sample_size);
+			ret = write(sensor[s].thread_data_fd[1], &data, sizeof(sensors_event_t));
 
-			if (ret != sample_size)
-				ALOGE("S%d write failure: wrote %d, got %d\n", s, sample_size, ret);
+			if (ret != sizeof(sensors_event_t))
+				ALOGE("S%d write failure: wrote %d, got %d\n", s, sizeof(sensors_event_t), ret);
 		}
 
 		/* Check and honor termination requests */
@@ -1193,6 +1197,16 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	if (!num_fields)
 		return 0;
 
+	ALOGV("Sample on sensor %d (type %d):\n", s, sensor[s].type);
+
+	if (sensor[s].is_polling) {
+		/* Use the data provided by the acquisition thread */
+		ALOGV("Reporting data from worker thread for S%d\n", s);
+		memcpy(data, &sensor[s].sample, sizeof(sensors_event_t));
+		data->timestamp = sensor[s].report_ts;
+		return 1;
+	}
+
 	memset(data, 0, sizeof(sensors_event_t));
 
 	data->version	= sizeof(sensors_event_t);
@@ -1200,19 +1214,10 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	data->type	= sensor[s].type;
 	data->timestamp = sensor[s].report_ts;
 
-	ALOGV("Sample on sensor %d (type %d):\n", s, sensor[s].type);
+	/* Convert the data into the expected Android-level format */
 
 	current_sample = sensor[s].report_buffer;
 
-	/* If this is a poll sensor */
-	if (sensor[s].is_polling) {
-		/* Use the data provided by the acquisition thread */
-		ALOGV("Reporting data from worker thread for S%d\n", s);
-		memcpy(data->data, current_sample, num_fields * sizeof(float));
-		return 1;
-	}
-
-	/* Convert the data into the expected Android-level format */
 	for (c=0; c<num_fields; c++) {
 
 		data->data[c] = sensor[s].ops.transform (s, c, current_sample);
@@ -1279,19 +1284,11 @@ static void integrate_thread_report (uint32_t tag)
 {
 	int s = tag - THREAD_REPORT_TAG_BASE;
 	int len;
-	int expected_len;
-	int64_t timestamp;
-	unsigned char current_sample[MAX_SENSOR_REPORT_SIZE];
 
-	expected_len = sizeof(int64_t) + get_field_count(s) * sizeof(float);
+	len = read(sensor[s].thread_data_fd[0], &sensor[s].sample, sizeof(sensors_event_t));
 
-	len = read(sensor[s].thread_data_fd[0], current_sample, expected_len);
-
-	memcpy(&timestamp, current_sample, sizeof(int64_t));
-	memcpy(sensor[s].report_buffer, sizeof(int64_t) + current_sample, expected_len - sizeof(int64_t));
-
-	if (len == expected_len) {
-		set_report_ts(s, timestamp);
+	if (len == sizeof(sensors_event_t)) {
+		set_report_ts(s, sensor[s].sample.timestamp);
 		sensor[s].report_pending = DATA_SYSFS;
 	}
 }
