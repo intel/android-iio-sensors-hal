@@ -21,15 +21,15 @@
 #include "filtering.h"
 
 /* Currently active sensors count, per device */
-static int poll_sensors_per_dev[MAX_DEVICES];	/* poll-mode sensors	*/
-static int trig_sensors_per_dev[MAX_DEVICES];	/* trigger, event based	*/
+static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
+static int trig_sensors_per_dev[MAX_DEVICES];		/* trigger, event based				*/
 
 static int device_fd[MAX_DEVICES];			/* fd on the /dev/iio:deviceX file		*/
 static int has_iio_ts[MAX_DEVICES];			/* ts channel available on this iio dev		*/
 static int expected_dev_report_size[MAX_DEVICES];	/* expected iio scan len			*/
 static int poll_fd;					/* epoll instance covering all enabled sensors	*/
 
-static int active_poll_sensors; /* Number of enabled poll-mode sensors */
+static int active_poll_sensors;				/* Number of enabled poll-mode sensors		*/
 
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
@@ -37,15 +37,15 @@ static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
 static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 
 /*
- * We associate tags to each of our poll set entries. These tags have the
- * following values:
+ * We associate tags to each of our poll set entries. These tags have the following values:
  * - a iio device number if the fd is a iio character device fd
  * - THREAD_REPORT_TAG_BASE + sensor handle if the fd is the receiving end of a pipe used by a sysfs data acquisition thread
  */
-#define THREAD_REPORT_TAG_BASE	0x00010000
+#define THREAD_REPORT_TAG_BASE		1000
 
-#define ENABLE_BUFFER_RETRIES 10
-#define ENABLE_BUFFER_RETRY_DELAY_MS 10
+/* If buffer enable fails, we may want to retry a few times before giving up */
+#define ENABLE_BUFFER_RETRIES		3
+#define ENABLE_BUFFER_RETRY_DELAY_MS	10
 
 
 inline int is_enabled (int s)
@@ -84,35 +84,25 @@ static int check_state_change (int s, int enabled, int from_virtual)
 }
 
 
-static int enable_buffer(int dev_num, int enabled)
+static int enable_buffer (int dev_num, int enabled)
 {
 	char sysfs_path[PATH_MAX];
-	int ret, retries, millisec;
-	struct timespec req = {0};
-
-	retries = ENABLE_BUFFER_RETRIES;
-	millisec = ENABLE_BUFFER_RETRY_DELAY_MS;
-	req.tv_sec = 0;
-	req.tv_nsec = millisec * 1000000L;
+	int retries = ENABLE_BUFFER_RETRIES;
 
 	sprintf(sysfs_path, ENABLE_PATH, dev_num);
 
-	while (retries--) {
+	while (retries) {
 		/* Low level, non-multiplexed, enable/disable routine */
-		ret = sysfs_write_int(sysfs_path, enabled);
-		if (ret > 0)
-			break;
+		if (sysfs_write_int(sysfs_path, enabled) > 0)
+			return 0;
 
-		ALOGE("Failed enabling buffer, retrying");
-		nanosleep(&req, (struct timespec *)NULL);
+		ALOGE("Failed enabling buffer on dev%d, retrying", dev_num);
+		usleep(ENABLE_BUFFER_RETRY_DELAY_MS*1000);
+		retries--;
 	}
 
-	if (ret < 0) {
-		ALOGE("Could not enable buffer\n");
-		return -EIO;
-	}
-
-	return 0;
+	ALOGE("Could not enable buffer\n");
+	return -EIO;
 }
 
 
@@ -183,8 +173,7 @@ static void enable_iio_timestamp (int dev_num, int known_channels)
 }
 
 
-static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN],
-			     datum_info_t *type_info)
+static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN], datum_info_t *type_info)
 {
 	/* Return size in bytes for this type specification, or -1 in error */
 	char sign;
@@ -196,8 +185,8 @@ static int decode_type_spec (const char type_buf[MAX_TYPE_SPEC_LEN],
 
 	tokens = sscanf(type_buf, "%ce:%c%u/%u>>%u", &endianness, &sign, &realbits, &storagebits, &shift);
 
-	if     (tokens != 5 || (endianness != 'b' && endianness != 'l') || (sign != 'u' && sign != 's') ||
-		realbits > storagebits || (storagebits != 16 && storagebits != 32 && storagebits != 64)) {
+	if (tokens != 5 || (endianness != 'b' && endianness != 'l') || (sign != 'u' && sign != 's') ||
+	    realbits > storagebits || (storagebits != 16 && storagebits != 32 && storagebits != 64)) {
 			ALOGE("Invalid iio channel type spec: %s\n", type_buf);
 			return -1;
 	}
@@ -459,7 +448,7 @@ static void* acquisition_routine (void* param)
 		return NULL;
 	}
 
-	ALOGI("Entering data acquisition thread S%d (%s), rate:%g\n", s, sensor[s].friendly_name, sensor[s].sampling_rate);
+	ALOGI("Entering S%d (%s) data acquisition thread: rate:%g\n", s, sensor[s].friendly_name, sensor[s].sampling_rate);
 
 	if (sensor[s].sampling_rate <= 0) {
 		ALOGE("Invalid rate in acquisition routine for sensor %d: %g\n", s, sensor[s].sampling_rate);
@@ -481,9 +470,11 @@ static void* acquisition_routine (void* param)
 	/* Check and honor termination requests */
 	while (sensor[s].thread_data_fd[1] != -1) {
 		start = get_timestamp_boot();
+
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
 			data.data[c] = acquire_immediate_value(s, c);
+
 			/* Check and honor termination requests */
 			if (sensor[s].thread_data_fd[1] == -1)
 				goto exit;
@@ -515,8 +506,7 @@ static void* acquisition_routine (void* param)
 		timestamp += period;
 		set_timestamp(&target_time, timestamp);
 
-		/* Wait until the sampling time elapses, or a rate change is signaled, or a thread exit is requested.
-		 */
+		/* Wait until the sampling time elapses, or a rate change is signaled, or a thread exit is requested */
 		ret = pthread_cond_timedwait(&thread_release_cond[s], &thread_release_mutex[s], &target_time);
 	}
 
@@ -555,7 +545,7 @@ static void start_acquisition_thread (int s)
 	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, incoming_data_fd , &ev);
 
 	/* Create and start worker thread */
-	ret = pthread_create(	&sensor[s].acquisition_thread, NULL, acquisition_routine, (void*) (size_t) s);
+	ret = pthread_create(&sensor[s].acquisition_thread, NULL, acquisition_routine, (void*) (size_t) s);
 }
 
 
@@ -593,10 +583,8 @@ static void stop_acquisition_thread (int s)
 static int is_fast_accelerometer (int s)
 {
 	/*
-	 * Some games don't react well to accelerometers using any-motion
-	 * triggers. Even very low thresholds seem to trip them, and they tend
-	 * to request fairly high event rates. Favor continuous triggers if the
-	 * sensor is an accelerometer and uses a sampling rate of at least 25.
+	 * Some games don't react well to accelerometers using any-motion triggers. Even very low thresholds seem to trip them, and they tend to
+	 * request fairly high event rates. Favor continuous triggers if the sensor is an accelerometer and uses a sampling rate of at least 25.
 	 */
 
 	if (sensor[s].type != SENSOR_TYPE_ACCELEROMETER)
@@ -732,7 +720,7 @@ static int sensor_set_rate (int s, float requested_rate)
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0){
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
 		cursor = freqs_buf;
 
 		/* Decode allowed sampling rates string, ex: "10 20 50 100" */
@@ -750,9 +738,8 @@ static int sensor_set_rate (int s, float requested_rate)
 			}
 
 			/*
-			 * If we reached a higher value than the desired rate, adjust selected rate so it matches the first higher
-			 * available one and stop parsing - this makes the assumption that rates are sorted by increasing value
-			 * in the allowed frequencies string.
+			 * If we reached a higher value than the desired rate, adjust selected rate so it matches the first higher available one and
+			 * stop parsing - this makes the assumption that rates are sorted by increasing value in the allowed frequencies string.
 			 */
 			if (sr > arb_sampling_rate) {
 				arb_sampling_rate = sr;
@@ -773,7 +760,6 @@ static int sensor_set_rate (int s, float requested_rate)
 		arb_sampling_rate > sensor[s].max_supported_rate) {
 		arb_sampling_rate = sensor[s].max_supported_rate;
 	}
-
 
 	/* Coordinate with others active sensors on the same device, if any */
 	if (per_device_sampling_rate)
@@ -796,8 +782,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	if (arb_sampling_rate == cur_sampling_rate)
 		return 0;
 
-	ALOGI("Sensor %d (%s) sampling rate set to %g\n",
-	      s, sensor[s].friendly_name, arb_sampling_rate);
+	ALOGI("Sensor %d (%s) sampling rate set to %g\n", s, sensor[s].friendly_name, arb_sampling_rate);
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
@@ -1077,9 +1062,8 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-			if (sensor[s].dev_num == dev_num &&
-				is_enabled(s))
-					set_report_ts(s, ts);
+		if (sensor[s].dev_num == dev_num && is_enabled(s))
+			set_report_ts(s, ts);
 }
 
 
@@ -1245,9 +1229,9 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 static void synthetize_duplicate_samples (void)
 {
 	/*
-	 * Some sensor types (ex: gyroscope) are defined as continuously firing by Android, despite the fact that we can be dealing with iio drivers
-	 * that only report events for new samples. For these we generate reports periodically, duplicating the last data we got from the
-	 * driver. This is not necessary for polling sensors.
+	 * Some sensor types (ex: gyroscope) are defined as continuously firing by Android, despite the fact that
+	 * we can be dealing with iio drivers that only report events for new samples. For these we generate reports
+	 * periodically, duplicating the last data we got from the driver. This is not necessary for polling sensors.
 	 */
 
 	int s;
@@ -1301,9 +1285,7 @@ static void integrate_thread_report (uint32_t tag)
 
 	expected_len = sizeof(int64_t) + get_field_count(s) * sizeof(float);
 
-	len = read(sensor[s].thread_data_fd[0],
-		   current_sample,
-		   expected_len);
+	len = read(sensor[s].thread_data_fd[0], current_sample, expected_len);
 
 	memcpy(&timestamp, current_sample, sizeof(int64_t));
 	memcpy(sensor[s].report_buffer, sizeof(int64_t) + current_sample, expected_len - sizeof(int64_t));
@@ -1370,8 +1352,10 @@ return_available_sensor_reports:
 	synthetize_duplicate_samples();
 
 	returned_events = 0;
+
 	/* Check our sensor collection for available reports */
 	for (s=0; s<sensor_count && returned_events < count; s++) {
+
 		if (sensor[s].report_pending) {
 			event_count = 0;
 
