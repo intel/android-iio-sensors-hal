@@ -445,18 +445,9 @@ char* sensor_get_string_type (int s)
 
 flag_t sensor_get_flags (int s)
 {
-	flag_t flags = 0x0;
+	flag_t flags = 0;
 
 	switch (sensor[s].type) {
-		case SENSOR_TYPE_ACCELEROMETER:
-		case SENSOR_TYPE_MAGNETIC_FIELD:
-		case SENSOR_TYPE_ORIENTATION:
-		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-		case SENSOR_TYPE_PRESSURE:
-			flags |= SENSOR_FLAG_CONTINUOUS_MODE;
-			break;
-
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
