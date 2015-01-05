@@ -14,6 +14,9 @@
 
 #define IIO_SENSOR_HAL_VERSION	1
 
+#define MIN_ON_CHANGE_SAMPLING_PERIOD_US   200000 /* For on change sensors (temperature, proximity, ALS, etc.) report we support 5 Hz max (0.2 s min period) */
+#define MAX_ON_CHANGE_SAMPLING_PERIOD_US 10000000 /* 0.1 Hz min (10 s max period)*/
+
 /*
  * About properties
  *
@@ -86,13 +89,13 @@ static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 	char prop_val[PROP_VALUE_MAX];
 	char extended_sel[PROP_VALUE_MAX];
 
-	int i			= sensor_info[s].catalog_index;
+	int i			= sensor[s].catalog_index;
 	const char *prefix	= sensor_catalog[i].tag;
 
 	/* First try most specialized form, like ro.iio.anglvel.bmg160.name */
 
 	snprintf(extended_sel, PROP_NAME_MAX, "%s.%s",
-		 sensor_info[s].internal_name, sel);
+		 sensor[s].internal_name, sel);
 
 	snprintf(prop_name, PROP_NAME_MAX, PROP_BASE, prefix, extended_sel);
 
@@ -142,27 +145,57 @@ int sensor_get_fl_prop (int s, const char* sel, float* val)
 
 char* sensor_get_name (int s)
 {
-	if (sensor_info[s].friendly_name[0] != '\0' ||
-		!sensor_get_st_prop(s, "name", sensor_info[s].friendly_name))
-			return sensor_info[s].friendly_name;
+	char buf[MAX_NAME_SIZE];
 
-	/* If we got a iio device name from sysfs, use it */
-	if (sensor_info[s].internal_name[0]) {
-		snprintf(sensor_info[s].friendly_name, MAX_NAME_SIZE, "S%d-%s",
-			 s, sensor_info[s].internal_name);
-	} else {
-		sprintf(sensor_info[s].friendly_name, "S%d", s);
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				strcpy(buf, sensor[sensor[s].base[0]].friendly_name);
+				snprintf(sensor[s].friendly_name,
+					 MAX_NAME_SIZE,
+					 "%s %s", "Uncalibrated", buf);
+				return sensor[s].friendly_name;
+
+			default:
+				return "";
+		}
 	}
 
-	return sensor_info[s].friendly_name;
+	if (sensor[s].friendly_name[0] != '\0' ||
+		!sensor_get_st_prop(s, "name", sensor[s].friendly_name))
+			return sensor[s].friendly_name;
+
+	/* If we got a iio device name from sysfs, use it */
+	if (sensor[s].internal_name[0]) {
+		snprintf(sensor[s].friendly_name, MAX_NAME_SIZE, "S%d-%s",
+			 s, sensor[s].internal_name);
+	} else {
+		sprintf(sensor[s].friendly_name, "S%d", s);
+	}
+
+	return sensor[s].friendly_name;
 }
 
 
 char* sensor_get_vendor (int s)
 {
-	if (sensor_info[s].vendor_name[0] ||
-		!sensor_get_st_prop(s, "vendor", sensor_info[s].vendor_name))
-			return sensor_info[s].vendor_name;
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor[sensor[s].base[0]].vendor_name;
+			break;
+
+			default:
+				return "";
+
+		}
+	}
+
+	if (sensor[s].vendor_name[0] ||
+		!sensor_get_st_prop(s, "vendor", sensor[s].vendor_name))
+			return sensor[s].vendor_name;
 
 	return "";
 }
@@ -176,15 +209,26 @@ int sensor_get_version (__attribute__((unused)) int s)
 
 float sensor_get_max_range (int s)
 {
-	if (sensor_info[s].max_range != 0.0 ||
-		!sensor_get_fl_prop(s, "max_range", &sensor_info[s].max_range))
-			return sensor_info[s].max_range;
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor[sensor[s].base[0]].max_range;
+
+			default:
+				return 0.0;
+		}
+	}
+
+	if (sensor[s].max_range != 0.0 ||
+		!sensor_get_fl_prop(s, "max_range", &sensor[s].max_range))
+			return sensor[s].max_range;
 
 	/* Try returning a sensible value given the sensor type */
 
 	/* We should cap returned samples accordingly... */
 
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 			return 50;
 
@@ -208,7 +252,7 @@ float sensor_get_max_range (int s)
 			return 100;
 
 		default:
-			return 0.0;
+			return 0;
 		}
 }
 
@@ -251,9 +295,20 @@ int sensor_get_cal_steps (int s)
 
 float sensor_get_resolution (int s)
 {
-	if (sensor_info[s].resolution != 0.0 ||
-		!sensor_get_fl_prop(s, "resolution", &sensor_info[s].resolution))
-			return sensor_info[s].resolution;
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor[sensor[s].base[0]].resolution;
+
+			default:
+				return 0;
+		}
+	}
+
+	if (sensor[s].resolution != 0.0 ||
+		!sensor_get_fl_prop(s, "resolution", &sensor[s].resolution))
+			return sensor[s].resolution;
 
 	return 0;
 }
@@ -261,10 +316,22 @@ float sensor_get_resolution (int s)
 
 float sensor_get_power (int s)
 {
+
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor[sensor[s].base[0]].power;
+
+			default:
+				return 0;
+		}
+	}
+
 	/* mA used while sensor is in use ; not sure about volts :) */
-	if (sensor_info[s].power != 0.0 ||
-		!sensor_get_fl_prop(s, "power",	&sensor_info[s].power))
-			return sensor_info[s].power;
+	if (sensor[s].power != 0.0 ||
+		!sensor_get_fl_prop(s, "power",	&sensor[s].power))
+			return sensor[s].power;
 
 	return 0;
 }
@@ -273,9 +340,9 @@ float sensor_get_power (int s)
 float sensor_get_illumincalib (int s)
 {
 	/* calibrating the ALS Sensor*/
-	if (sensor_info[s].illumincalib != 0.0 ||
-		!sensor_get_fl_prop(s, "illumincalib", &sensor_info[s].illumincalib)) {
-			return sensor_info[s].illumincalib;
+	if (sensor[s].illumincalib != 0.0 ||
+		!sensor_get_fl_prop(s, "illumincalib", &sensor[s].illumincalib)) {
+			return sensor[s].illumincalib;
 	}
 
 	return 0;
@@ -287,26 +354,26 @@ uint32_t sensor_get_quirks (int s)
 	char quirks_buf[MAX_NAME_SIZE];
 
 	/* Read and decode quirks property on first reference */
-	if (!(sensor_info[s].quirks & QUIRK_ALREADY_DECODED)) {
+	if (!(sensor[s].quirks & QUIRK_ALREADY_DECODED)) {
 		quirks_buf[0] = '\0';
 		sensor_get_st_prop(s, "quirks", quirks_buf);
 
 		if (strstr(quirks_buf, "init-rate"))
-			sensor_info[s].quirks |= QUIRK_INITIAL_RATE;
+			sensor[s].quirks |= QUIRK_INITIAL_RATE;
 
 		if (strstr(quirks_buf, "continuous"))
-			sensor_info[s].quirks |= QUIRK_FORCE_CONTINUOUS;
+			sensor[s].quirks |= QUIRK_FORCE_CONTINUOUS;
 
 		if (strstr(quirks_buf, "terse"))
-			sensor_info[s].quirks |= QUIRK_TERSE_DRIVER;
+			sensor[s].quirks |= QUIRK_TERSE_DRIVER;
 
 		if (strstr(quirks_buf, "noisy"))
-			sensor_info[s].quirks |= QUIRK_NOISY;
+			sensor[s].quirks |= QUIRK_NOISY;
 
-		sensor_info[s].quirks |= QUIRK_ALREADY_DECODED;
+		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
-	return sensor_info[s].quirks;
+	return sensor[s].quirks;
 }
 
 
@@ -314,9 +381,9 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 {
 	char buf[MAX_NAME_SIZE];
 	int i;
-	int count = sensor_catalog[sensor_info[s].catalog_index].num_channels;
+	int count = sensor_catalog[sensor[s].catalog_index].num_channels;
 
-	if  (sensor_get_st_prop(s, "order", buf))
+	if (sensor_get_st_prop(s, "order", buf))
 		return 0; /* No order property */
 
 	/* Assume ASCII characters, in the '0'..'9' range */
@@ -333,9 +400,10 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	return 1;	/* OK to use modified ordering map */
 }
 
+
 char* sensor_get_string_type (int s)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return SENSOR_STRING_TYPE_ACCELEROMETER;
 
@@ -374,20 +442,12 @@ char* sensor_get_string_type (int s)
 		}
 }
 
+
 flag_t sensor_get_flags (int s)
 {
-	flag_t flags = 0x0;
+	flag_t flags = 0;
 
-	switch (sensor_info[s].type) {
-		case SENSOR_TYPE_ACCELEROMETER:
-		case SENSOR_TYPE_MAGNETIC_FIELD:
-		case SENSOR_TYPE_ORIENTATION:
-		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-		case SENSOR_TYPE_PRESSURE:
-			flags |= SENSOR_FLAG_CONTINUOUS_MODE;
-			break;
-
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
@@ -407,60 +467,75 @@ flag_t sensor_get_flags (int s)
 	return flags;
 }
 
-int get_cdd_freq (int s, int must)
+
+static int get_cdd_freq (int s, int must)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
+
 		case SENSOR_TYPE_GYROSCOPE:
 		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			return (must ? 200 : 200); /* must 200 Hz, should 200 Hz, CDD compliant */
+
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			return (must ? 10 : 50);   /* must 10 Hz, should 50 Hz, CDD compliant */
+
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
 			return (must ? 1 : 2);     /* must 1 Hz, should 2Hz, not mentioned in CDD */
+
 		default:
-			return 0;
+			return 1; /* Use 1 Hz by default, e.g. for proximity */
 	}
 }
 
-/* This value is defined only for continuous mode and on-change sensors. It is the delay between
- * two sensor events corresponding to the lowest frequency that this sensor supports. When lower
- * frequencies are requested through batch()/setDelay() the events will be generated at this
- * frequency instead. It can be used by the framework or applications to estimate when the batch
- * FIFO may be full.
- *
- * NOTE: 1) period_ns is in nanoseconds where as maxDelay/minDelay are in microseconds.
- *              continuous, on-change: maximum sampling period allowed in microseconds.
- *              one-shot, special : 0
- *   2) maxDelay should always fit within a 32 bit signed integer. It is declared as 64 bit
- *      on 64 bit architectures only for binary compatibility reasons.
- * Availability: SENSORS_DEVICE_API_VERSION_1_3
+/* 
+ * This value is defined only for continuous mode and on-change sensors. It is the delay between two sensor events corresponding to the lowest frequency that
+ * this sensor supports. When lower frequencies are requested through batch()/setDelay() the events will be generated at this frequency instead. It can be used
+ * by the framework or applications to estimate when the batch FIFO may be full. maxDelay should always fit within a 32 bit signed integer. It is declared as
+ * 64 bit on 64 bit architectures only for binary compatibility reasons. Availability: SENSORS_DEVICE_API_VERSION_1_3
  */
 max_delay_t sensor_get_max_delay (int s)
 {
 	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor_info[s].dev_num;
+	int dev_num	= sensor[s].dev_num;
 	char freqs_buf[100];
 	char* cursor;
 	float min_supported_rate = 1000;
 	float rate_cap;
 	float sr;
 
-	/* continuous, on-change: maximum sampling period allowed in microseconds.
+	/*
+	 * continuous, on-change: maximum sampling period allowed in microseconds.
 	 * one-shot, special : 0
 	 */
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE ||
-	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
-		return 0;
+	switch (REPORTING_MODE(sensor_desc[s].flags)) {
+		case SENSOR_FLAG_ONE_SHOT_MODE:
+		case SENSOR_FLAG_SPECIAL_REPORTING_MODE:
+			return 0;
 
+		case SENSOR_FLAG_ON_CHANGE_MODE:
+			return MAX_ON_CHANGE_SAMPLING_PERIOD_US;
+
+		default:
+			break;
+	}
+
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_desc[sensor[s].base[0]].maxDelay;
+			default:
+				return 0;
+		}
+	}
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		/* If poll mode sensor */
-		if (!sensor_info[s].num_channels) {
+		if (sensor[s].is_polling) {
 			/* The must rate */
 			min_supported_rate = get_cdd_freq(s, 1);
 		}
@@ -495,41 +570,51 @@ max_delay_t sensor_get_max_delay (int s)
 		return 0;
 
 	/* Return microseconds */
-	return (max_delay_t)(1000000.0 / min_supported_rate);
+	return (max_delay_t) (1000000.0 / min_supported_rate);
 }
 
-/* this value depends on the reporting mode:
- *
- *   continuous: minimum sample period allowed in microseconds
- *   on-change : 0
- *   one-shot  :-1
- *   special   : 0, unless otherwise noted
- */
-int32_t sensor_get_min_delay(int s)
+
+int32_t sensor_get_min_delay (int s)
 {
 	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor_info[s].dev_num;
+	int dev_num	= sensor[s].dev_num;
 	char freqs_buf[100];
 	char* cursor;
 	float max_supported_rate = 0;
 	float sr;
 
-	/* continuous: minimum sampling period allowed in microseconds.
-	 * on-change, special : 0
-	 * one-shot  :-1
+	/* continuous, on change: minimum sampling period allowed in microseconds.
+	 * special : 0, unless otherwise noted
+	 * one-shot:-1
 	 */
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ON_CHANGE_MODE ||
-	    REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_SPECIAL_REPORTING_MODE)
-		return 0;
+	switch (REPORTING_MODE(sensor_desc[s].flags)) {
+		case SENSOR_FLAG_ON_CHANGE_MODE:
+			return MIN_ON_CHANGE_SAMPLING_PERIOD_US;
 
-	if (REPORTING_MODE(sensor_desc[s].flags) == SENSOR_FLAG_ONE_SHOT_MODE)
-		return -1;
+		case SENSOR_FLAG_SPECIAL_REPORTING_MODE:
+			return 0;
+
+		case SENSOR_FLAG_ONE_SHOT_MODE:
+			return -1;
+
+		default:
+			break;
+	}
+
+	if (sensor[s].is_virtual) {
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				return sensor_desc[sensor[s].base[0]].minDelay;
+			default:
+				return 0;
+		}
+	}
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		/* If poll mode sensor */
-		if (!sensor_info[s].num_channels) {
+		if (sensor[s].is_polling) {
 			/* The should rate */
 			max_supported_rate = get_cdd_freq(s, 0);
 		}
@@ -558,5 +643,5 @@ int32_t sensor_get_min_delay(int s)
 		return 0;
 
 	/* Return microseconds */
-	return (int32_t)(1000000.0 / max_supported_rate);
+	return (int32_t) (1000000.0 / max_supported_rate);
 }

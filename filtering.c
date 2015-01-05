@@ -1,23 +1,24 @@
-#include <stdlib.h>
+/*
+ * Copyright (C) 2014 Intel Corporation.
+ */
+
 #include <hardware/sensors.h>
-#include <math.h>
-#include <pthread.h>
 #include <utils/Log.h>
 #include "common.h"
 #include "filtering.h"
 
 
-struct filter_median
+typedef struct
 {
 	float* buff;
 	unsigned int idx;
 	unsigned int count;
 	unsigned int sample_size;
-};
+}
+filter_median_t;
 
 
-static unsigned int partition (	float* list, unsigned int left,
-				unsigned int right, unsigned int pivot_index)
+static unsigned int partition (float* list, unsigned int left, unsigned int right, unsigned int pivot_index)
 {
 	unsigned int i;
 	unsigned int store_index = left;
@@ -80,24 +81,21 @@ static float median (float* queue, unsigned int size)
 }
 
 
-static void denoise_median_init(int s, unsigned int num_fields,
-				unsigned int max_samples)
+static void denoise_median_init (int s, unsigned int num_fields, unsigned int max_samples)
 {
-	struct filter_median* f_data = (struct filter_median*) calloc(1,
-						sizeof(struct filter_median));
+	filter_median_t* f_data = (filter_median_t*) malloc(sizeof(filter_median_t));
 
-	f_data->buff = (float*)calloc(max_samples,
-		sizeof(float) * num_fields);
+	f_data->buff = (float*) calloc(max_samples, sizeof(float) * num_fields);
 	f_data->sample_size = max_samples;
 	f_data->count = 0;
 	f_data->idx = 0;
-	sensor_info[s].filter = f_data;
+	sensor[s].filter = f_data;
 }
 
 
-static void denoise_median_reset (struct sensor_info_t* info)
+static void denoise_median_reset (sensor_info_t* info)
 {
-	struct filter_median* f_data = (struct filter_median*) info->filter;
+	filter_median_t* f_data = (filter_median_t*) info->filter;
 
 	if (!f_data)
 		return;
@@ -107,15 +105,13 @@ static void denoise_median_reset (struct sensor_info_t* info)
 }
 
 
-static void denoise_median (	struct sensor_info_t* info,
-				struct sensors_event_t* data,
-				unsigned int num_fields)
+static void denoise_median (sensor_info_t* info, sensors_event_t* data, unsigned int num_fields)
 {
 	float x, y, z;
 	float scale;
 	unsigned int field, offset;
 
-	struct filter_median* f_data = (struct filter_median*) info->filter;
+	filter_median_t* f_data = (filter_median_t*) info->filter;
 	if (!f_data)
 		return;
 
@@ -137,9 +133,7 @@ static void denoise_median (	struct sensor_info_t* info,
 }
 
 
-static void denoise_average (	struct sensor_info_t* si,
-				struct sensors_event_t* data,
-				int num_fields, int max_samples)
+static void denoise_average (sensor_info_t* si, sensors_event_t* data, int num_fields, int max_samples)
 {
 	/*
 	 * Smooth out incoming data using a moving average over a number of
@@ -168,11 +162,9 @@ static void denoise_average (	struct sensor_info_t* si,
 		si->history_size = history_size;
 		si->history_entries = 0;
 		si->history_index = 0;
-		si->history = (float*) realloc(si->history,
-				si->history_size * num_fields * sizeof(float));
+		si->history = (float*) realloc(si->history, si->history_size * num_fields * sizeof(float));
 		if (si->history) {
-			si->history_sum = (float*) realloc(si->history_sum,
-				num_fields * sizeof(float));
+			si->history_sum = (float*) realloc(si->history_sum, num_fields * sizeof(float));
 			if (si->history_sum)
 				memset(si->history_sum, 0, num_fields * sizeof(float));
 		}
@@ -189,10 +181,7 @@ static void denoise_average (	struct sensor_info_t* si,
 
 	/* Record new sample and calculate the moving sum */
 	for (f=0; f < num_fields; f++) {
-		/**
-		 * A field is going to be overwritten if
-		 * history is full, so decrease the history sum
-		 */
+		/** A field is going to be overwritten if history is full, so decrease the history sum */
 		if (history_full)
 			si->history_sum[f] -=
 				si->history[si->history_index * num_fields + f];
@@ -200,8 +189,7 @@ static void denoise_average (	struct sensor_info_t* si,
 		si->history[si->history_index * num_fields + f] = data->data[f];
 		si->history_sum[f] += data->data[f];
 
-		/* For now simply compute a mobile mean for each field */
-		/* and output filtered data */
+		/* For now simply compute a mobile mean for each field and output filtered data */
 		data->data[f] = si->history_sum[f] / si->history_entries;
 	}
 
@@ -212,25 +200,23 @@ static void denoise_average (	struct sensor_info_t* si,
 
 void setup_noise_filtering (int s)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 			denoise_median_init(s, 3, 5);
 			break;
 	}
 }
 
 
-void denoise (int s, struct sensors_event_t* data)
+void denoise (int s, sensors_event_t* data)
 {
-	switch (sensor_info[s].type) {
+	switch (sensor[s].type) {
 		case SENSOR_TYPE_GYROSCOPE:
-		case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
-			denoise_median(&sensor_info[s], data, 3);
+			denoise_median(&sensor[s], data, 3);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			denoise_average(&sensor_info[s], data, 3 , 20);
+			denoise_average(&sensor[s], data, 3 , 20);
 			break;
 	}
 }
@@ -241,61 +227,59 @@ void release_noise_filtering_data (int s)
 	void *buff;
 
 	/* Delete moving average structures */
-	if (sensor_info[s].history) {
-		free(sensor_info[s].history);
-		sensor_info[s].history = NULL;
-		sensor_info[s].history_size = 0;
-		if (sensor_info[s].history_sum) {
-			free(sensor_info[s].history_sum);
-			sensor_info[s].history_sum = NULL;
+	if (sensor[s].history) {
+		free(sensor[s].history);
+		sensor[s].history = NULL;
+		sensor[s].history_size = 0;
+		if (sensor[s].history_sum) {
+			free(sensor[s].history_sum);
+			sensor[s].history_sum = NULL;
 		}
 	}
 
 	/* Delete median filter structures */
-	if (sensor_info[s].filter) {
-		buff = ((struct filter_median*)sensor_info[s].filter)->buff;
+	if (sensor[s].filter) {
+		buff = ((filter_median_t*) sensor[s].filter)->buff;
 
 		if (buff)
 			free(buff);
 
-		free(sensor_info[s].filter);
-		sensor_info[s].filter = NULL;
+		free(sensor[s].filter);
+		sensor[s].filter = NULL;
 	}
 }
 
 
 #define GLOBAL_HISTORY_SIZE 100
 
-struct recorded_sample_t
+typedef struct
 {
 	int sensor;
 	int motion_trigger;
 	sensors_event_t data;
-};
+}
+recorded_sample_t;
 
 /*
- * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events,
- * covering the entire sensor collection. It is intended as a way to correlate
- * data coming from active sensors, no matter the sensor type, over a recent
- * window of time. The array is not sorted ; we simply evict the oldest cell
- * (by insertion time) and replace its contents. Timestamps don't necessarily
- * grow monotonically as they tell the data acquisition type, and that there can
- * be a delay between acquisition and insertion into this table.
+ * This is a circular buffer holding the last GLOBAL_HISTORY_SIZE events, covering the entire sensor collection. It is intended as a way to correlate
+ * data coming from active sensors, no matter the sensor type, over a recent window of time. The array is not sorted ; we simply evict the oldest cell
+ * (by insertion time) and replace its contents. Timestamps don't necessarily grow monotonically as they tell the data acquisition type, and that there
+ * can be a delay between acquisition and insertion into this table.
  */
 
-static struct recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
+static recorded_sample_t global_history[GLOBAL_HISTORY_SIZE];
 
 static int initialized_entries;	/* How many of these are initialized	      */
 static int insertion_index;	/* Index of sample to evict next time	      */
 
 
-void record_sample (int s, const struct sensors_event_t* event)
+void record_sample (int s, const sensors_event_t* event)
 {
-	struct recorded_sample_t *cell;
+	recorded_sample_t *cell;
 	int i;
 
 	/* Don't record duplicate samples, as they are not useful for filters */
-	if (sensor_info[s].report_pending == DATA_DUPLICATE)
+	if (sensor[s].report_pending == DATA_DUPLICATE)
 		return;
 
 	if (initialized_entries == GLOBAL_HISTORY_SIZE) {
@@ -308,10 +292,9 @@ void record_sample (int s, const struct sensors_event_t* event)
 
 	cell = &global_history[i];
 
-	cell->sensor	     	= s;
+	cell->sensor = s;
 
-	cell->motion_trigger 	= (sensor_info[s].selected_trigger ==
-				   sensor_info[s].motion_trigger_name);
+	cell->motion_trigger = (sensor[s].selected_trigger == sensor[s].motion_trigger_name);
 
 	memcpy(&cell->data, event, sizeof(sensors_event_t));
 }
