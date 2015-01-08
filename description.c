@@ -465,7 +465,7 @@ flag_t sensor_get_flags (int s)
 			break;
 
 		default:
-			ALOGI("Unknown sensor");
+			break;
 		}
 	return flags;
 }
