@@ -40,6 +40,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
 	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
 	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED		       )
+	DECLARE_VIRTUAL(SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED			)
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -533,15 +534,8 @@ static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
 }
 
 
-static void orientation_sensor_check (void)
+static void virtual_sensors_check (void)
 {
-	/*
-	 * If we have accel + gyro + magn but no rotation vector sensor, SensorService replaces the HAL provided orientation sensor by the
-	 * AOSP version... provided we report one. So initialize a virtual orientation sensor with zero values, which will get replaced.
-	 * See: frameworks/native/services/sensorservice/SensorService.cpp, looking for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably
-	 * fall ack to mUserSensorList.add instead of replaceAt, but accommodate it.
-	 */
-
 	int i;
 	int has_acc = 0;
 	int has_gyr = 0;
@@ -549,6 +543,8 @@ static void orientation_sensor_check (void)
 	int has_rot = 0;
 	int has_ori = 0;
 	int catalog_size = CATALOG_SIZE;
+	int gyro_cal_idx = 0;
+	int magn_cal_idx = 0;
 
 	for (i=0; i<sensor_count; i++)
 		switch (sensor[i].type) {
@@ -557,9 +553,11 @@ static void orientation_sensor_check (void)
 				break;
 			case SENSOR_TYPE_GYROSCOPE:
 				has_gyr = 1;
+				gyro_cal_idx = i;
 				break;
 			case SENSOR_TYPE_MAGNETIC_FIELD:
 				has_mag = 1;
+				magn_cal_idx = i;
 				break;
 			case SENSOR_TYPE_ORIENTATION:
 				has_ori = 1;
@@ -569,13 +567,39 @@ static void orientation_sensor_check (void)
 				break;
 		}
 
-	if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-		for (i=0; i<catalog_size; i++)
-			if (sensor_catalog[i].type == SENSOR_TYPE_ORIENTATION) {
-				ALOGI("Adding placeholder orientation sensor");
-				add_sensor(0, i, 1);
+	for (i=0; i<catalog_size; i++)
+		switch (sensor_catalog[i].type) {
+			/*
+	 		* If we have accel + gyro + magn but no rotation vector sensor,
+	 		* SensorService replaces the HAL provided orientation sensor by the
+	 		* AOSP version... provided we report one. So initialize a virtual
+	 		* orientation sensor with zero values, which will get replaced. See:
+	 		* frameworks/native/services/sensorservice/SensorService.cpp, looking
+	 		* for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
+	 		* back to mUserSensorList.add instead of replaceAt, but accommodate it.
+	 		*/
+
+			case SENSOR_TYPE_ORIENTATION:
+				if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
+					add_sensor(0, i, 1);
 				break;
-			}
+			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
+				if (has_gyr) {
+					sensor[sensor_count].base_count = 1;
+					sensor[sensor_count].base[0] = gyro_cal_idx;
+					add_virtual_sensor(i);
+				}
+				break;
+			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
+				if (has_mag) {
+					sensor[sensor_count].base_count = 1;
+					sensor[sensor_count].base[0] = magn_cal_idx;
+					add_virtual_sensor(i);
+				}
+				break;
+			default:
+			break;
+		}
 }
 
 
@@ -701,41 +725,6 @@ static void setup_trigger_names (void)
 		}
 }
 
-
-static void uncalibrated_gyro_check (void)
-{
-	unsigned int has_gyr = 0;
-	unsigned int dev_num;
-	int i;
-
-	int cal_idx = 0;
-	int uncal_idx = 0;
-	int catalog_size = CATALOG_SIZE; /* Avoid GCC sign comparison warning */
-
-	if (sensor_count == MAX_SENSORS)
-		return;
-	/* Checking to see if we have a gyroscope - we can only have uncal if we have the base sensor */
-	for (i=0; i < sensor_count; i++)
-		if (sensor[i].type == SENSOR_TYPE_GYROSCOPE) {
-			has_gyr=1;
-			cal_idx = i;
-			break;
-		}
-
-	if (has_gyr) {
-		uncal_idx = sensor_count;
-		sensor[uncal_idx].base_count = 1;
-		sensor[uncal_idx].base[0] = cal_idx;
-
-		for (i=0; i<catalog_size; i++)
-			if (sensor_catalog[i].type == SENSOR_TYPE_GYROSCOPE_UNCALIBRATED) {
-				add_virtual_sensor(i);
-				break;
-			}
-	}
-}
-
-
 void enumerate_sensors (void)
 {
 	/*
@@ -773,11 +762,7 @@ void enumerate_sensors (void)
 	/* Set up default - as well as custom - trigger names */
 	setup_trigger_names();
 
-	/* Make sure Android fall backs to its own orientation sensor */
-	orientation_sensor_check();
-
-	/* Create the uncalibrated counterpart to the compensated gyroscope. This is is a new sensor type in Android 4.4. */
-	 uncalibrated_gyro_check();
+	virtual_sensors_check();
 }
 
 
