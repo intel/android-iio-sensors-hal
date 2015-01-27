@@ -83,7 +83,7 @@
  * properties values happen to have its iio device name set to bmg160.
  */
 
-static int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
+int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 {
 	char prop_name[PROP_NAME_MAX];
 	char prop_val[PROP_VALUE_MAX];

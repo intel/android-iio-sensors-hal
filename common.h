@@ -38,6 +38,9 @@
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
+#define FILTER_TYPE_NONE		0
+#define FILTER_TYPE_MOVING_AVERAGE	1
+#define FILTER_TYPE_MEDIAN		2
 
 typedef struct
 {
@@ -242,6 +245,8 @@ typedef struct
 	 * events before filtering kicks in. We can also use it for statistics.
 	 */
 	uint64_t event_count;
+
+	int filter_type;	/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 }
 sensor_info_t;
 

@@ -919,7 +919,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	sensor[s].event_count = 0;
 	sensor[s].meta_data_pending = 0;
 
-	if (enabled && (sensor[s].quirks & QUIRK_NOISY))
+	if (enabled)
 		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
 	if (!sensor[s].is_polling) {

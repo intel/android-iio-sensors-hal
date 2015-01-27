@@ -6,7 +6,7 @@
 #include <utils/Log.h>
 #include "common.h"
 #include "filtering.h"
-
+#include "description.h"
 
 typedef struct
 {
@@ -200,8 +200,36 @@ static void denoise_average (sensor_info_t* si, sensors_event_t* data, int num_f
 
 void setup_noise_filtering (int s)
 {
-	switch (sensor[s].type) {
-		case SENSOR_TYPE_GYROSCOPE:
+	char filter_buf[MAX_NAME_SIZE];
+
+	/* By default, don't apply filtering */
+	sensor[s].filter_type = FILTER_TYPE_NONE;
+
+	/* If noisy, start with default filter for sensor type */
+	if (sensor[s].quirks & QUIRK_NOISY)
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_GYROSCOPE:
+				sensor[s].filter_type = FILTER_TYPE_MEDIAN;
+				break;
+
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				sensor[s].filter_type = FILTER_TYPE_MOVING_AVERAGE;
+				break;
+		}
+
+	/* Use whatever was specified if there's an explicit configuration choice for this sensor */
+
+	filter_buf[0] = '\0';
+	sensor_get_st_prop(s, "filter", filter_buf);
+
+	if (strstr(filter_buf, "median"))
+		sensor[s].filter_type = FILTER_TYPE_MEDIAN;
+
+	if (strstr(filter_buf, "average"))
+		sensor[s].filter_type = FILTER_TYPE_MOVING_AVERAGE;
+
+	switch (sensor[s].filter_type) {
+		case FILTER_TYPE_MEDIAN:
 			denoise_median_init(s, 3, 5);
 			break;
 	}
@@ -210,12 +238,12 @@ void setup_noise_filtering (int s)
 
 void denoise (int s, sensors_event_t* data)
 {
-	switch (sensor[s].type) {
-		case SENSOR_TYPE_GYROSCOPE:
+	switch (sensor[s].filter_type) {
+		case FILTER_TYPE_MEDIAN:
 			denoise_median(&sensor[s], data, 3);
 			break;
 
-		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case FILTER_TYPE_MOVING_AVERAGE:
 			denoise_average(&sensor[s], data, 3 , 20);
 			break;
 	}
