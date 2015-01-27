@@ -474,19 +474,19 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 }
 
 
-static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
+static void discover_sensors (int dev_num, char *sysfs_base_path, char map[CATALOG_SIZE],
+			      void (*discover_sensor)(int, char*, char*))
 {
-	char base_dir[PATH_MAX];
+	char sysfs_dir[PATH_MAX];
 	DIR *dir;
 	struct dirent *d;
 	unsigned int i;
-        int c;
 
 	memset(map, 0, CATALOG_SIZE);
 
-	snprintf(base_dir, sizeof(base_dir), BASE_PATH, dev_num);
+	snprintf(sysfs_dir, sizeof(sysfs_dir), sysfs_base_path, dev_num);
 
-	dir = opendir(base_dir);
+	dir = opendir(sysfs_dir);
 	if (!dir) {
 		return;
 	}
@@ -503,59 +503,32 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 			/* No discovery for virtual sensors */
 			if (sensor_catalog[i].is_virtual)
 				continue;
-
-			for (c=0; c<sensor_catalog[i].num_channels; c++)
-				if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) || !strcmp(d->d_name, sensor_catalog[i].channel[c].input_path)) {
-					map[i] = 1;
-					break;
-			}
+			discover_sensor(i, d->d_name, map);
 		}
 	}
 
 	closedir(dir);
 }
 
-
-static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
+static void check_poll_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
 {
-	char scan_elem_dir[PATH_MAX];
-	DIR *dir;
-	struct dirent *d;
-	unsigned int i;
+        int c;
 
-	memset(map, 0, CATALOG_SIZE);
+	for (c = 0; c < sensor_catalog[i].num_channels; c++)
+		if (!strcmp(sysfs_file, sensor_catalog[i].channel[c].raw_path) ||
+		    !strcmp(sysfs_file, sensor_catalog[i].channel[c].input_path)) {
+			map[i] = 1;
+			break;
+		}
+}
+static void check_trig_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
+{
 
-	/* Enumerate entries in this iio device's scan_elements folder */
-
-	snprintf(scan_elem_dir, sizeof(scan_elem_dir), CHANNEL_PATH, dev_num);
-
-	dir = opendir(scan_elem_dir);
-	if (!dir) {
+	if (!strcmp(sysfs_file, sensor_catalog[i].channel[0].en_path)) {
+		map[i] = 1;
 		return;
 	}
-
-	while ((d = readdir(dir))) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
-			continue;
-
-		/* Compare en entry to known ones and create matching sensors */
-
-		for (i = 0; i<CATALOG_SIZE; i++) {
-
-			/* No discovery for virtual sensors */
-			if (sensor_catalog[i].is_virtual)
-				continue;
-
-			if (!strcmp(d->d_name, sensor_catalog[i].channel[0].en_path)) {
-					map[i] = 1;
-					break;
-			}
-		}
-	}
-
-	closedir(dir);
 }
-
 
 static void virtual_sensors_check (void)
 {
@@ -763,8 +736,8 @@ void enumerate_sensors (void)
 	for (dev_num=0; dev_num<MAX_DEVICES; dev_num++) {
 		trig_found = 0;
 
-		discover_poll_sensors(dev_num, poll_sensors);
-		discover_trig_sensors(dev_num, trig_sensors);
+		discover_sensors(dev_num, BASE_PATH, poll_sensors, check_poll_sensors);
+		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
 
 		for (i=0; i<CATALOG_SIZE; i++)
 			if (trig_sensors[i]) {
