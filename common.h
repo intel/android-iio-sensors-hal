@@ -194,8 +194,8 @@ typedef struct
 
 	void *cal_data;	/* Sensor calibration data, e.g. for magnetometer */
 
-	/* Filtering data for noisy sensors */
-	void* filter;
+	void* filter;	/* Filtering data for noisy sensors */
+	int filter_type;/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 
 	float prev_val; /* Previously reported value, for on-change sensors */
 
@@ -233,20 +233,11 @@ typedef struct
 	 */
 	unsigned char order[MAX_CHANNELS];
 
-	/* A few variables used for data filtering */
-	float *history;		/* Working buffer containing recorded samples */
-	float *history_sum;	/* The current sum of the history elements    */
-	int history_size;	/* Number of recorded samples		      */
-	int history_entries;	/* How many of these are initialized	      */
-	int history_index;	/* Index of sample to evict next time	      */
-
 	/*
 	 * Event counter - will be used to check if we have a significant sample for noisy sensors. We want to make sure we do not send any wrong
 	 * events before filtering kicks in. We can also use it for statistics.
 	 */
 	uint64_t event_count;
-
-	int filter_type;	/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 }
 sensor_info_t;
 

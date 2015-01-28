@@ -18,6 +18,19 @@ typedef struct
 filter_median_t;
 
 
+typedef struct
+{
+	int max_samples;	/* Maximum averaging window size	      */
+	int num_fields;		/* Number of fields per sample (usually 3)    */
+	float *history;		/* Working buffer containing recorded samples */
+	float *history_sum;	/* The current sum of the history elements    */
+	int history_size;	/* Number of recorded samples		      */
+	int history_entries;	/* How many of these are initialized	      */
+	int history_index;	/* Index of sample to evict next time	      */
+}
+filter_average_t;
+
+
 static unsigned int partition (float* list, unsigned int left, unsigned int right, unsigned int pivot_index)
 {
 	unsigned int i;
@@ -93,6 +106,20 @@ static void denoise_median_init (int s, unsigned int num_fields, unsigned int ma
 }
 
 
+static void denoise_average_init (int s, unsigned int num_fields, unsigned int max_samples)
+{
+	filter_average_t* filter = (filter_average_t*) malloc(sizeof(filter_average_t));
+
+	if (filter) {
+		memset(filter, 0, sizeof(filter_average_t));
+		filter->max_samples = max_samples;
+		filter->num_fields = num_fields;
+	}
+
+	sensor[s].filter = filter;
+}
+
+
 static void denoise_median_reset (sensor_info_t* info)
 {
 	filter_median_t* f_data = (filter_median_t*) info->filter;
@@ -133,7 +160,7 @@ static void denoise_median (sensor_info_t* info, sensors_event_t* data, unsigned
 }
 
 
-static void denoise_average (sensor_info_t* si, sensors_event_t* data, int num_fields, int max_samples)
+static void denoise_average (sensor_info_t* si, sensors_event_t* data)
 {
 	/*
 	 * Smooth out incoming data using a moving average over a number of
@@ -146,64 +173,82 @@ static void denoise_average (sensor_info_t* si, sensors_event_t* data, int num_f
 	int sampling_rate = (int) si->sampling_rate;
 	int history_size;
 	int history_full = 0;
+	filter_average_t* filter;
 
 	/* Don't denoise anything if we have less than two samples per second */
 	if (sampling_rate < 2)
 		return;
 
+	filter = (filter_average_t*) si->filter;
+
+	if (!filter)
+		return;
+
 	/* Restrict window size to the min of sampling_rate and max_samples */
-	if (sampling_rate > max_samples)
-		history_size = max_samples;
+	if (sampling_rate > filter->max_samples)
+		history_size = filter->max_samples;
 	else
 		history_size = sampling_rate;
 
 	/* Reset history if we're operating on an incorrect window size */
-	if (si->history_size != history_size) {
-		si->history_size = history_size;
-		si->history_entries = 0;
-		si->history_index = 0;
-		si->history = (float*) realloc(si->history, si->history_size * num_fields * sizeof(float));
-		if (si->history) {
-			si->history_sum = (float*) realloc(si->history_sum, num_fields * sizeof(float));
-			if (si->history_sum)
-				memset(si->history_sum, 0, num_fields * sizeof(float));
+	if (filter->history_size != history_size) {
+		filter->history_size = history_size;
+		filter->history_entries = 0;
+		filter->history_index = 0;
+		filter->history = (float*) realloc(filter->history, filter->history_size * filter->num_fields * sizeof(float));
+		if (filter->history) {
+			filter->history_sum = (float*) realloc(filter->history_sum, filter->num_fields * sizeof(float));
+			if (filter->history_sum)
+				memset(filter->history_sum, 0, filter->num_fields * sizeof(float));
 		}
 	}
 
-	if (!si->history || !si->history_sum)
+	if (!filter->history || !filter->history_sum)
 		return;	/* Unlikely, but still... */
 
 	/* Update initialized samples count */
-	if (si->history_entries < si->history_size)
-		si->history_entries++;
+	if (filter->history_entries < filter->history_size)
+		filter->history_entries++;
 	else
 		history_full = 1;
 
 	/* Record new sample and calculate the moving sum */
-	for (f=0; f < num_fields; f++) {
+	for (f=0; f < filter->num_fields; f++) {
 		/** A field is going to be overwritten if history is full, so decrease the history sum */
 		if (history_full)
-			si->history_sum[f] -=
-				si->history[si->history_index * num_fields + f];
+			filter->history_sum[f] -= filter->history[filter->history_index * filter->num_fields + f];
 
-		si->history[si->history_index * num_fields + f] = data->data[f];
-		si->history_sum[f] += data->data[f];
+		filter->history[filter->history_index * filter->num_fields + f] = data->data[f];
+		filter->history_sum[f] += data->data[f];
 
 		/* For now simply compute a mobile mean for each field and output filtered data */
-		data->data[f] = si->history_sum[f] / si->history_entries;
+		data->data[f] = filter->history_sum[f] / filter->history_entries;
 	}
 
 	/* Update our rolling index (next evicted cell) */
-	si->history_index = (si->history_index + 1) % si->history_size;
+	filter->history_index = (filter->history_index + 1) % filter->history_size;
 }
 
 
 void setup_noise_filtering (int s)
 {
 	char filter_buf[MAX_NAME_SIZE];
+	int num_fields;
 
 	/* By default, don't apply filtering */
 	sensor[s].filter_type = FILTER_TYPE_NONE;
+
+	/* Restrict filtering to a few sensor types for now */
+	switch (sensor[s].type) {
+			case SENSOR_TYPE_ACCELEROMETER:
+			case SENSOR_TYPE_GYROSCOPE:
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				num_fields = 3 /* x,y,z */;
+				break;
+
+			default:
+				return;	/* No filtering */
+	}
 
 	/* If noisy, start with default filter for sensor type */
 	if (sensor[s].quirks & QUIRK_NOISY)
@@ -229,8 +274,13 @@ void setup_noise_filtering (int s)
 		sensor[s].filter_type = FILTER_TYPE_MOVING_AVERAGE;
 
 	switch (sensor[s].filter_type) {
+
 		case FILTER_TYPE_MEDIAN:
-			denoise_median_init(s, 3, 5);
+			denoise_median_init(s, num_fields, 5);
+			break;
+
+		case FILTER_TYPE_MOVING_AVERAGE:
+			denoise_average_init(s, num_fields, 20);
 			break;
 	}
 }
@@ -239,12 +289,13 @@ void setup_noise_filtering (int s)
 void denoise (int s, sensors_event_t* data)
 {
 	switch (sensor[s].filter_type) {
+
 		case FILTER_TYPE_MEDIAN:
 			denoise_median(&sensor[s], data, 3);
 			break;
 
 		case FILTER_TYPE_MOVING_AVERAGE:
-			denoise_average(&sensor[s], data, 3 , 20);
+			denoise_average(&sensor[s], data);
 			break;
 	}
 }
@@ -252,29 +303,32 @@ void denoise (int s, sensors_event_t* data)
 
 void release_noise_filtering_data (int s)
 {
-	void *buff;
+	void *buf;
 
-	/* Delete moving average structures */
-	if (sensor[s].history) {
-		free(sensor[s].history);
-		sensor[s].history = NULL;
-		sensor[s].history_size = 0;
-		if (sensor[s].history_sum) {
-			free(sensor[s].history_sum);
-			sensor[s].history_sum = NULL;
-		}
+	if (!sensor[s].filter)
+		return;
+
+	switch (sensor[s].filter_type) {
+
+		case FILTER_TYPE_MEDIAN:
+			buf = ((filter_median_t*) sensor[s].filter)->buff;
+			if (buf)
+				free(buf);
+			break;
+
+		case FILTER_TYPE_MOVING_AVERAGE:
+			buf = ((filter_average_t*) sensor[s].filter)->history;
+			if (buf)
+				free(buf);
+
+			buf = ((filter_average_t*) sensor[s].filter)->history_sum;
+			if (buf)
+				free(buf);
+			break;
 	}
 
-	/* Delete median filter structures */
-	if (sensor[s].filter) {
-		buff = ((filter_median_t*) sensor[s].filter)->buff;
-
-		if (buff)
-			free(buff);
-
-		free(sensor[s].filter);
-		sensor[s].filter = NULL;
-	}
+	free(sensor[s].filter);
+	sensor[s].filter = NULL;
 }
 
 
