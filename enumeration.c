@@ -369,7 +369,7 @@ static void add_virtual_sensor (int catalog_index)
 }
 
 
-static void add_sensor (int dev_num, int catalog_index, int use_polling)
+static void add_sensor (int dev_num, int catalog_index, int mode)
 {
 	int s;
 	int sensor_type;
@@ -402,11 +402,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor[s].dev_num	= dev_num;
 	sensor[s].catalog_index	= catalog_index;
 	sensor[s].type		= sensor_type;
-	sensor[s].is_polling	= use_polling;
+	sensor[s].mode		= mode;
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
-        if (use_polling)
+        if (mode == MODE_POLL)
                 sensor[s].num_channels = 0;
         else
                 sensor[s].num_channels = num_channels;
@@ -676,7 +676,7 @@ static void virtual_sensors_check (void)
 
 			case SENSOR_TYPE_ORIENTATION:
 				if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-					add_sensor(0, i, 1);
+					add_sensor(0, i, MODE_POLL);
 				break;
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				if (has_gyr) {
@@ -812,7 +812,7 @@ static void setup_trigger_names (void)
 			strcpy(sensor[s].motion_trigger_name, sensor[s].init_trigger_name);
 
 	for (s=0; s<sensor_count; s++)
-		if (!sensor[s].is_polling) {
+		if (sensor[s].mode == MODE_TRIGGER) {
 			ALOGI("Sensor %d (%s) default trigger: %s\n", s, sensor[s].friendly_name, sensor[s].init_trigger_name);
 			if (sensor[s].motion_trigger_name[0])
 				ALOGI("Sensor %d (%s) motion trigger: %s\n", s, sensor[s].friendly_name, sensor[s].motion_trigger_name);
@@ -840,12 +840,12 @@ void enumerate_sensors (void)
 
 		for (i=0; i<CATALOG_SIZE; i++)
 			if (trig_sensors[i]) {
-				add_sensor(dev_num, i, 0);
+				add_sensor(dev_num, i, MODE_TRIGGER);
 				trig_found = 1;
 			}
 			else
 				if (poll_sensors[i])
-					add_sensor(dev_num, i, 1);
+					add_sensor(dev_num, i, MODE_POLL);
 
 		if (trig_found)
 			build_sensor_report_maps(dev_num);

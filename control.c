@@ -343,6 +343,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 	 * Adjust counters based on sensor enable action. Return values are:
 	 *  0 if the operation was completed and we're all set
 	 *  1 if we toggled the state of the sensor and there's work left
+	 * -1 in case of an error
 	 */
 
 	int dev_num = sensor[s].dev_num;
@@ -377,25 +378,28 @@ int adjust_counters (int s, int enabled, int from_virtual)
 
 	/* We changed the state of a sensor: adjust device ref counts */
 
-	if (!sensor[s].is_polling) {
+	switch(sensor[s].mode) {
+	case MODE_TRIGGER:
+		if (enabled)
+			trig_sensors_per_dev[dev_num]++;
+		else
+			trig_sensors_per_dev[dev_num]--;
 
-			if (enabled)
-				trig_sensors_per_dev[dev_num]++;
-			else
-				trig_sensors_per_dev[dev_num]--;
-
-			return 1;
-	}
-
-	if (enabled) {
-		active_poll_sensors++;
-		poll_sensors_per_dev[dev_num]++;
 		return 1;
+	case MODE_POLL:
+		if (enabled) {
+			active_poll_sensors++;
+			poll_sensors_per_dev[dev_num]++;
+			return 1;
+		} else {
+			active_poll_sensors--;
+			poll_sensors_per_dev[dev_num]--;
+			return 1;
+		}
+	default:
+		/* Invalid sensor mode */
+		return -1;
 	}
-
-	active_poll_sensors--;
-	poll_sensors_per_dev[dev_num]--;
-	return 1;
 }
 
 
@@ -729,7 +733,7 @@ static int sensor_set_rate (int s, float requested_rate)
 		return 0;
 
 	/* If we're dealing with a poll-mode sensor */
-	if (sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_POLL) {
 		if (is_enabled(s))
 			pthread_cond_signal(&thread_release_cond[s]); /* Wake up thread so the new sampling rate gets used */
 		return 0;
@@ -926,7 +930,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	if (enabled)
 		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
-	if (!sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_TRIGGER) {
 
 		/* Stop sampling */
 		enable_buffer(dev_num, 0);
@@ -948,7 +952,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	dev_fd = device_fd[dev_num];
 
 	if (!enabled) {
-		if (sensor[s].is_polling)
+		if (sensor[s].mode == MODE_POLL)
 			stop_acquisition_thread(s);
 
 		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
@@ -982,7 +986,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
 
-		if (!sensor[s].is_polling) {
+		if (sensor[s].mode == MODE_TRIGGER) {
 
 			/* Add this iio device fd to the set of watched fds */
 			ev.events = EPOLLIN;
@@ -1002,7 +1006,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	/* Ensure that on-change sensors send at least one event after enable */
 	sensor[s].prev_val = -1;
 
-	if (sensor[s].is_polling)
+	if (sensor[s].mode == MODE_POLL)
 		start_acquisition_thread(s);
 
 	/* Reevaluate sampling rates of linked sensors */
@@ -1067,7 +1071,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s) && !sensor[s].is_polling)
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL)
 			set_report_ts(s, ts);
 }
 
@@ -1201,7 +1205,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor[s].type);
 
-	if (sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_POLL) {
 		/* We received a good sample but we're not directly enabled so we'll drop */
 		if (!sensor[s].directly_enabled)
 			return 0;

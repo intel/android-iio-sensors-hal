@@ -43,6 +43,10 @@
 #define FILTER_TYPE_MOVING_AVERAGE	1
 #define FILTER_TYPE_MEDIAN		2
 
+#define MODE_AUTO	0 /* autodetect */
+#define MODE_POLL	1
+#define MODE_TRIGGER	2
+
 typedef struct
 {
 	const char *name;	/* channel name ; ex: x */
@@ -153,7 +157,7 @@ typedef struct
 
 	int num_channels;	/* Actual channel count ; 0 for poll mode sensors	*/
 
-	int is_polling;		/* 1 if we use the sensor in poll mode, 0 if triggered	*/
+	int mode;	/* Usage mode, ex: poll, trigger ... */
 
 	/*
 	 * The array below indicates where to gather report data for this sensor inside the reports that we read from the iio character device.
