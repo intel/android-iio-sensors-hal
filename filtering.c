@@ -2,6 +2,8 @@
  * Copyright (C) 2014 Intel Corporation.
  */
 
+#include <ctype.h>
+#include <stdlib.h>
 #include <hardware/sensors.h>
 #include <utils/Log.h>
 #include "common.h"
@@ -234,6 +236,8 @@ void setup_noise_filtering (int s)
 {
 	char filter_buf[MAX_NAME_SIZE];
 	int num_fields;
+	char* cursor;
+	int window_size = 0;
 
 	/* By default, don't apply filtering */
 	sensor[s].filter_type = FILTER_TYPE_NONE;
@@ -267,20 +271,32 @@ void setup_noise_filtering (int s)
 	filter_buf[0] = '\0';
 	sensor_get_st_prop(s, "filter", filter_buf);
 
-	if (strstr(filter_buf, "median"))
+	cursor = strstr(filter_buf, "median");
+	if (cursor)
 		sensor[s].filter_type = FILTER_TYPE_MEDIAN;
+	else {
+		cursor = strstr(filter_buf, "average");
+		if (cursor)
+			sensor[s].filter_type = FILTER_TYPE_MOVING_AVERAGE;
+	}
 
-	if (strstr(filter_buf, "average"))
-		sensor[s].filter_type = FILTER_TYPE_MOVING_AVERAGE;
+	/* Check if an integer is part of the string, and use it as window size */
+	if (cursor) {
+		while (*cursor && !isdigit(*cursor))
+			cursor++;
+
+		if (*cursor)
+			window_size = atoi(cursor);
+	}
 
 	switch (sensor[s].filter_type) {
 
 		case FILTER_TYPE_MEDIAN:
-			denoise_median_init(s, num_fields, 5);
+			denoise_median_init(s, num_fields, window_size ? window_size : 5);
 			break;
 
 		case FILTER_TYPE_MOVING_AVERAGE:
-			denoise_average_init(s, num_fields, 20);
+			denoise_average_init(s, num_fields, window_size ? window_size: 20);
 			break;
 	}
 }
