@@ -129,6 +129,14 @@ static int setup_trigger (int s, const char* trigger_val)
 }
 
 
+static int enable_sensor(int dev_num, const char *tag, int enabled)
+{
+	char sysfs_path[PATH_MAX];
+
+	sprintf(sysfs_path, SENSOR_ENABLE_PATH, dev_num, tag);
+	return sysfs_write_int(sysfs_path, enabled);
+}
+
 static void enable_iio_timestamp (int dev_num, int known_channels)
 {
 	/* Check if we have a dedicated iio timestamp channel */
@@ -403,8 +411,9 @@ int adjust_counters (int s, int enabled, int from_virtual)
 }
 
 
-static int get_field_count (int s)
+static int get_field_count (int s, size_t *field_size)
 {
+	*field_size = sizeof(float);
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
@@ -424,6 +433,9 @@ static int get_field_count (int s)
 		case SENSOR_TYPE_ROTATION_VECTOR:
 			return 4;
 
+		case SENSOR_TYPE_STEP_COUNTER:		/* number of steps */
+			*field_size = sizeof(uint64_t);
+			return 1;
 		default:
 			ALOGE("Unknown sensor type!\n");
 			return 0;			/* Drop sample */
@@ -478,6 +490,7 @@ static void* acquisition_routine (void* param)
 	int ret;
 	struct timespec target_time;
 	int64_t timestamp, period, start, stop;
+	size_t field_size;
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
@@ -496,7 +509,7 @@ static void* acquisition_routine (void* param)
 	data.sensor	= s;
 	data.type	= sensor[s].type;
 
-	num_fields = get_field_count(s);
+	num_fields = get_field_count(s, &field_size);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be locked by the thread that's waiting on it. We use these condition
@@ -513,7 +526,10 @@ static void* acquisition_routine (void* param)
 
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
-			data.data[c] = acquire_immediate_value(s, c);
+			if (field_size == sizeof(uint64_t))
+				data.u64.data[c] = acquire_immediate_uint64_value(s, c);
+			else
+				data.data[c] = acquire_immediate_float_value(s, c);
 
 			/* Check and honor termination requests */
 			if (sensor[s].thread_data_fd[1] == -1)
@@ -911,6 +927,8 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	int dev_fd;
 	int ret;
 	int dev_num = sensor[s].dev_num;
+	size_t field_size;
+	int catalog_index = sensor[s].catalog_index;
 
 	if (sensor[s].is_virtual)
 		return sensor_activate_virtual(s, enabled, from_virtual);
@@ -942,6 +960,10 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			/* Start sampling */
 			setup_trigger(s, sensor[s].init_trigger_name);
 			enable_buffer(dev_num, 1);
+		}
+	} else if (sensor[s].mode == MODE_POLL) {
+		if (sensor[s].needs_enable) {
+			enable_sensor(dev_num, sensor_catalog[catalog_index].tag, enabled);
 		}
 	}
 
@@ -1004,7 +1026,11 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	}
 
 	/* Ensure that on-change sensors send at least one event after enable */
-	sensor[s].prev_val = -1;
+	get_field_count(s, &field_size);
+	if (field_size == sizeof(uint64_t))
+		sensor[s].prev_val.data64 = -1;
+	else
+		sensor[s].prev_val.data = -1;
 
 	if (sensor[s].mode == MODE_POLL)
 		start_acquisition_thread(s);
@@ -1194,7 +1220,8 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
-	int num_fields	  = get_field_count(s);
+	size_t field_size;
+	int num_fields	  = get_field_count(s, &field_size);
 	int c;
 	unsigned char* current_sample;
 	int ret;

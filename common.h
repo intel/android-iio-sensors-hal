@@ -5,8 +5,8 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-#define MAX_DEVICES	8	/* Check iio devices 0 to MAX_DEVICES-1 */
-#define MAX_SENSORS	10	/* We can handle as many sensors */
+#define MAX_DEVICES	9	/* Check iio devices 0 to MAX_DEVICES-1 */
+#define MAX_SENSORS	11	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
 #define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
@@ -18,6 +18,7 @@
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
 #define NAME_PATH		BASE_PATH "name"
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
+#define SENSOR_ENABLE_PATH	BASE_PATH "in_%s_en"
 #define SENSOR_OFFSET_PATH	BASE_PATH "in_%s_offset"
 #define SENSOR_SCALE_PATH	BASE_PATH "in_%s_scale"
 #define SENSOR_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
@@ -202,8 +203,11 @@ typedef struct
 	void* filter;	/* Filtering data for noisy sensors */
 	int filter_type;/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 
-	float prev_val; /* Previously reported value, for on-change sensors */
-
+	/* Previously reported value, for on-change sensors */
+	union {
+		float data;
+		uint64_t data64;
+	} prev_val;
 	/*
 	 * Certain sensors expose their readings through sysfs files that have a long response time (100-200 ms for ALS). Rather than block our
 	 * global control loop for several hundred ms each second, offload those lengthy blocking reads to dedicated threads, which will then report
@@ -243,6 +247,13 @@ typedef struct
 	 * events before filtering kicks in. We can also use it for statistics.
 	 */
 	uint64_t event_count;
+
+	/* Some polled sensors need to be first enabled so that they start
+	 * computing a set of values in hardware (e.g step counter). Enabling
+	 * is done through a sysfs attribute in_<tag>_en
+	 */
+	int needs_enable;
+
 }
 sensor_info_t;
 

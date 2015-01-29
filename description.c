@@ -455,6 +455,7 @@ flag_t sensor_get_flags (int s)
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
 		case SENSOR_TYPE_RELATIVE_HUMIDITY:
+		case SENSOR_TYPE_STEP_COUNTER:
 			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
 			break;
 

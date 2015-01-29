@@ -5,6 +5,7 @@
 #include <ctype.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
@@ -140,6 +141,15 @@ sensor_catalog_entry_t sensor_catalog[] = {
 			{ DECLARE_GENERIC_CHANNEL("") },
 		},
 	},
+	{
+		.tag		= "steps",
+		.type		= SENSOR_TYPE_STEP_COUNTER,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("steps") },
+		},
+	},
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -155,6 +165,22 @@ struct sensor_t	sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
 sensor_info_t	sensor[MAX_SENSORS];		/* Internal descriptors      */
 int		sensor_count;			/* Detected sensors 	     */
 
+
+/* if the sensor has an _en attribute, we need to enable it */
+int get_needs_enable(int dev_num, const char *tag)
+{
+	char sysfs_path[PATH_MAX];
+	int fd;
+
+	sprintf(sysfs_path, SENSOR_ENABLE_PATH, dev_num, tag);
+
+	fd = open(sysfs_path, O_RDWR);
+	if (fd == -1)
+		return 0;
+
+	close(fd);
+	return 1;
+}
 
 static void setup_properties_from_pld (int s, int panel, int rotation,
 				       int num_channels)
@@ -568,6 +594,8 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	/* Check if we have a special ordering property on this sensor */
 	if (sensor_get_order(s, sensor[s].order))
 		sensor[s].quirks |= QUIRK_FIELD_ORDERING;
+
+	sensor[s].needs_enable = get_needs_enable(dev_num, sensor_catalog[catalog_index].tag);
 
 	sensor_count++;
 }

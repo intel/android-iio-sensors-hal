@@ -225,6 +225,41 @@ int sysfs_read_float(const char path[PATH_MAX], float *value)
 	return 0;
 }
 
+int sysfs_read_uint64(const char path[PATH_MAX], uint64_t *value)
+{
+	int fd;
+	int len;
+	char buf[20] = {0};
+
+	if (!path[0] || !value) {
+		return -1;
+	}
+
+	fd = open(path, O_RDONLY);
+
+	if (fd == -1) {
+		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
+		return -1;
+	}
+
+	len = read(fd, buf, sizeof(buf));
+
+	close(fd);
+
+	if (len <= 0) {
+		ALOGW("Cannot read uint64 from %s (%s)\n", path,
+		      strerror(errno));
+		return -1;
+	}
+
+	*value =  atoll(buf);
+
+	ALOGV("Read %llu from %s\n", *value, path);
+
+	return 0;
+}
+
+
 
 int64_t get_timestamp_realtime (void)
 {

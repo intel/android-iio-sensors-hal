@@ -8,7 +8,8 @@
 #include "common.h"
 
 void	select_transform	(int s);
-float	acquire_immediate_value	(int s, int c);
+float	acquire_immediate_float_value	(int s, int c);
+uint64_t acquire_immediate_uint64_value	(int s, int c);
 
 #endif
 
