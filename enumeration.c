@@ -283,6 +283,7 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	const char* ch_name;
 	int num_channels;
 	char suffix[MAX_NAME_SIZE + 8];
+	int calib_bias;
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -324,6 +325,28 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 			sysfs_write_int(sysfs_path, retval);
                 }
 	}
+
+        /*
+         * See if we have optional calibration biases for each of the channels of this sensor. These would be expressed using properties like
+         * iio.accel.y.calib_bias = -1, or possibly something like iio.temp.calib_bias if the sensor has a single channel. This value gets stored in the
+         * relevant calibbias sysfs file if that file can be located and then used internally by the iio sensor driver.
+         */
+
+        if (num_channels) {
+		for (c = 0; c < num_channels; c++) {
+			ch_name = sensor_catalog[catalog_index].channel[c].name;
+			sprintf(suffix, "%s.calib_bias", ch_name);
+			if (!sensor_get_prop(s, suffix, &calib_bias) && calib_bias) {
+				sprintf(suffix, "%s_%s", prefix, sensor_catalog[catalog_index].channel[c].name);
+				sprintf(sysfs_path, SENSOR_CALIB_BIAS_PATH, dev_num, suffix);
+				sysfs_write_int(sysfs_path, calib_bias);
+			}
+		}
+        } else
+		if (!sensor_get_prop(s, "calib_bias", &calib_bias) && calib_bias) {
+				sprintf(sysfs_path, SENSOR_CALIB_BIAS_PATH, dev_num, prefix);
+				sysfs_write_int(sysfs_path, calib_bias);
+			}
 
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);

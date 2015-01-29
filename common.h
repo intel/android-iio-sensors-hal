@@ -24,6 +24,7 @@
 #define DEVICE_SAMPLING_PATH	BASE_PATH "sampling_frequency"
 #define DEVICE_AVAIL_FREQ_PATH	BASE_PATH "sampling_frequency_available"
 #define ILLUMINATION_CALIBPATH	BASE_PATH "in_illuminance_calibscale"
+#define SENSOR_CALIB_BIAS_PATH	BASE_PATH "in_%s_calibbias"
 
 #define PROP_BASE		"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
@@ -85,7 +86,7 @@ typedef struct
 {
 	int offset; 	/* Offset in bytes within the iio character device report */
 	int size;	/* Field size in bytes */
-	float scale;	/* scale for each channel */
+	float scale;	/* Scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN];	/* From driver; ex: le:u10/16>>0 */
 	datum_info_t type_info;	   		/* Decoded contents of type spec */
 	float opt_scale; /*
