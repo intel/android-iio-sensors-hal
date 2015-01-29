@@ -9,9 +9,11 @@
 #include <time.h>
 #include <math.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
+#include <linux/iio/events.h>
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
@@ -25,6 +27,7 @@ static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
 static int trig_sensors_per_dev[MAX_DEVICES];		/* trigger, event based				*/
 
 static int device_fd[MAX_DEVICES];			/* fd on the /dev/iio:deviceX file		*/
+static int events_fd[MAX_DEVICES];			/* fd on the /sys/bus/iio/devices/iio:deviceX/events/<event_name> file */
 static int has_iio_ts[MAX_DEVICES];			/* ts channel available on this iio dev		*/
 static int expected_dev_report_size[MAX_DEVICES];	/* expected iio scan len			*/
 static int poll_fd;					/* epoll instance covering all enabled sensors	*/
@@ -128,6 +131,13 @@ static int setup_trigger (int s, const char* trigger_val)
 	return ret;
 }
 
+static int enable_event(int dev_num, const char *name, int enabled)
+{
+	char sysfs_path[PATH_MAX];
+
+	sprintf(sysfs_path, EVENTS_PATH "%s", dev_num, name);
+	return sysfs_write_int(sysfs_path, enabled);
+}
 
 static int enable_sensor(int dev_num, const char *tag, int enabled)
 {
@@ -404,6 +414,8 @@ int adjust_counters (int s, int enabled, int from_virtual)
 			poll_sensors_per_dev[dev_num]--;
 			return 1;
 		}
+	case MODE_EVENT:
+		return 1;
 	default:
 		/* Invalid sensor mode */
 		return -1;
@@ -924,8 +936,8 @@ int sensor_activate (int s, int enabled, int from_virtual)
 {
 	char device_name[PATH_MAX];
 	struct epoll_event ev = {0};
-	int dev_fd;
-	int ret;
+	int dev_fd, event_fd;
+	int ret, c, d;
 	int dev_num = sensor[s].dev_num;
 	size_t field_size;
 	int catalog_index = sensor[s].catalog_index;
@@ -985,6 +997,20 @@ int sensor_activate (int s, int enabled, int from_virtual)
 				device_fd[dev_num] = -1;
 		}
 
+		if (sensor[s].mode == MODE_EVENT) {
+			event_fd = events_fd[dev_num];
+
+			for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++) {
+				for (d = 0; d < sensor_catalog[catalog_index].channel[c].num_events; d++)
+					enable_event(dev_num, sensor_catalog[catalog_index].channel[c].event[d].ev_en_path, enabled);
+			}
+
+			epoll_ctl(poll_fd, EPOLL_CTL_DEL, event_fd, NULL);
+			close(event_fd);
+			events_fd[dev_num] = -1;
+
+		}
+
 		/* Release any filtering data we may have accumulated */
 		release_noise_filtering_data(s);
 
@@ -1022,6 +1048,36 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			}
 
 			/* Note: poll-mode fds are not readable */
+		} else if (sensor[s].mode == MODE_EVENT) {
+			event_fd = events_fd[dev_num];
+
+			ret = ioctl(dev_fd, IIO_GET_EVENT_FD_IOCTL, &event_fd);
+			if (ret == -1 || event_fd == -1) {
+				ALOGE("Failed to retrieve event_fd from %d (%s)\n", dev_fd, strerror(errno));
+				return -1;
+			}
+			events_fd[dev_num] = event_fd;
+			ALOGV("Opened fd=%d to receive events\n", event_fd);
+
+			/* Add this event fd to the set of watched fds */
+			ev.events = EPOLLIN;
+			ev.data.u32 = dev_num;
+
+			ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, event_fd, &ev);
+			if (ret == -1) {
+				ALOGE("Failed adding %d to poll set (%s)\n", event_fd, strerror(errno));
+				return -1;
+			}
+			for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++) {
+				int d;
+				for (d = 0; d < sensor_catalog[catalog_index].channel[c].num_events; d++)
+					enable_event(dev_num, sensor_catalog[catalog_index].channel[c].event[d].ev_en_path, enabled);
+			}
+
+			if (!poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
+				close(dev_fd);
+				device_fd[dev_num] = -1;
+			}
 		}
 	}
 
@@ -1102,7 +1158,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 }
 
 
-static int integrate_device_report (int dev_num)
+static int integrate_device_report_from_dev(int dev_num, int fd)
 {
 	int len;
 	int s,c;
@@ -1116,18 +1172,12 @@ static int integrate_device_report (int dev_num)
 	int64_t boot_to_rt_delta;
 
 	/* There's an incoming report on the specified iio device char dev fd */
-
-	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
-		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
-		return -1;
-	}
-
-	if (device_fd[dev_num] == -1) {
+	if (fd == -1) {
 		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
 
-	len = read(device_fd[dev_num], buf, expected_dev_report_size[dev_num]);
+	len = read(fd, buf, expected_dev_report_size[dev_num]);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n", dev_num, strerror(errno));
@@ -1203,6 +1253,63 @@ static int integrate_device_report (int dev_num)
 	return 0;
 }
 
+static int integrate_device_report_from_event(int dev_num, int fd)
+{
+	int len, s;
+	int64_t ts;
+	struct iio_event_data event;
+
+	/* There's an incoming report on the specified iio device char dev fd */
+	if (fd == -1) {
+		ALOGE("Ignoring stale report on event fd %d of device %d\n",
+			fd, dev_num);
+		return -1;
+	}
+
+	len = read(fd, &event, sizeof(event));
+
+	if (len == -1) {
+		ALOGE("Could not read event from fd %d of device %d (%s)\n",
+			fd, dev_num, strerror(errno));
+		return -1;
+	}
+
+	ts = event.timestamp;
+
+	ALOGV("Read event %ld from fd %d of iio device %d\n", event.id, fd, dev_num);
+
+	/* Map device report to sensor reports */
+	for (s = 0; s < MAX_SENSORS; s++)
+		if (sensor[s].dev_num == dev_num &&
+		    is_enabled(s)) {
+			sensor[s].report_ts = ts;
+			sensor[s].report_pending = 1;
+			sensor[s].report_initialized = 1;
+			ALOGV("Sensor %d report available (1 byte)\n", s);
+		}
+	return 0;
+}
+
+static int integrate_device_report(int dev_num)
+{
+	int ret = 0;
+
+	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
+		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
+		return -1;
+	}
+
+	if (events_fd[dev_num] != -1) {
+		ret = integrate_device_report_from_event(dev_num, events_fd[dev_num]);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (device_fd[dev_num] != -1)
+		ret = integrate_device_report_from_dev(dev_num, device_fd[dev_num]);
+
+	return ret;
+}
 
 static int propagate_vsensor_report (int s, sensors_event_t *data)
 {
@@ -1249,6 +1356,15 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	data->sensor	= s;
 	data->type	= sensor[s].type;
 	data->timestamp = sensor[s].report_ts;
+
+	if (sensor[s].mode == MODE_EVENT) {
+		ALOGV("Reporting event\n");
+		/* Android requires events to return 1.0 */
+		data->data[0] = 1.0;
+		data->data[1] = 0.0;
+		data->data[2] = 0.0;
+		return 1;
+	}
 
 	/* Convert the data into the expected Android-level format */
 
@@ -1507,8 +1623,10 @@ int allocate_control_data (void)
 {
 	int i;
 
-	for (i=0; i<MAX_DEVICES; i++)
+	for (i=0; i<MAX_DEVICES; i++) {
 		device_fd[i] = -1;
+		events_fd[i] = -1;
+	}
 
 	poll_fd = epoll_create(MAX_DEVICES);
 

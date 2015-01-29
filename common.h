@@ -8,6 +8,7 @@
 #define MAX_DEVICES	9	/* Check iio devices 0 to MAX_DEVICES-1 */
 #define MAX_SENSORS	11	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
+#define MAX_EVENTS	8	/* We can handle as many events per channel */
 #define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
 #define DEV_FILE_PATH		"/dev/iio:device%d"
@@ -18,6 +19,7 @@
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
 #define NAME_PATH		BASE_PATH "name"
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
+#define EVENTS_PATH		BASE_PATH "events/"
 #define SENSOR_ENABLE_PATH	BASE_PATH "in_%s_en"
 #define SENSOR_OFFSET_PATH	BASE_PATH "in_%s_offset"
 #define SENSOR_SCALE_PATH	BASE_PATH "in_%s_scale"
@@ -47,6 +49,19 @@
 #define MODE_AUTO	0 /* autodetect */
 #define MODE_POLL	1
 #define MODE_TRIGGER	2
+#define MODE_EVENT	3
+
+typedef struct
+{
+	const char *type; /* event type; e.g: transition */
+	const char *dir;  /* event direction; e.g: rising */
+
+	/* sysfs entries located in /sys/bus/iio/devices/iio:deviceX/events/ */
+	const char *ev_en_path;
+	const char *ev_value_path;
+}
+event_descriptor_t;
+
 
 typedef struct
 {
@@ -61,6 +76,9 @@ typedef struct
 	const char *raw_path;	/* _raw sysfs file name  */
 	const char *input_path;	/* _input sysfs file name */
 	const char *scale_path;	/* _scale sysfs file name */
+
+	const int num_events;
+	event_descriptor_t event[MAX_EVENTS];
 }
 channel_descriptor_t;
 

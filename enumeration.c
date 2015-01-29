@@ -657,6 +657,18 @@ static void check_trig_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
 	}
 }
 
+static void check_event_sensors(int i, char *sysfs_file, char map[CATALOG_SIZE])
+{
+	int j, k;
+
+	for (j = 0; j < sensor_catalog[i].num_channels; j++)
+		for (k = 0; k < sensor_catalog[i].channel[j].num_events; k++)
+			if (!strcmp(sysfs_file, sensor_catalog[i].channel[j].event[k].ev_en_path)) {
+				map[i] = 1;
+				return ;
+			}
+}
+
 static void virtual_sensors_check (void)
 {
 	int i;
@@ -856,6 +868,7 @@ void enumerate_sensors (void)
 	 */
 	char poll_sensors[CATALOG_SIZE];
 	char trig_sensors[CATALOG_SIZE];
+	char event_sensors[CATALOG_SIZE];
 	int dev_num;
 	unsigned int i;
 	int trig_found;
@@ -865,15 +878,23 @@ void enumerate_sensors (void)
 
 		discover_sensors(dev_num, BASE_PATH, poll_sensors, check_poll_sensors);
 		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
+		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
 
-		for (i=0; i<CATALOG_SIZE; i++)
+		for (i=0; i<CATALOG_SIZE; i++) {
+			if (event_sensors[i]) {
+				add_sensor(dev_num, i, MODE_EVENT);
+				continue;
+			}
 			if (trig_sensors[i]) {
 				add_sensor(dev_num, i, MODE_TRIGGER);
 				trig_found = 1;
+				continue;
 			}
-			else
-				if (poll_sensors[i])
-					add_sensor(dev_num, i, MODE_POLL);
+			if (poll_sensors[i]) {
+				add_sensor(dev_num, i, MODE_POLL);
+				continue;
+			}
+		}
 
 		if (trig_found)
 			build_sensor_report_maps(dev_num);
