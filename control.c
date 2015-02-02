@@ -1148,7 +1148,7 @@ static int integrate_device_report (int dev_num)
 		}
 
 	/* Align on a 64 bits boundary */
-	ts_offset = (ts_offset + 7)/8*8;
+	ts_offset = expected_dev_report_size[dev_num] - sizeof(int64_t);
 
 	/* If we read an amount of data consistent with timestamp presence */
 	if (len == expected_dev_report_size[dev_num])
