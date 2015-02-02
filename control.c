@@ -1063,7 +1063,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s))
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && !sensor[s].is_polling)
 			set_report_ts(s, ts);
 }
 
