@@ -919,7 +919,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	sensor[s].event_count = 0;
 	sensor[s].meta_data_pending = 0;
 
-	if (enabled && (sensor[s].quirks & QUIRK_NOISY))
+	if (enabled)
 		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
 	if (!sensor[s].is_polling) {
@@ -1063,7 +1063,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s))
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && !sensor[s].is_polling)
 			set_report_ts(s, ts);
 }
 
@@ -1148,7 +1148,7 @@ static int integrate_device_report (int dev_num)
 		}
 
 	/* Align on a 64 bits boundary */
-	ts_offset = (ts_offset + 7)/8*8;
+	ts_offset = expected_dev_report_size[dev_num] - sizeof(int64_t);
 
 	/* If we read an amount of data consistent with timestamp presence */
 	if (len == expected_dev_report_size[dev_num])

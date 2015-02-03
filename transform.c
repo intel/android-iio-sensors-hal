@@ -299,14 +299,12 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
-			if (sensor[s].quirks & QUIRK_NOISY)
-				denoise(s, data);
+			denoise(s, data);
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
 			calibrate_compass (data, &sensor[s]);
-			if (sensor[s].quirks & QUIRK_NOISY)
-				denoise(s, data);
+			denoise(s, data);
 			break;
 
 		case SENSOR_TYPE_GYROSCOPE:
@@ -326,7 +324,7 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 			 * For noisy sensors drop a few samples to make sure we have at least GYRO_MIN_SAMPLES events in the
 			 * filtering queue. This improves mean and std dev.
 			 */
-			if (sensor[s].quirks & QUIRK_NOISY) {
+			if (sensor[s].filter_type) {
 				if (sensor[s].selected_trigger !=
 				    sensor[s].motion_trigger_name &&
 				    sensor[s].event_count < GYRO_MIN_SAMPLES)

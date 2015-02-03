@@ -24,6 +24,7 @@
 #define DEVICE_SAMPLING_PATH	BASE_PATH "sampling_frequency"
 #define DEVICE_AVAIL_FREQ_PATH	BASE_PATH "sampling_frequency_available"
 #define ILLUMINATION_CALIBPATH	BASE_PATH "in_illuminance_calibscale"
+#define SENSOR_CALIB_BIAS_PATH	BASE_PATH "in_%s_calibbias"
 
 #define PROP_BASE		"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
@@ -38,6 +39,9 @@
 #define ARRAY_SIZE(x) sizeof(x)/sizeof(x[0])
 #define REPORTING_MODE(x)	((x) & 0x06)
 
+#define FILTER_TYPE_NONE		0
+#define FILTER_TYPE_MOVING_AVERAGE	1
+#define FILTER_TYPE_MEDIAN		2
 
 typedef struct
 {
@@ -82,7 +86,7 @@ typedef struct
 {
 	int offset; 	/* Offset in bytes within the iio character device report */
 	int size;	/* Field size in bytes */
-	float scale;	/* scale for each channel */
+	float scale;	/* Scale for each channel */
 	char type_spec[MAX_TYPE_SPEC_LEN];	/* From driver; ex: le:u10/16>>0 */
 	datum_info_t type_info;	   		/* Decoded contents of type spec */
 	float opt_scale; /*
@@ -191,8 +195,8 @@ typedef struct
 
 	void *cal_data;	/* Sensor calibration data, e.g. for magnetometer */
 
-	/* Filtering data for noisy sensors */
-	void* filter;
+	void* filter;	/* Filtering data for noisy sensors */
+	int filter_type;/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 
 	float prev_val; /* Previously reported value, for on-change sensors */
 
@@ -229,13 +233,6 @@ typedef struct
 	 * a sample containing 4 fields.
 	 */
 	unsigned char order[MAX_CHANNELS];
-
-	/* A few variables used for data filtering */
-	float *history;		/* Working buffer containing recorded samples */
-	float *history_sum;	/* The current sum of the history elements    */
-	int history_size;	/* Number of recorded samples		      */
-	int history_entries;	/* How many of these are initialized	      */
-	int history_index;	/* Index of sample to evict next time	      */
 
 	/*
 	 * Event counter - will be used to check if we have a significant sample for noisy sensors. We want to make sure we do not send any wrong
