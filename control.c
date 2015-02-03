@@ -440,6 +440,7 @@ static int get_field_count (int s, size_t *field_size)
 		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
 		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
 		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
+		case SENSOR_TYPE_STEP_DETECTOR:		/* event: always 1 */
 			return 1;
 
 		case SENSOR_TYPE_ROTATION_VECTOR:

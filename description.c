@@ -464,7 +464,9 @@ flag_t sensor_get_flags (int s)
 			flags |= SENSOR_FLAG_WAKE_UP;
 			flags |= SENSOR_FLAG_ON_CHANGE_MODE;
 			break;
-
+		case SENSOR_TYPE_STEP_DETECTOR:
+			flags |= SENSOR_FLAG_SPECIAL_REPORTING_MODE;
+			break;
 		default:
 			break;
 		}

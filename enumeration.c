@@ -150,6 +150,21 @@ sensor_catalog_entry_t sensor_catalog[] = {
 			{ DECLARE_GENERIC_CHANNEL("steps") },
 		},
 	},
+	{
+		.tag		= "steps",
+		.type		= SENSOR_TYPE_STEP_DETECTOR,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{
+				DECLARE_VOID_CHANNEL("steps")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_NAMED_EVENT("steps", "change") },
+				},
+			},
+		},
+	},
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
