@@ -404,10 +404,14 @@ static float transform_sample_default (int s, int c, unsigned char* sample_data)
 	float scale = sensor[s].scale ? sensor[s].scale : sensor[s].channel[c].scale;
 
 	/* In case correction has been requested using properties, apply it */
-	scale *= sensor[s].channel[c].opt_scale;
+	float correction = sensor[s].channel[c].opt_scale;
+
+	/* Correlated with "acquire_immediate_value" method */
+	if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
+                return CONVERT_GAUSS_TO_MICROTESLA((sensor[s].offset + s64) * scale) * correction;
 
 	/* Apply default scaling rules */
-	return (sensor[s].offset + s64) * scale;
+	return (sensor[s].offset + s64) * scale * correction;
 }
 
 
@@ -536,7 +540,6 @@ float acquire_immediate_float_value (int s, int c)
 	const char* input_path = sensor_catalog[i].channel[c].input_path;
 	float scale = sensor[s].scale ? sensor[s].scale : sensor[s].channel[c].scale;
 	float offset = sensor[s].offset;
-	int sensor_type = sensor_catalog[i].type;
 	float correction;
 
 	/* In case correction has been requested using properties, apply it */
@@ -565,7 +568,7 @@ float acquire_immediate_float_value (int s, int c)
 	 * There is no transform ops defined yet for raw sysfs values.
          * Use this function to perform transformation as well.
 	 */
-	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
+	if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
                 return CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale) * correction;
 
 	return (val + offset) * scale * correction;
