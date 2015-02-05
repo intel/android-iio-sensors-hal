@@ -1164,7 +1164,7 @@ static void stamp_reports (int dev_num, int64_t ts)
 
 	for (s=0; s<MAX_SENSORS; s++)
 		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL)
-			set_report_ts(s, ts);
+			sensor[s].report_ts = ts;
 }
 
 
@@ -1259,7 +1259,6 @@ static int integrate_device_report_from_dev(int dev_num, int fd)
 	boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
 	stamp_reports(dev_num, ts + boot_to_rt_delta);
-
 	return 0;
 }
 
