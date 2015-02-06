@@ -20,6 +20,61 @@
  * possible sysfs attributes. As an optimization we may want to cache which
  * ones are valid and immediately return in error for inexistent entries.
  */
+int sysfs_read(const char path[PATH_MAX], void *buf, int buf_len)
+{
+	int fd, len;
+
+	if (!path[0] || !buf || buf_len < 1)
+		return -1;
+
+	fd = open(path, O_RDONLY);
+
+	if (fd == -1) {
+		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
+		return -1;
+	}
+
+	len = read(fd, buf, buf_len);
+
+	close(fd);
+
+	if (len == -1)
+		ALOGW("Cannot read from %s (%s)\n", path, strerror(errno));
+	else
+		ALOGV("Read %d bytes from %s\n", len, path);
+
+	return len;
+}
+
+
+int sysfs_write(const char path[PATH_MAX], const void *buf, const int buf_len)
+{
+	int fd, len;
+
+	if (!path[0] || !buf || buf_len < 1)
+		return -1;
+
+	fd = open(path, O_WRONLY);
+
+	if (fd == -1) {
+		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
+		return -1;
+	}
+
+	len = write(fd, buf, buf_len);
+
+	close(fd);
+
+	if (len == -1)
+		ALOGW("Cannot write to %s (%s)\n", path, strerror(errno));
+	else if (len != buf_len)
+		ALOGW("Cannot write %d bytes to %s (%d)\n", buf_len, path, len);
+	else
+		ALOGV("Wrote %d bytes to %s\n", buf_len, path);
+
+	return len;
+}
+
 
 int sysfs_write_int(const char path[PATH_MAX], int value)
 {
