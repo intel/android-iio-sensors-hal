@@ -76,6 +76,59 @@ int sysfs_write(const char path[PATH_MAX], const void *buf, const int buf_len)
 }
 
 
+static void str2int(const char* buf, void *v)
+{
+	*(int*)v = atoi(buf);
+}
+
+
+static void str2float(const char* buf, void *v)
+{
+	*(float*)v = strtof(buf, NULL);
+}
+
+
+static void str2uint64(const char* buf, void *v)
+{
+	*(uint64_t*)v = atoll(buf);
+}
+
+
+int sysfs_read_num(const char path[PATH_MAX], void *v,
+		void (*str2num)(const char* buf, void *v))
+{
+	char buf[20];
+	int len = sysfs_read_str(path, buf, sizeof(buf));
+
+	if (len <= 0) {
+		ALOGW("Cannot read number from %s (%s)\n", path,
+		      strerror(errno));
+		return -1;
+	}
+
+	str2num(buf, v);
+	return 0;
+}
+
+
+int sysfs_read_int(const char path[PATH_MAX], int *value)
+{
+	return sysfs_read_num(path, value, str2int);
+}
+
+
+int sysfs_read_float(const char path[PATH_MAX], float *value)
+{
+	return sysfs_read_num(path, value, str2float);
+}
+
+
+int sysfs_read_uint64(const char path[PATH_MAX], uint64_t *value)
+{
+	return sysfs_read_num(path, value, str2uint64);
+}
+
+
 int sysfs_write_int(const char path[PATH_MAX], int value)
 {
 	int ret;
@@ -107,41 +160,6 @@ int sysfs_write_int(const char path[PATH_MAX], int value)
 	close(fd);
 
 	return ret;
-}
-
-
-int sysfs_read_int(const char path[PATH_MAX], int *value)
-{
-	int fd;
-	int len;
-	char buf[20] = {0};
-
-	if (!path[0] || !value) {
-		return -1;
-	}
-
-	fd = open(path, O_RDONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	len = read(fd, buf, sizeof(buf));
-
-	close(fd);
-
-	if (len <= 0) {
-		ALOGW("Cannot read integer from %s (%s)\n", path,
-		      strerror(errno));
-		return -1;
-	}
-
-	*value = atoi(buf);
-
-	ALOGV("Read %d from %s\n", *value, path);
-
-	return 0;
 }
 
 
@@ -209,76 +227,6 @@ int sysfs_write_float(const char path[PATH_MAX], float value)
 
 	return ret;
 }
-
-
-int sysfs_read_float(const char path[PATH_MAX], float *value)
-{
-	int fd;
-	int len;
-	char buf[20] = {0};
-
-	if (!path[0] || !value) {
-		return -1;
-	}
-
-	fd = open(path, O_RDONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	len = read(fd, buf, sizeof(buf));
-
-	close(fd);
-
-	if (len <= 0) {
-		ALOGW("Cannot read float from %s (%s)\n", path,
-		      strerror(errno));
-		return -1;
-	}
-
-	*value = (float) strtod(buf, NULL);
-
-	ALOGV("Read %g from %s\n", *value, path);
-
-	return 0;
-}
-
-int sysfs_read_uint64(const char path[PATH_MAX], uint64_t *value)
-{
-	int fd;
-	int len;
-	char buf[20] = {0};
-
-	if (!path[0] || !value) {
-		return -1;
-	}
-
-	fd = open(path, O_RDONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	len = read(fd, buf, sizeof(buf));
-
-	close(fd);
-
-	if (len <= 0) {
-		ALOGW("Cannot read uint64 from %s (%s)\n", path,
-		      strerror(errno));
-		return -1;
-	}
-
-	*value =  atoll(buf);
-
-	ALOGV("Read %llu from %s\n", *value, path);
-
-	return 0;
-}
-
 
 
 int64_t get_timestamp_realtime (void)
