@@ -147,56 +147,21 @@ int sysfs_read_int(const char path[PATH_MAX], int *value)
 
 int sysfs_write_str(const char path[PATH_MAX], const char *str)
 {
-	int ret;
-	int fd;
-	int len;
-
-	if (!path[0] || !str || !str[0]) {
+	if (!str || !str[0])
 		return -1;
-	}
 
-	fd = open(path, O_WRONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	len = strlen(str);
-
-	ret = write(fd, str, len);
-
-	if (ret != len) {
-		ALOGW("Cannot write %s (%d bytes) to %s (%s)\n", str, len, path,
-		      strerror(errno));
-	}
-	else
-		ALOGV("Wrote %s to %s\n", str, path);
-
-	close(fd);
-
-	return ret;
+	return sysfs_write(path, str, strlen(str));
 }
 
 
 int sysfs_read_str(const char path[PATH_MAX], char *buf, int buf_len)
 {
-	int fd;
 	int len;
 
-	if (!path[0] || !buf || buf_len < 1)
+	if (!buf || buf_len < 1)
 		return -1;
 
-	fd = open(path, O_RDONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	len = read(fd, buf, buf_len);
-
-	close(fd);
+	len = sysfs_read(path, buf, buf_len);
 
 	if (len == -1) {
 		ALOGW("Cannot read string from %s (%s)\n", path,
@@ -204,7 +169,7 @@ int sysfs_read_str(const char path[PATH_MAX], char *buf, int buf_len)
 		return -1;
 	}
 
-	buf[len == 0 ? 0 : len-1] = '\0';
+	buf[len == 0 ? 0 : len - 1] = '\0';
 
 	ALOGV("Read %s from %s\n", buf, path);
 
