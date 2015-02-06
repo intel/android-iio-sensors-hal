@@ -13,7 +13,7 @@
 #include <sys/socket.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
-#include <linux/iio/events.h>
+#include <linux/ioctl.h>
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
@@ -21,6 +21,15 @@
 #include "calibration.h"
 #include "description.h"
 #include "filtering.h"
+
+/* Couple of temporary defines until we get a suitable linux/iio/events.h include */
+
+struct iio_event_data {
+         __u64   id;
+         __s64   timestamp;
+};
+
+#define IIO_GET_EVENT_FD_IOCTL _IOR('i', 0x90, int)
 
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
@@ -1277,7 +1286,7 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 
 	ts = event.timestamp;
 
-	ALOGV("Read event %ld from fd %d of iio device %d\n", event.id, fd, dev_num);
+	ALOGV("Read event %lld from fd %d of iio device %d\n", event.id, fd, dev_num);
 
 	/* Map device report to sensor reports */
 	for (s = 0; s < MAX_SENSORS; s++)
