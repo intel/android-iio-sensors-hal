@@ -131,35 +131,28 @@ int sysfs_read_uint64(const char path[PATH_MAX], uint64_t *value)
 
 int sysfs_write_int(const char path[PATH_MAX], int value)
 {
-	int ret;
-	int fd;
-	int len;
 	char buf[20];
+	int len = snprintf(buf, sizeof(buf), "%d", value);
 
-	len = sprintf(buf, "%d", value);
-
-	if (!path[0] || len <= 0) {
+	if (len <= 0) {
 		ALOGE("Unexpected condition in sysfs_write_int\n");
 		return -1;
 	}
 
-	fd = open(path, O_WRONLY);
+	return sysfs_write(path, buf, len);
+}
 
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
+int sysfs_write_float(const char path[PATH_MAX], float value)
+{
+	char buf[20];
+	int len = snprintf(buf, sizeof(buf), "%g", value);
+
+	if (len <= 0) {
+		ALOGE("Unexpected condition in sysfs_write_float\n");
 		return -1;
 	}
 
-	ret = write(fd, buf, len);
-
-	if (ret != len) {
-		ALOGW("Cannot write %s (%d bytes) to %s (%s)\n", buf, len, path,
-		      strerror(errno));
-	}
-
-	close(fd);
-
-	return ret;
+	return sysfs_write(path, buf, len);
 }
 
 
@@ -192,40 +185,6 @@ int sysfs_read_str(const char path[PATH_MAX], char *buf, int buf_len)
 	ALOGV("Read %s from %s\n", buf, path);
 
 	return len;
-}
-
-
-int sysfs_write_float(const char path[PATH_MAX], float value)
-{
-	int ret;
-	int fd;
-	int len;
-	char buf[20];
-
-	len = snprintf(buf, sizeof(buf), "%g", value);
-
-	if (!path[0] || len <= 0) {
-		ALOGE("Unexpected condition in sysfs_write_float\n");
-		return -1;
-	}
-
-	fd = open(path, O_WRONLY);
-
-	if (fd == -1) {
-		ALOGV("Cannot open %s (%s)\n", path, strerror(errno));
-		return -1;
-	}
-
-	ret = write(fd, buf, len);
-
-	if (ret != len) {
-		ALOGW("Cannot write %s (%d bytes) to %s (%s)\n", buf, len, path,
-		      strerror(errno));
-	}
-
-	close(fd);
-
-	return ret;
 }
 
 
