@@ -116,6 +116,8 @@ typedef struct
 			  * Optional correction scale read from a property such as iio.accel.x.scale, allowing late compensation of
 			  * problems such as misconfigured axes ; set to 1 by default. Applied at the end of the scaling process.
 			  */
+	int raw_path_present;   /* Flag signalling the presence of in_<sens>_<axis>_raw file */
+	int input_path_present; /* Flag signalling the presence of in_<sens>_input file */
 }
 channel_info_t;
 

@@ -515,15 +515,15 @@ float acquire_immediate_float_value (int s, int c)
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
-	if (input_path[0]) {
+	if (sensor[s].channel[c].input_path_present) {
 		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
 		ret = sysfs_read_float(sysfs_path, &val);
 
 		if (!ret)
 			return val * correction;
-	};
+	}
 
-	if (!raw_path[0])
+	if (!sensor[s].channel[c].raw_path_present)
 		return 0;
 
 	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);
@@ -561,7 +561,7 @@ uint64_t acquire_immediate_uint64_value (int s, int c)
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
-	if (input_path[0]) {
+	if (sensor[s].channel[c].input_path_present) {
 		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
 		ret = sysfs_read_uint64(sysfs_path, &val);
 
@@ -569,7 +569,7 @@ uint64_t acquire_immediate_uint64_value (int s, int c)
 			return val * correction;
 	};
 
-	if (!raw_path[0])
+	if (!sensor[s].channel[c].raw_path_present)
 		return 0;
 
 	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);

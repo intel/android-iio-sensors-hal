@@ -548,6 +548,17 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	for (c = 1; c < num_channels; c++)
 		sensor[s].channel[c].opt_scale = 1;
 
+	for (c = 0; c < num_channels; c++) {
+		/* Check the presence of the channel's input_path */
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+			sensor_catalog[catalog_index].channel[c].input_path);
+		sensor[s].channel[c].input_path_present = (access(sysfs_path, R_OK) != -1);
+		/* Check the presence of the channel's raw_path */
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+			sensor_catalog[catalog_index].channel[c].raw_path);
+		sensor[s].channel[c].raw_path_present = (access(sysfs_path, R_OK) != -1);
+	}
+
 	/* Read ACPI _PLD attributes for this sensor, if there are any */
 	decode_placement_information(dev_num, num_channels, s);
 
