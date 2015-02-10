@@ -22,15 +22,6 @@
 #include "description.h"
 #include "filtering.h"
 
-/* Couple of temporary defines until we get a suitable linux/iio/events.h include */
-
-struct iio_event_data {
-         __u64   id;
-         __s64   timestamp;
-};
-
-#define IIO_GET_EVENT_FD_IOCTL _IOR('i', 0x90, int)
-
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
 static int trig_sensors_per_dev[MAX_DEVICES];		/* trigger, event based				*/

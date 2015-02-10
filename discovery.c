@@ -30,7 +30,7 @@ void discover_sensors(int dev_num, char *sysfs_base_path, char map[catalog_size]
 	/* Enumerate entries in this iio device's base folder */
 
 	while ((d = readdir(dir))) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
+		if (!strncmp(d->d_name, ".", sizeof(".")) || !strncmp(d->d_name, "..", sizeof("..")))
 			continue;
 
 		/* If the name matches a catalog entry, flag it */
