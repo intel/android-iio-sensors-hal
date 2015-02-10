@@ -284,5 +284,14 @@ extern int			sensor_count;
 extern struct sensor_t		sensor_desc[MAX_SENSORS];
 extern sensor_info_t		sensor[MAX_SENSORS];
 extern sensor_catalog_entry_t	sensor_catalog[];
+extern unsigned int		catalog_size;
+
+/* Needed both in sensors and activity HALs */
+void check_trig_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void check_poll_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void check_event_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void discover_sensors(int dev_num, char *sysfs_base_path, char map[catalog_size],
+		      void (*discover_sensor)(int, char*, char*));
+
 
 #endif

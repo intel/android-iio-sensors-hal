@@ -21,6 +21,7 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/matrix-ops.c \
 	     $(src_path)/gyro-calibration.c \
 	     $(src_path)/filtering.c \
+	     $(src_path)/discovery.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
 ifeq ($(HAL_AUTODETECT),true)
