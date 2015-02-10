@@ -16,6 +16,7 @@
 
 #define MIN_ON_CHANGE_SAMPLING_PERIOD_US   200000 /* For on change sensors (temperature, proximity, ALS, etc.) report we support 5 Hz max (0.2 s min period) */
 #define MAX_ON_CHANGE_SAMPLING_PERIOD_US 10000000 /* 0.1 Hz min (10 s max period)*/
+#define ANDROID_MAX_FREQ 1000 /* 1000 Hz - This is how much Android requests for the fastest frequency */
 
 /*
  * About properties
@@ -281,7 +282,7 @@ static float sensor_get_max_freq (int s)
 	if (!sensor_get_fl_prop(s, "max_freq", &max_freq))
 		return max_freq;
 
-	return 1000;
+	return ANDROID_MAX_FREQ;
 }
 
 int sensor_get_cal_steps (int s)
@@ -586,6 +587,7 @@ int32_t sensor_get_min_delay (int s)
 	char freqs_buf[100];
 	char* cursor;
 	float max_supported_rate = 0;
+	float max_from_prop = sensor_get_max_freq(s);
 	float sr;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
@@ -620,8 +622,12 @@ int32_t sensor_get_min_delay (int s)
 
 	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
 		if (sensor[s].mode == MODE_POLL) {
-			/* The should rate */
-			max_supported_rate = get_cdd_freq(s, 0);
+			/* If we have max specified via a property use it */
+			if (max_from_prop != ANDROID_MAX_FREQ)
+				max_supported_rate = max_from_prop;
+			else
+				/* The should rate */
+				max_supported_rate = get_cdd_freq(s, 0);
 		}
 	} else {
 		cursor = freqs_buf;
@@ -630,7 +636,7 @@ int32_t sensor_get_min_delay (int s)
 			/* Decode a single value */
 			sr = strtod(cursor, NULL);
 
-			if (sr > max_supported_rate && sr <= sensor_get_max_freq(s))
+			if (sr > max_supported_rate && sr <= max_from_prop)
 				max_supported_rate = sr;
 
 			/* Skip digits */
