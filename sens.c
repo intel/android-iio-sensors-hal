@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #include <stdio.h>
@@ -151,7 +151,7 @@ static void print_event(struct sensors_event_t *e)
 		fprintf(f, "event: step_detector=%10.2f\n", e->data[0]);
 		break;
 	case SENSOR_TYPE_STEP_COUNTER:
-		fprintf(f, "event: step_detector=%llu\n",
+		fprintf(f, "event: step_counter=%llu\n",
 			(unsigned long long)e->u64.step_counter);
 		break;
 	}
@@ -504,7 +504,7 @@ static int start_hal(int argc, char **argv)
 
 int main(int argc, char **argv)
 {
-	char cmd[1024], *tmp;
+	char cmd[1024];
 	int sock, i;
 	struct iovec buff = {
 		.iov_base = cmd,

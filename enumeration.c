@@ -1,10 +1,11 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #include <ctype.h>
 #include <dirent.h>
 #include <stdlib.h>
+#include <fcntl.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
@@ -29,18 +30,141 @@
   */
 
 sensor_catalog_entry_t sensor_catalog[] = {
-	DECLARE_SENSOR3("accel",      SENSOR_TYPE_ACCELEROMETER,  "x", "y", "z")
-	DECLARE_SENSOR3("anglvel",    SENSOR_TYPE_GYROSCOPE,      "x", "y", "z")
-	DECLARE_SENSOR3("magn",       SENSOR_TYPE_MAGNETIC_FIELD, "x", "y", "z")
-	DECLARE_SENSOR1("intensity",  SENSOR_TYPE_LIGHT,          "both"       )
-	DECLARE_SENSOR0("illuminance",SENSOR_TYPE_LIGHT                        )
-	DECLARE_SENSOR3("incli",      SENSOR_TYPE_ORIENTATION,    "x", "y", "z")
-	DECLARE_SENSOR4("rot",        SENSOR_TYPE_ROTATION_VECTOR,
-					 "quat_x", "quat_y", "quat_z", "quat_w")
-	DECLARE_SENSOR0("temp",	      SENSOR_TYPE_AMBIENT_TEMPERATURE	       )
-	DECLARE_SENSOR0("proximity",  SENSOR_TYPE_PROXIMITY		       )
-	DECLARE_VIRTUAL(SENSOR_TYPE_GYROSCOPE_UNCALIBRATED		       )
-	DECLARE_VIRTUAL(SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED			)
+	{
+		.tag		= "accel",
+		.type		= SENSOR_TYPE_ACCELEROMETER,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("accel", "x") },
+			{ DECLARE_NAMED_CHANNEL("accel", "y") },
+			{ DECLARE_NAMED_CHANNEL("accel", "z") },
+		},
+	},
+	{
+		.tag		= "anglvel",
+		.type		= SENSOR_TYPE_GYROSCOPE,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("anglvel", "x") },
+			{ DECLARE_NAMED_CHANNEL("anglvel", "y") },
+			{ DECLARE_NAMED_CHANNEL("anglvel", "z") },
+		},
+	},
+	{
+		.tag		= "magn",
+		.type		= SENSOR_TYPE_MAGNETIC_FIELD,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("magn", "x") },
+			{ DECLARE_NAMED_CHANNEL("magn", "y") },
+			{ DECLARE_NAMED_CHANNEL("magn", "z") },
+		},
+	},
+	{
+		.tag		= "intensity",
+		.type		= SENSOR_TYPE_LIGHT,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("intensity", "both") },
+		},
+	},
+	{
+		.tag		= "illuminance",
+		.type		= SENSOR_TYPE_LIGHT,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("illuminance") },
+		},
+	},
+	{
+		.tag		= "incli",
+		.type		= SENSOR_TYPE_ORIENTATION,
+		.num_channels	= 3,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("incli", "x") },
+			{ DECLARE_NAMED_CHANNEL("incli", "y") },
+			{ DECLARE_NAMED_CHANNEL("incli", "z") },
+		},
+	},
+	{
+		.tag		= "rot",
+		.type		= SENSOR_TYPE_ROTATION_VECTOR,
+		.num_channels	= 4,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_x") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_y") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_z") },
+			{ DECLARE_NAMED_CHANNEL("rot", "quat_w") },
+		},
+	},
+	{
+		.tag		= "temp",
+		.type		= SENSOR_TYPE_AMBIENT_TEMPERATURE,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("temp") },
+		},
+	},
+	{
+		.tag		= "proximity",
+		.type		= SENSOR_TYPE_PROXIMITY,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("proximity") },
+		},
+	},
+	{
+		.tag		= "",
+		.type		= SENSOR_TYPE_GYROSCOPE_UNCALIBRATED,
+		.num_channels	= 0,
+		.is_virtual	= 1,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("") },
+		},
+
+	},
+	{
+		.tag		= "",
+		.type		= SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED,
+		.num_channels	= 0,
+		.is_virtual	= 1,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("") },
+		},
+	},
+	{
+		.tag		= "steps",
+		.type		= SENSOR_TYPE_STEP_COUNTER,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{ DECLARE_GENERIC_CHANNEL("steps") },
+		},
+	},
+	{
+		.tag		= "steps",
+		.type		= SENSOR_TYPE_STEP_DETECTOR,
+		.num_channels	= 1,
+		.is_virtual	= 0,
+		.channel = {
+			{
+				DECLARE_VOID_CHANNEL("steps")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_NAMED_EVENT("steps", "change") },
+				},
+			},
+		},
+	},
 };
 
 #define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
@@ -56,6 +180,22 @@ struct sensor_t	sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
 sensor_info_t	sensor[MAX_SENSORS];		/* Internal descriptors      */
 int		sensor_count;			/* Detected sensors 	     */
 
+
+/* if the sensor has an _en attribute, we need to enable it */
+int get_needs_enable(int dev_num, const char *tag)
+{
+	char sysfs_path[PATH_MAX];
+	int fd;
+
+	sprintf(sysfs_path, SENSOR_ENABLE_PATH, dev_num, tag);
+
+	fd = open(sysfs_path, O_RDWR);
+	if (fd == -1)
+		return 0;
+
+	close(fd);
+	return 1;
+}
 
 static void setup_properties_from_pld (int s, int panel, int rotation,
 				       int num_channels)
@@ -270,7 +410,7 @@ static void add_virtual_sensor (int catalog_index)
 }
 
 
-static void add_sensor (int dev_num, int catalog_index, int use_polling)
+static void add_sensor (int dev_num, int catalog_index, int mode)
 {
 	int s;
 	int sensor_type;
@@ -303,11 +443,11 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	sensor[s].dev_num	= dev_num;
 	sensor[s].catalog_index	= catalog_index;
 	sensor[s].type		= sensor_type;
-	sensor[s].is_polling	= use_polling;
+	sensor[s].mode		= mode;
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
-        if (use_polling)
+        if (mode == MODE_POLL)
                 sensor[s].num_channels = 0;
         else
                 sensor[s].num_channels = num_channels;
@@ -408,6 +548,17 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	for (c = 1; c < num_channels; c++)
 		sensor[s].channel[c].opt_scale = 1;
 
+	for (c = 0; c < num_channels; c++) {
+		/* Check the presence of the channel's input_path */
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+			sensor_catalog[catalog_index].channel[c].input_path);
+		sensor[s].channel[c].input_path_present = (access(sysfs_path, R_OK) != -1);
+		/* Check the presence of the channel's raw_path */
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num,
+			sensor_catalog[catalog_index].channel[c].raw_path);
+		sensor[s].channel[c].raw_path_present = (access(sysfs_path, R_OK) != -1);
+	}
+
 	/* Read ACPI _PLD attributes for this sensor, if there are any */
 	decode_placement_information(dev_num, num_channels, s);
 
@@ -470,23 +621,25 @@ static void add_sensor (int dev_num, int catalog_index, int use_polling)
 	if (sensor_get_order(s, sensor[s].order))
 		sensor[s].quirks |= QUIRK_FIELD_ORDERING;
 
+	sensor[s].needs_enable = get_needs_enable(dev_num, sensor_catalog[catalog_index].tag);
+
 	sensor_count++;
 }
 
 
-static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
+static void discover_sensors (int dev_num, char *sysfs_base_path, char map[CATALOG_SIZE],
+			      void (*discover_sensor)(int, char*, char*))
 {
-	char base_dir[PATH_MAX];
+	char sysfs_dir[PATH_MAX];
 	DIR *dir;
 	struct dirent *d;
 	unsigned int i;
-        int c;
 
 	memset(map, 0, CATALOG_SIZE);
 
-	snprintf(base_dir, sizeof(base_dir), BASE_PATH, dev_num);
+	snprintf(sysfs_dir, sizeof(sysfs_dir), sysfs_base_path, dev_num);
 
-	dir = opendir(base_dir);
+	dir = opendir(sysfs_dir);
 	if (!dir) {
 		return;
 	}
@@ -503,59 +656,44 @@ static void discover_poll_sensors (int dev_num, char map[CATALOG_SIZE])
 			/* No discovery for virtual sensors */
 			if (sensor_catalog[i].is_virtual)
 				continue;
-
-			for (c=0; c<sensor_catalog[i].num_channels; c++)
-				if (!strcmp(d->d_name,sensor_catalog[i].channel[c].raw_path) || !strcmp(d->d_name, sensor_catalog[i].channel[c].input_path)) {
-					map[i] = 1;
-					break;
-			}
+			discover_sensor(i, d->d_name, map);
 		}
 	}
 
 	closedir(dir);
 }
 
-
-static void discover_trig_sensors (int dev_num, char map[CATALOG_SIZE])
+static void check_poll_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
 {
-	char scan_elem_dir[PATH_MAX];
-	DIR *dir;
-	struct dirent *d;
-	unsigned int i;
+        int c;
 
-	memset(map, 0, CATALOG_SIZE);
+	for (c = 0; c < sensor_catalog[i].num_channels; c++)
+		if (!strcmp(sysfs_file, sensor_catalog[i].channel[c].raw_path) ||
+		    !strcmp(sysfs_file, sensor_catalog[i].channel[c].input_path)) {
+			map[i] = 1;
+			break;
+		}
+}
+static void check_trig_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
+{
 
-	/* Enumerate entries in this iio device's scan_elements folder */
-
-	snprintf(scan_elem_dir, sizeof(scan_elem_dir), CHANNEL_PATH, dev_num);
-
-	dir = opendir(scan_elem_dir);
-	if (!dir) {
+	if (!strcmp(sysfs_file, sensor_catalog[i].channel[0].en_path)) {
+		map[i] = 1;
 		return;
 	}
-
-	while ((d = readdir(dir))) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
-			continue;
-
-		/* Compare en entry to known ones and create matching sensors */
-
-		for (i = 0; i<CATALOG_SIZE; i++) {
-
-			/* No discovery for virtual sensors */
-			if (sensor_catalog[i].is_virtual)
-				continue;
-
-			if (!strcmp(d->d_name, sensor_catalog[i].channel[0].en_path)) {
-					map[i] = 1;
-					break;
-			}
-		}
-	}
-
-	closedir(dir);
 }
 
+static void check_event_sensors(int i, char *sysfs_file, char map[CATALOG_SIZE])
+{
+	int j, k;
+
+	for (j = 0; j < sensor_catalog[i].num_channels; j++)
+		for (k = 0; k < sensor_catalog[i].channel[j].num_events; k++)
+			if (!strcmp(sysfs_file, sensor_catalog[i].channel[j].event[k].ev_en_path)) {
+				map[i] = 1;
+				return ;
+			}
+}
 
 static void virtual_sensors_check (void)
 {
@@ -604,7 +742,7 @@ static void virtual_sensors_check (void)
 
 			case SENSOR_TYPE_ORIENTATION:
 				if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-					add_sensor(0, i, 1);
+					add_sensor(0, i, MODE_POLL);
 				break;
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				if (has_gyr) {
@@ -707,7 +845,6 @@ static void setup_trigger_names (void)
 {
 	char filename[PATH_MAX];
 	char buf[MAX_NAME_SIZE];
-	int len;
 	int s;
 	int trigger;
 	int ret;
@@ -741,7 +878,7 @@ static void setup_trigger_names (void)
 			strcpy(sensor[s].motion_trigger_name, sensor[s].init_trigger_name);
 
 	for (s=0; s<sensor_count; s++)
-		if (!sensor[s].is_polling) {
+		if (sensor[s].mode == MODE_TRIGGER) {
 			ALOGI("Sensor %d (%s) default trigger: %s\n", s, sensor[s].friendly_name, sensor[s].init_trigger_name);
 			if (sensor[s].motion_trigger_name[0])
 				ALOGI("Sensor %d (%s) motion trigger: %s\n", s, sensor[s].friendly_name, sensor[s].motion_trigger_name);
@@ -757,6 +894,7 @@ void enumerate_sensors (void)
 	 */
 	char poll_sensors[CATALOG_SIZE];
 	char trig_sensors[CATALOG_SIZE];
+	char event_sensors[CATALOG_SIZE];
 	int dev_num;
 	unsigned int i;
 	int trig_found;
@@ -764,17 +902,25 @@ void enumerate_sensors (void)
 	for (dev_num=0; dev_num<MAX_DEVICES; dev_num++) {
 		trig_found = 0;
 
-		discover_poll_sensors(dev_num, poll_sensors);
-		discover_trig_sensors(dev_num, trig_sensors);
+		discover_sensors(dev_num, BASE_PATH, poll_sensors, check_poll_sensors);
+		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
+		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
 
-		for (i=0; i<CATALOG_SIZE; i++)
-			if (trig_sensors[i]) {
-				add_sensor(dev_num, i, 0);
-				trig_found = 1;
+		for (i=0; i<CATALOG_SIZE; i++) {
+			if (event_sensors[i]) {
+				add_sensor(dev_num, i, MODE_EVENT);
+				continue;
 			}
-			else
-				if (poll_sensors[i])
-					add_sensor(dev_num, i, 1);
+			if (trig_sensors[i]) {
+				add_sensor(dev_num, i, MODE_TRIGGER);
+				trig_found = 1;
+				continue;
+			}
+			if (poll_sensors[i]) {
+				add_sensor(dev_num, i, MODE_POLL);
+				continue;
+			}
+		}
 
 		if (trig_found)
 			build_sensor_report_maps(dev_num);

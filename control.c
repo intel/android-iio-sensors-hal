@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #include <stdlib.h>
@@ -9,9 +9,11 @@
 #include <time.h>
 #include <math.h>
 #include <sys/epoll.h>
+#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <utils/Log.h>
 #include <hardware/sensors.h>
+#include <linux/ioctl.h>
 #include "control.h"
 #include "enumeration.h"
 #include "utils.h"
@@ -20,11 +22,21 @@
 #include "description.h"
 #include "filtering.h"
 
+/* Couple of temporary defines until we get a suitable linux/iio/events.h include */
+
+struct iio_event_data {
+         __u64   id;
+         __s64   timestamp;
+};
+
+#define IIO_GET_EVENT_FD_IOCTL _IOR('i', 0x90, int)
+
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
 static int trig_sensors_per_dev[MAX_DEVICES];		/* trigger, event based				*/
 
 static int device_fd[MAX_DEVICES];			/* fd on the /dev/iio:deviceX file		*/
+static int events_fd[MAX_DEVICES];			/* fd on the /sys/bus/iio/devices/iio:deviceX/events/<event_name> file */
 static int has_iio_ts[MAX_DEVICES];			/* ts channel available on this iio dev		*/
 static int expected_dev_report_size[MAX_DEVICES];	/* expected iio scan len			*/
 static int poll_fd;					/* epoll instance covering all enabled sensors	*/
@@ -128,6 +140,21 @@ static int setup_trigger (int s, const char* trigger_val)
 	return ret;
 }
 
+static int enable_event(int dev_num, const char *name, int enabled)
+{
+	char sysfs_path[PATH_MAX];
+
+	sprintf(sysfs_path, EVENTS_PATH "%s", dev_num, name);
+	return sysfs_write_int(sysfs_path, enabled);
+}
+
+static int enable_sensor(int dev_num, const char *tag, int enabled)
+{
+	char sysfs_path[PATH_MAX];
+
+	sprintf(sysfs_path, SENSOR_ENABLE_PATH, dev_num, tag);
+	return sysfs_write_int(sysfs_path, enabled);
+}
 
 static void enable_iio_timestamp (int dev_num, int known_channels)
 {
@@ -343,6 +370,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 	 * Adjust counters based on sensor enable action. Return values are:
 	 *  0 if the operation was completed and we're all set
 	 *  1 if we toggled the state of the sensor and there's work left
+	 * -1 in case of an error
 	 */
 
 	int dev_num = sensor[s].dev_num;
@@ -377,30 +405,36 @@ int adjust_counters (int s, int enabled, int from_virtual)
 
 	/* We changed the state of a sensor: adjust device ref counts */
 
-	if (!sensor[s].is_polling) {
+	switch(sensor[s].mode) {
+	case MODE_TRIGGER:
+		if (enabled)
+			trig_sensors_per_dev[dev_num]++;
+		else
+			trig_sensors_per_dev[dev_num]--;
 
-			if (enabled)
-				trig_sensors_per_dev[dev_num]++;
-			else
-				trig_sensors_per_dev[dev_num]--;
-
-			return 1;
-	}
-
-	if (enabled) {
-		active_poll_sensors++;
-		poll_sensors_per_dev[dev_num]++;
 		return 1;
+	case MODE_POLL:
+		if (enabled) {
+			active_poll_sensors++;
+			poll_sensors_per_dev[dev_num]++;
+			return 1;
+		} else {
+			active_poll_sensors--;
+			poll_sensors_per_dev[dev_num]--;
+			return 1;
+		}
+	case MODE_EVENT:
+		return 1;
+	default:
+		/* Invalid sensor mode */
+		return -1;
 	}
-
-	active_poll_sensors--;
-	poll_sensors_per_dev[dev_num]--;
-	return 1;
 }
 
 
-static int get_field_count (int s)
+static int get_field_count (int s, size_t *field_size)
 {
+	*field_size = sizeof(float);
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
@@ -415,11 +449,15 @@ static int get_field_count (int s)
 		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
 		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
 		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
+		case SENSOR_TYPE_STEP_DETECTOR:		/* event: always 1 */
 			return 1;
 
 		case SENSOR_TYPE_ROTATION_VECTOR:
 			return 4;
 
+		case SENSOR_TYPE_STEP_COUNTER:		/* number of steps */
+			*field_size = sizeof(uint64_t);
+			return 1;
 		default:
 			ALOGE("Unknown sensor type!\n");
 			return 0;			/* Drop sample */
@@ -474,6 +512,7 @@ static void* acquisition_routine (void* param)
 	int ret;
 	struct timespec target_time;
 	int64_t timestamp, period, start, stop;
+	size_t field_size;
 
 	if (s < 0 || s >= sensor_count) {
 		ALOGE("Invalid sensor handle!\n");
@@ -492,7 +531,7 @@ static void* acquisition_routine (void* param)
 	data.sensor	= s;
 	data.type	= sensor[s].type;
 
-	num_fields = get_field_count(s);
+	num_fields = get_field_count(s, &field_size);
 
 	/*
 	 * Each condition variable is associated to a mutex that has to be locked by the thread that's waiting on it. We use these condition
@@ -509,7 +548,10 @@ static void* acquisition_routine (void* param)
 
 		/* Read values through sysfs */
 		for (c=0; c<num_fields; c++) {
-			data.data[c] = acquire_immediate_value(s, c);
+			if (field_size == sizeof(uint64_t))
+				data.u64.data[c] = acquire_immediate_uint64_value(s, c);
+			else
+				data.data[c] = acquire_immediate_float_value(s, c);
 
 			/* Check and honor termination requests */
 			if (sensor[s].thread_data_fd[1] == -1)
@@ -579,6 +621,10 @@ static void start_acquisition_thread (int s)
 
 	/* Add incoming side of pipe to our poll set, with a suitable tag */
 	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, incoming_data_fd , &ev);
+	if (ret == -1) {
+		ALOGE("Failed adding %d to poll set (%s)\n",
+			incoming_data_fd, strerror(errno));
+	}
 
 	/* Create and start worker thread */
 	ret = pthread_create(&sensor[s].acquisition_thread, NULL, acquisition_routine, (void*) (size_t) s);
@@ -725,7 +771,7 @@ static int sensor_set_rate (int s, float requested_rate)
 		return 0;
 
 	/* If we're dealing with a poll-mode sensor */
-	if (sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_POLL) {
 		if (is_enabled(s))
 			pthread_cond_signal(&thread_release_cond[s]); /* Wake up thread so the new sampling rate gets used */
 		return 0;
@@ -797,13 +843,17 @@ static int sensor_set_rate (int s, float requested_rate)
 		arb_sampling_rate = sensor[s].max_supported_rate;
 	}
 
+	/* Record the rate that was agreed upon with the sensor taken in isolation ; this avoid uncontrolled ripple effects between colocated sensor rates */
+	sensor[s].semi_arbitrated_rate = arb_sampling_rate;
+
 	/* Coordinate with others active sensors on the same device, if any */
 	if (per_device_sampling_rate)
 		for (n=0; n<sensor_count; n++)
-			if (n != s && sensor[n].dev_num == dev_num && sensor[n].num_channels && is_enabled(n) && sensor[n].sampling_rate > arb_sampling_rate) {
+			if (n != s && sensor[n].dev_num == dev_num && sensor[n].num_channels && is_enabled(n) &&
+				sensor[n].semi_arbitrated_rate > arb_sampling_rate) {
 				ALOGV("Sampling rate shared between %s and %s, using %g instead of %g\n", sensor[s].friendly_name, sensor[n].friendly_name,
-													  sensor[n].sampling_rate, arb_sampling_rate);
-				arb_sampling_rate = sensor[n].sampling_rate;
+													  sensor[n].semi_arbitrated_rate, arb_sampling_rate);
+				arb_sampling_rate = sensor[n].semi_arbitrated_rate;
 			}
 
 	sensor[s].sampling_rate = arb_sampling_rate;
@@ -843,7 +893,7 @@ static void reapply_sampling_rates (int s)
 	 * that ended up being used after arbitration.
 	 */
 
-	int i, j, base, user;
+	int i, j, base;
 
 	if (sensor[s].is_virtual) {
 		/* Take care of downwards dependencies */
@@ -900,9 +950,11 @@ int sensor_activate (int s, int enabled, int from_virtual)
 {
 	char device_name[PATH_MAX];
 	struct epoll_event ev = {0};
-	int dev_fd;
-	int ret;
+	int dev_fd, event_fd;
+	int ret, c, d;
 	int dev_num = sensor[s].dev_num;
+	size_t field_size;
+	int catalog_index = sensor[s].catalog_index;
 
 	if (sensor[s].is_virtual)
 		return sensor_activate_virtual(s, enabled, from_virtual);
@@ -922,7 +974,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	if (enabled)
 		setup_noise_filtering(s);	/* Initialize filtering data if required */
 
-	if (!sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_TRIGGER) {
 
 		/* Stop sampling */
 		enable_buffer(dev_num, 0);
@@ -935,6 +987,10 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			setup_trigger(s, sensor[s].init_trigger_name);
 			enable_buffer(dev_num, 1);
 		}
+	} else if (sensor[s].mode == MODE_POLL) {
+		if (sensor[s].needs_enable) {
+			enable_sensor(dev_num, sensor_catalog[catalog_index].tag, enabled);
+		}
 	}
 
 	/*
@@ -944,7 +1000,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 	dev_fd = device_fd[dev_num];
 
 	if (!enabled) {
-		if (sensor[s].is_polling)
+		if (sensor[s].mode == MODE_POLL)
 			stop_acquisition_thread(s);
 
 		if (dev_fd != -1 && !poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
@@ -953,6 +1009,20 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 				close(dev_fd);
 				device_fd[dev_num] = -1;
+		}
+
+		if (sensor[s].mode == MODE_EVENT) {
+			event_fd = events_fd[dev_num];
+
+			for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++) {
+				for (d = 0; d < sensor_catalog[catalog_index].channel[c].num_events; d++)
+					enable_event(dev_num, sensor_catalog[catalog_index].channel[c].event[d].ev_en_path, enabled);
+			}
+
+			epoll_ctl(poll_fd, EPOLL_CTL_DEL, event_fd, NULL);
+			close(event_fd);
+			events_fd[dev_num] = -1;
+
 		}
 
 		/* Release any filtering data we may have accumulated */
@@ -978,7 +1048,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 
 		ALOGV("Opened %s: fd=%d\n", device_name, dev_fd);
 
-		if (!sensor[s].is_polling) {
+		if (sensor[s].mode == MODE_TRIGGER) {
 
 			/* Add this iio device fd to the set of watched fds */
 			ev.events = EPOLLIN;
@@ -992,13 +1062,47 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			}
 
 			/* Note: poll-mode fds are not readable */
+		} else if (sensor[s].mode == MODE_EVENT) {
+			event_fd = events_fd[dev_num];
+
+			ret = ioctl(dev_fd, IIO_GET_EVENT_FD_IOCTL, &event_fd);
+			if (ret == -1 || event_fd == -1) {
+				ALOGE("Failed to retrieve event_fd from %d (%s)\n", dev_fd, strerror(errno));
+				return -1;
+			}
+			events_fd[dev_num] = event_fd;
+			ALOGV("Opened fd=%d to receive events\n", event_fd);
+
+			/* Add this event fd to the set of watched fds */
+			ev.events = EPOLLIN;
+			ev.data.u32 = dev_num;
+
+			ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, event_fd, &ev);
+			if (ret == -1) {
+				ALOGE("Failed adding %d to poll set (%s)\n", event_fd, strerror(errno));
+				return -1;
+			}
+			for (c = 0; c < sensor_catalog[catalog_index].num_channels; c++) {
+				int d;
+				for (d = 0; d < sensor_catalog[catalog_index].channel[c].num_events; d++)
+					enable_event(dev_num, sensor_catalog[catalog_index].channel[c].event[d].ev_en_path, enabled);
+			}
+
+			if (!poll_sensors_per_dev[dev_num] && !trig_sensors_per_dev[dev_num]) {
+				close(dev_fd);
+				device_fd[dev_num] = -1;
+			}
 		}
 	}
 
 	/* Ensure that on-change sensors send at least one event after enable */
-	sensor[s].prev_val = -1;
+	get_field_count(s, &field_size);
+	if (field_size == sizeof(uint64_t))
+		sensor[s].prev_val.data64 = -1;
+	else
+		sensor[s].prev_val.data = -1;
 
-	if (sensor[s].is_polling)
+	if (sensor[s].mode == MODE_POLL)
 		start_acquisition_thread(s);
 
 	/* Reevaluate sampling rates of linked sensors */
@@ -1063,12 +1167,12 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s) && !sensor[s].is_polling)
-			set_report_ts(s, ts);
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL)
+			sensor[s].report_ts = ts;
 }
 
 
-static int integrate_device_report (int dev_num)
+static int integrate_device_report_from_dev(int dev_num, int fd)
 {
 	int len;
 	int s,c;
@@ -1082,18 +1186,12 @@ static int integrate_device_report (int dev_num)
 	int64_t boot_to_rt_delta;
 
 	/* There's an incoming report on the specified iio device char dev fd */
-
-	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
-		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
-		return -1;
-	}
-
-	if (device_fd[dev_num] == -1) {
+	if (fd == -1) {
 		ALOGE("Ignoring stale report on iio device %d\n", dev_num);
 		return -1;
 	}
 
-	len = read(device_fd[dev_num], buf, expected_dev_report_size[dev_num]);
+	len = read(fd, buf, expected_dev_report_size[dev_num]);
 
 	if (len == -1) {
 		ALOGE("Could not read report from iio device %d (%s)\n", dev_num, strerror(errno));
@@ -1165,10 +1263,66 @@ static int integrate_device_report (int dev_num)
 	boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
 	stamp_reports(dev_num, ts + boot_to_rt_delta);
-
 	return 0;
 }
 
+static int integrate_device_report_from_event(int dev_num, int fd)
+{
+	int len, s;
+	int64_t ts;
+	struct iio_event_data event;
+
+	/* There's an incoming report on the specified iio device char dev fd */
+	if (fd == -1) {
+		ALOGE("Ignoring stale report on event fd %d of device %d\n",
+			fd, dev_num);
+		return -1;
+	}
+
+	len = read(fd, &event, sizeof(event));
+
+	if (len == -1) {
+		ALOGE("Could not read event from fd %d of device %d (%s)\n",
+			fd, dev_num, strerror(errno));
+		return -1;
+	}
+
+	ts = event.timestamp;
+
+	ALOGV("Read event %lld from fd %d of iio device %d\n", event.id, fd, dev_num);
+
+	/* Map device report to sensor reports */
+	for (s = 0; s < MAX_SENSORS; s++)
+		if (sensor[s].dev_num == dev_num &&
+		    is_enabled(s)) {
+			sensor[s].report_ts = ts;
+			sensor[s].report_pending = 1;
+			sensor[s].report_initialized = 1;
+			ALOGV("Sensor %d report available (1 byte)\n", s);
+		}
+	return 0;
+}
+
+static int integrate_device_report(int dev_num)
+{
+	int ret = 0;
+
+	if (dev_num < 0 || dev_num >= MAX_DEVICES) {
+		ALOGE("Event reported on unexpected iio device %d\n", dev_num);
+		return -1;
+	}
+
+	if (events_fd[dev_num] != -1) {
+		ret = integrate_device_report_from_event(dev_num, events_fd[dev_num]);
+		if (ret < 0)
+			return ret;
+	}
+
+	if (device_fd[dev_num] != -1)
+		ret = integrate_device_report_from_dev(dev_num, device_fd[dev_num]);
+
+	return ret;
+}
 
 static int propagate_vsensor_report (int s, sensors_event_t *data)
 {
@@ -1186,7 +1340,8 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 {
 	/* There's a sensor report pending for this sensor ; transmit it */
 
-	int num_fields	  = get_field_count(s);
+	size_t field_size;
+	int num_fields	  = get_field_count(s, &field_size);
 	int c;
 	unsigned char* current_sample;
 	int ret;
@@ -1197,7 +1352,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 
 	ALOGV("Sample on sensor %d (type %d):\n", s, sensor[s].type);
 
-	if (sensor[s].is_polling) {
+	if (sensor[s].mode == MODE_POLL) {
 		/* We received a good sample but we're not directly enabled so we'll drop */
 		if (!sensor[s].directly_enabled)
 			return 0;
@@ -1214,6 +1369,15 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	data->sensor	= s;
 	data->type	= sensor[s].type;
 	data->timestamp = sensor[s].report_ts;
+
+	if (sensor[s].mode == MODE_EVENT) {
+		ALOGV("Reporting event\n");
+		/* Android requires events to return 1.0 */
+		data->data[0] = 1.0;
+		data->data[1] = 0.0;
+		data->data[2] = 0.0;
+		return 1;
+	}
 
 	/* Convert the data into the expected Android-level format */
 
@@ -1345,7 +1509,6 @@ int sensor_poll (sensors_event_t* data, int count)
 	struct epoll_event ev[MAX_DEVICES];
 	int returned_events;
 	int event_count;
-	int uncal_start;
 
 	/* Get one or more events from our collection of sensors */
 return_available_sensor_reports:
@@ -1473,8 +1636,10 @@ int allocate_control_data (void)
 {
 	int i;
 
-	for (i=0; i<MAX_DEVICES; i++)
+	for (i=0; i<MAX_DEVICES; i++) {
 		device_fd[i] = -1;
+		events_fd[i] = -1;
+	}
 
 	poll_fd = epoll_create(MAX_DEVICES);
 

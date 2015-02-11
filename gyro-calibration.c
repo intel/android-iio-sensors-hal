@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #include <stdio.h>
@@ -47,6 +47,9 @@ void gyro_cal_init (sensor_info_t* info)
 
 	ret = fscanf(data_file, "%f %f %f",
 			&cal_data->bias_x, &cal_data->bias_y, &cal_data->bias_z);
+	if (ret != 3)
+		ALOGE("Gyro calibration - init failed!\n");
+
 	fclose(data_file);
 }
 

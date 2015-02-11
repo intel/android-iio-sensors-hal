@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #include <stdlib.h>
@@ -347,10 +347,15 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 
 		case SENSOR_TYPE_PROXIMITY:
 			/* These are on change sensors ; drop the sample if it has the same value as the previously reported one. */
-			if (data->data[0] == sensor[s].prev_val)
+			if (data->data[0] == sensor[s].prev_val.data)
 				return 0;
 
-			sensor[s].prev_val = data->data[0];
+			sensor[s].prev_val.data = data->data[0];
+			break;
+		case SENSOR_TYPE_STEP_COUNTER:
+			if (data->u64.step_counter == sensor[s].prev_val.data64)
+				return 0;
+			sensor[s].prev_val.data64 = data->u64.data[0];
 			break;
 	}
 
@@ -491,7 +496,7 @@ void select_transform (int s)
 }
 
 
-float acquire_immediate_value (int s, int c)
+float acquire_immediate_float_value (int s, int c)
 {
 	char sysfs_path[PATH_MAX];
 	float val;
@@ -510,15 +515,15 @@ float acquire_immediate_value (int s, int c)
 
 	/* Acquire a sample value for sensor s / channel c through sysfs */
 
-	if (input_path[0]) {
+	if (sensor[s].channel[c].input_path_present) {
 		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
 		ret = sysfs_read_float(sysfs_path, &val);
 
 		if (!ret)
 			return val * correction;
-	};
+	}
 
-	if (!raw_path[0])
+	if (!sensor[s].channel[c].raw_path_present)
 		return 0;
 
 	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);
@@ -533,6 +538,45 @@ float acquire_immediate_value (int s, int c)
 	 */
 	if (sensor_type == SENSOR_TYPE_MAGNETIC_FIELD)
                 return CONVERT_GAUSS_TO_MICROTESLA ((val + offset) * scale) * correction;
+
+	return (val + offset) * scale * correction;
+}
+
+uint64_t acquire_immediate_uint64_value (int s, int c)
+{
+	char sysfs_path[PATH_MAX];
+	uint64_t val;
+	int ret;
+	int dev_num = sensor[s].dev_num;
+	int i = sensor[s].catalog_index;
+	const char* raw_path = sensor_catalog[i].channel[c].raw_path;
+	const char* input_path = sensor_catalog[i].channel[c].input_path;
+	float scale = sensor[s].scale ? sensor[s].scale : sensor[s].channel[c].scale;
+	float offset = sensor[s].offset;
+	int sensor_type = sensor_catalog[i].type;
+	float correction;
+
+	/* In case correction has been requested using properties, apply it */
+	correction = sensor[s].channel[c].opt_scale;
+
+	/* Acquire a sample value for sensor s / channel c through sysfs */
+
+	if (sensor[s].channel[c].input_path_present) {
+		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
+		ret = sysfs_read_uint64(sysfs_path, &val);
+
+		if (!ret)
+			return val * correction;
+	};
+
+	if (!sensor[s].channel[c].raw_path_present)
+		return 0;
+
+	sprintf(sysfs_path, BASE_PATH "%s", dev_num, raw_path);
+	ret = sysfs_read_uint64(sysfs_path, &val);
+
+	if (ret == -1)
+		return 0;
 
 	return (val + offset) * scale * correction;
 }

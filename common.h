@@ -1,13 +1,14 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
-#define MAX_DEVICES	8	/* Check iio devices 0 to MAX_DEVICES-1 */
-#define MAX_SENSORS	10	/* We can handle as many sensors */
+#define MAX_DEVICES	9	/* Check iio devices 0 to MAX_DEVICES-1 */
+#define MAX_SENSORS	12	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
+#define MAX_EVENTS	2	/* We can handle as many events per channel */
 #define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
 #define DEV_FILE_PATH		"/dev/iio:device%d"
@@ -18,6 +19,8 @@
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
 #define NAME_PATH		BASE_PATH "name"
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
+#define EVENTS_PATH		BASE_PATH "events/"
+#define SENSOR_ENABLE_PATH	BASE_PATH "in_%s_en"
 #define SENSOR_OFFSET_PATH	BASE_PATH "in_%s_offset"
 #define SENSOR_SCALE_PATH	BASE_PATH "in_%s_scale"
 #define SENSOR_SAMPLING_PATH	BASE_PATH "in_%s_sampling_frequency"
@@ -43,6 +46,23 @@
 #define FILTER_TYPE_MOVING_AVERAGE	1
 #define FILTER_TYPE_MEDIAN		2
 
+#define MODE_AUTO	0 /* autodetect */
+#define MODE_POLL	1
+#define MODE_TRIGGER	2
+#define MODE_EVENT	3
+
+typedef struct
+{
+	const char *type; /* event type; e.g: transition */
+	const char *dir;  /* event direction; e.g: rising */
+
+	/* sysfs entries located in /sys/bus/iio/devices/iio:deviceX/events/ */
+	const char *ev_en_path;
+	const char *ev_value_path;
+}
+event_descriptor_t;
+
+
 typedef struct
 {
 	const char *name;	/* channel name ; ex: x */
@@ -56,6 +76,9 @@ typedef struct
 	const char *raw_path;	/* _raw sysfs file name  */
 	const char *input_path;	/* _input sysfs file name */
 	const char *scale_path;	/* _scale sysfs file name */
+
+	const int num_events;
+	event_descriptor_t event[MAX_EVENTS];
 }
 channel_descriptor_t;
 
@@ -93,6 +116,8 @@ typedef struct
 			  * Optional correction scale read from a property such as iio.accel.x.scale, allowing late compensation of
 			  * problems such as misconfigured axes ; set to 1 by default. Applied at the end of the scaling process.
 			  */
+	int raw_path_present;   /* Flag signalling the presence of in_<sens>_<axis>_raw file */
+	int input_path_present; /* Flag signalling the presence of in_<sens>_input file */
 }
 channel_info_t;
 
@@ -153,7 +178,7 @@ typedef struct
 
 	int num_channels;	/* Actual channel count ; 0 for poll mode sensors	*/
 
-	int is_polling;		/* 1 if we use the sensor in poll mode, 0 if triggered	*/
+	int mode;	/* Usage mode, ex: poll, trigger ... */
 
 	/*
 	 * The array below indicates where to gather report data for this sensor inside the reports that we read from the iio character device.
@@ -198,8 +223,11 @@ typedef struct
 	void* filter;	/* Filtering data for noisy sensors */
 	int filter_type;/* FILTER_ specification for this sensor ; default is FILTER_NONE */
 
-	float prev_val; /* Previously reported value, for on-change sensors */
-
+	/* Previously reported value, for on-change sensors */
+	union {
+		float data;
+		uint64_t data64;
+	} prev_val;
 	/*
 	 * Certain sensors expose their readings through sysfs files that have a long response time (100-200 ms for ALS). Rather than block our
 	 * global control loop for several hundred ms each second, offload those lengthy blocking reads to dedicated threads, which will then report
@@ -239,6 +267,14 @@ typedef struct
 	 * events before filtering kicks in. We can also use it for statistics.
 	 */
 	uint64_t event_count;
+
+	/* Some polled sensors need to be first enabled so that they start
+	 * computing a set of values in hardware (e.g step counter). Enabling
+	 * is done through a sysfs attribute in_<tag>_en
+	 */
+	int needs_enable;
+
+	int semi_arbitrated_rate;	/* Arbitrated sampling rate before we considered other sensors co-located on the same iio device */
 }
 sensor_info_t;
 

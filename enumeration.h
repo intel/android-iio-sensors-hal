@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #ifndef __ENUMERATION_H__
@@ -13,8 +13,16 @@
  * hardware/libhardware/include/hardware/sensor.h
  */
 
+#define DECLARE_VOID_CHANNEL(tag)	\
+			tag,	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+
 #define DECLARE_CHANNEL(tag, spacer, name)		\
-		{					\
 			name,				\
 			"in_"tag spacer name"_en",	\
 			"in_"tag spacer name"_type",	\
@@ -22,65 +30,21 @@
 			"in_"tag spacer name"_raw",	\
 			"in_"tag spacer name"_input",	\
 			"in_"tag spacer name"_scale",	\
-                },
+			0, {{0}},
 
 #define DECLARE_NAMED_CHANNEL(tag, name)	DECLARE_CHANNEL(tag, "_", name)
 
 #define DECLARE_GENERIC_CHANNEL(tag)		DECLARE_CHANNEL(tag, "", "")
 
-#define DECLARE_VIRTUAL(type)			\
-{							\
-	"", type, 0, 1,				\
-	{						\
-		DECLARE_GENERIC_CHANNEL("")		\
-	}						\
-},
+#define DECLARE_EVENT(tag, spacer1, name, spacer2, type, spacer3, dir)		\
+		      type, dir,						\
+		      "in_"tag spacer1 name spacer2 type spacer3 dir"_en",	\
+		      "in_"tag spacer1 name spacer2 type spacer3 dir"_value",	\
 
-#define DECLARE_SENSOR0(tag, type)			\
-{							\
-	tag, type, 1, 0,					\
-	{						\
-		DECLARE_GENERIC_CHANNEL(tag)		\
-	}						\
-},
-
-#define DECLARE_SENSOR1(tag, type, ch1)			\
-{							\
-	tag, type, 1, 0,					\
-	{						\
-		DECLARE_NAMED_CHANNEL(tag, ch1)		\
-	}						\
-},
-
-#define DECLARE_SENSOR2(tag, type, ch1, ch2)		\
-{							\
-	tag, type, 2, 0,					\
-	{						\
-		DECLARE_NAMED_CHANNEL(tag, ch1)		\
-		DECLARE_NAMED_CHANNEL(tag, ch2)		\
-	}						\
-},
-
-#define DECLARE_SENSOR3(tag, type, ch1, ch2, ch3)	\
-{							\
-	tag, type, 3, 0,				\
-	{						\
-		DECLARE_NAMED_CHANNEL(tag, ch1)		\
-		DECLARE_NAMED_CHANNEL(tag, ch2)		\
-		DECLARE_NAMED_CHANNEL(tag, ch3)		\
-	}						\
-},
-
-#define DECLARE_SENSOR4(tag, type, ch1, ch2, ch3, ch4)	\
-{							\
-	tag, type, 4, 0,					\
-	{						\
-		DECLARE_NAMED_CHANNEL(tag, ch1)		\
-		DECLARE_NAMED_CHANNEL(tag, ch2)		\
-		DECLARE_NAMED_CHANNEL(tag, ch3)		\
-		DECLARE_NAMED_CHANNEL(tag, ch4)		\
-	}						\
-},
+#define DECLARE_GENERIC_EVENT(tag, name, type, dir) \
+		DECLARE_EVENT(tag, "_", name, "_", type, "_", dir)
+#define DECLARE_NAMED_EVENT(tag, name) \
+		DECLARE_EVENT(tag, "_", name, "","","","")
 
 int	get_sensors_list	(struct sensors_module_t* module,
 				 struct sensor_t const** list);

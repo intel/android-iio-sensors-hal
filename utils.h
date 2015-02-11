@@ -1,5 +1,5 @@
 /*
- * Copyright (C) 2014 Intel Corporation.
+ * Copyright (C) 2014-2015 Intel Corporation.
  */
 
 #ifndef __UTILS_H__
@@ -15,6 +15,8 @@ int	sysfs_write_str	 (const char path[PATH_MAX], const char *buf);
 
 int	sysfs_read_float (const char path[PATH_MAX], float *value);
 int	sysfs_write_float(const char path[PATH_MAX], float value);
+
+int	sysfs_read_uint64(const char path[PATH_MAX], uint64_t *value);
 
 void	set_timestamp	(struct timespec *out, int64_t target_ns);
 

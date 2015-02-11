@@ -1,5 +1,5 @@
 #
-# Copyright (C) 2014 Intel Corporation.
+# Copyright (C) 2014-2015 Intel Corporation.
 #
 
 # IIO sensors HAL module implementation, compiled as hw/iio-sensors-hal.so
