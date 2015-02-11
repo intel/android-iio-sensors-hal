@@ -8,7 +8,7 @@
 #define MAX_DEVICES	9	/* Check iio devices 0 to MAX_DEVICES-1 */
 #define MAX_SENSORS	12	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
-#define MAX_EVENTS	8	/* We can handle as many events per channel */
+#define MAX_EVENTS	2	/* We can handle as many events per channel */
 #define MAX_TRIGGERS	8	/* Check for triggers 0 to MAX_TRIGGERS-1 */
 
 #define DEV_FILE_PATH		"/dev/iio:device%d"
