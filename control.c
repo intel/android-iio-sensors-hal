@@ -843,13 +843,17 @@ static int sensor_set_rate (int s, float requested_rate)
 		arb_sampling_rate = sensor[s].max_supported_rate;
 	}
 
+	/* Record the rate that was agreed upon with the sensor taken in isolation ; this avoid uncontrolled ripple effects between colocated sensor rates */
+	sensor[s].semi_arbitrated_rate = arb_sampling_rate;
+
 	/* Coordinate with others active sensors on the same device, if any */
 	if (per_device_sampling_rate)
 		for (n=0; n<sensor_count; n++)
-			if (n != s && sensor[n].dev_num == dev_num && sensor[n].num_channels && is_enabled(n) && sensor[n].sampling_rate > arb_sampling_rate) {
+			if (n != s && sensor[n].dev_num == dev_num && sensor[n].num_channels && is_enabled(n) &&
+				sensor[n].semi_arbitrated_rate > arb_sampling_rate) {
 				ALOGV("Sampling rate shared between %s and %s, using %g instead of %g\n", sensor[s].friendly_name, sensor[n].friendly_name,
-													  sensor[n].sampling_rate, arb_sampling_rate);
-				arb_sampling_rate = sensor[n].sampling_rate;
+													  sensor[n].semi_arbitrated_rate, arb_sampling_rate);
+				arb_sampling_rate = sensor[n].semi_arbitrated_rate;
 			}
 
 	sensor[s].sampling_rate = arb_sampling_rate;
