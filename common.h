@@ -375,7 +375,7 @@ typedef struct
 	 */
 	int needs_enable;
 
-	int semi_arbitrated_rate;	/* Arbitrated sampling rate before we considered other sensors co-located on the same iio device */
+	float semi_arbitrated_rate;	/* Arbitrated sampling rate before we considered other sensors co-located on the same iio device */
 }
 sensor_info_t;
 
