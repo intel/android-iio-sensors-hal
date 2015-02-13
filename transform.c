@@ -299,6 +299,8 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
 			data->acceleration.status = SENSOR_STATUS_ACCURACY_HIGH;
+			if (sensor[s].quirks & QUIRK_BIASED)
+				calibrate_accel(s, data);
 			denoise(s, data);
 			break;
 

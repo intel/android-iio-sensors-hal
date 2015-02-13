@@ -373,6 +373,10 @@ int adjust_counters (int s, int enabled, int from_virtual)
 		ALOGI("Enabling sensor %d (iio device %d: %s)\n", s, dev_num, sensor[s].friendly_name);
 
 		switch (sensor[s].type) {
+			case SENSOR_TYPE_ACCELEROMETER:
+				accel_cal_init(s);
+				break;
+
 			case SENSOR_TYPE_MAGNETIC_FIELD:
 				compass_read_data(&sensor[s]);
 				break;
@@ -387,11 +391,20 @@ int adjust_counters (int s, int enabled, int from_virtual)
 		/* Sensor disabled, lower report available flag */
 		sensor[s].report_pending = 0;
 
-		if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
-			compass_store_data(&sensor[s]);
+		/* Save calibration data to persistent storage */
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_ACCELEROMETER:
+				accel_cal_store(s);
+				break;
 
-		if (sensor[s].type == SENSOR_TYPE_GYROSCOPE)
-			gyro_store_data(&sensor[s]);
+			case SENSOR_TYPE_MAGNETIC_FIELD:
+				compass_store_data(&sensor[s]);
+				break;
+
+			case SENSOR_TYPE_GYROSCOPE:
+				gyro_store_data(&sensor[s]);
+				break;
+		}
 	}
 
 	/* We changed the state of a sensor: adjust device ref counts */

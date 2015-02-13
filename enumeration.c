@@ -598,7 +598,13 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	}
 
 	switch (sensor_type) {
-		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_ACCELEROMETER:
+			/* Only engage accelerometer bias compensation if really needed */
+			if (sensor_get_quirks(s) & QUIRK_BIASED)
+				sensor[s].cal_data = calloc(1, sizeof(accel_cal_t));
+			break;
+
+			case SENSOR_TYPE_GYROSCOPE:
 			sensor[s].cal_data = malloc(sizeof(gyro_cal_t));
 			break;
 
