@@ -15,6 +15,7 @@
 #define GYRO_MAX_ERR 0.05
 #define GYRO_DS_SIZE 100
 #define GYRO_CALIBRATION_PATH "/data/gyro.conf"
+#define GYRO_CAL_VERSION 1.0
 
 
 static void reset (gyro_cal_t* cal_data)
@@ -33,6 +34,7 @@ void gyro_cal_init (sensor_info_t* info)
 	int ret;
 	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
 	FILE* data_file;
+	float version;
 
 	info->cal_level = 0;
 
@@ -45,10 +47,13 @@ void gyro_cal_init (sensor_info_t* info)
 	if (data_file == NULL)
 		return;
 
-	ret = fscanf(data_file, "%f %f %f",
+	ret = fscanf(data_file, "%f %f %f %f", &version,
 			&cal_data->bias_x, &cal_data->bias_y, &cal_data->bias_z);
-	if (ret != 3)
+
+	if (ret != 4 || version != GYRO_CAL_VERSION) {
+		reset(cal_data);
 		ALOGE("Gyro calibration - init failed!\n");
+	}
 
 	fclose(data_file);
 }
@@ -68,7 +73,7 @@ void gyro_store_data (sensor_info_t* info)
 	if (data_file == NULL)
 		return;
 
-	ret = fprintf(data_file, "%f %f %f",
+	ret = fprintf(data_file, "%f %f %f %f", GYRO_CAL_VERSION,
 		cal_data->bias_x, cal_data->bias_y, cal_data->bias_z);
 
 	if (ret < 0)

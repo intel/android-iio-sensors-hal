@@ -17,6 +17,7 @@
 
 #define MAGNETIC_LOW                960 /* 31 micro tesla squared */
 #define CAL_STEPS                   5
+#define CAL_VERSION 1.0
 
 /* We'll have multiple calibration levels so that we can provide an estimation as fast as possible */
 static const float          min_diffs       [CAL_STEPS] = {0.2,  0.25, 0.4, 0.6, 1.0};
@@ -265,21 +266,24 @@ static void compass_cal_init (FILE* data_file, sensor_info_t* info)
 {
     compass_cal_t* cal_data = (compass_cal_t*) info->cal_data;
     int cal_steps = (info->max_cal_level && info->max_cal_level <= CAL_STEPS) ? info->max_cal_level : CAL_STEPS;
+    float version;
+
     if (cal_data == NULL)
         return;
 
-    int data_count = 14;
+    int data_count = 15;
     reset_sample(cal_data);
 
     if (!info->cal_level && data_file != NULL) {
-       int ret = fscanf(data_file, "%d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
-            &info->cal_level, &cal_data->offset[0][0], &cal_data->offset[1][0], &cal_data->offset[2][0],
+       int ret = fscanf(data_file, "%f %d %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf %lf",
+            &version, &info->cal_level,
+            &cal_data->offset[0][0], &cal_data->offset[1][0], &cal_data->offset[2][0],
             &cal_data->w_invert[0][0], &cal_data->w_invert[0][1], &cal_data->w_invert[0][2],
             &cal_data->w_invert[1][0], &cal_data->w_invert[1][1], &cal_data->w_invert[1][2],
             &cal_data->w_invert[2][0], &cal_data->w_invert[2][1], &cal_data->w_invert[2][2],
             &cal_data->bfield);
 
-        if (ret != data_count || info->cal_level >= cal_steps)
+        if (ret != data_count || info->cal_level >= cal_steps || version != CAL_VERSION)
             info->cal_level = 0;
     }
 
@@ -316,8 +320,9 @@ static void compass_store_result (FILE* data_file, sensor_info_t* info)
     if (data_file == NULL || cal_data == NULL)
         return;
 
-    int ret = fprintf(data_file, "%d %f %f %f %f %f %f %f %f %f %f %f %f %f\n",
-        info->cal_level, cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0],
+    int ret = fprintf(data_file, "%f %d %f %f %f %f %f %f %f %f %f %f %f %f %f\n",
+        CAL_VERSION, info->cal_level,
+        cal_data->offset[0][0], cal_data->offset[1][0], cal_data->offset[2][0],
         cal_data->w_invert[0][0], cal_data->w_invert[0][1], cal_data->w_invert[0][2],
         cal_data->w_invert[1][0], cal_data->w_invert[1][1], cal_data->w_invert[1][2],
         cal_data->w_invert[2][0], cal_data->w_invert[2][1], cal_data->w_invert[2][2],
