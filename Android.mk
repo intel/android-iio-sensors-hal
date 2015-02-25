@@ -23,7 +23,11 @@ src_files := $(src_path)/entry.c \
 	     $(src_path)/filtering.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
+ifeq ($(HAL_AUTODETECT),true)
+LOCAL_MODULE := iio-sensors-hal
+else
 LOCAL_MODULE := sensors.$(TARGET_BOARD_PLATFORM)
+endif
 LOCAL_MODULE_OWNER := intel
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
