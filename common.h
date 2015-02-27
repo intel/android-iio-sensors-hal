@@ -51,6 +51,107 @@
 #define MODE_TRIGGER	2
 #define MODE_EVENT	3
 
+
+/* Couple of temporary defines until we get a suitable linux/iio/events.h include */
+
+struct iio_event_data {
+         __u64   id;
+         __s64   timestamp;
+};
+
+#define IIO_GET_EVENT_FD_IOCTL _IOR('i', 0x90, int)
+
+#define IIO_EVENT_CODE_EXTRACT_TYPE(mask) ((mask >> 56) & 0xFF)
+#define IIO_EVENT_CODE_EXTRACT_DIR(mask) ((mask >> 48) & 0xCF)
+#define IIO_EVENT_CODE_EXTRACT_CHAN_TYPE(mask) ((mask >> 32) & 0xFF)
+#define IIO_EVENT_CODE_EXTRACT_MODIFIER(mask) ((mask >> 40) & 0xFF)
+
+/* Couple of temporary defines until we get a suitable linux/iio/types.h include */
+enum iio_chan_type {
+	IIO_VOLTAGE,
+	IIO_CURRENT,
+	IIO_POWER,
+	IIO_ACCEL,
+	IIO_ANGL_VEL,
+	IIO_MAGN,
+	IIO_LIGHT,
+	IIO_INTENSITY,
+	IIO_PROXIMITY,
+	IIO_TEMP,
+	IIO_INCLI,
+	IIO_ROT,
+	IIO_ANGL,
+	IIO_TIMESTAMP,
+	IIO_CAPACITANCE,
+	IIO_ALTVOLTAGE,
+	IIO_CCT,
+	IIO_PRESSURE,
+	IIO_HUMIDITYRELATIVE,
+	IIO_ACTIVITY,
+	IIO_STEPS,
+	IIO_CALORIES,
+	IIO_DISTANCE,
+	IIO_SPEED,
+};
+
+enum iio_modifier {
+	IIO_NO_MOD,
+	IIO_MOD_X,
+	IIO_MOD_Y,
+	IIO_MOD_Z,
+	IIO_MOD_X_AND_Y,
+	IIO_MOD_X_AND_Z,
+	IIO_MOD_Y_AND_Z,
+	IIO_MOD_X_AND_Y_AND_Z,
+	IIO_MOD_X_OR_Y,
+	IIO_MOD_X_OR_Z,
+	IIO_MOD_Y_OR_Z,
+	IIO_MOD_X_OR_Y_OR_Z,
+	IIO_MOD_LIGHT_BOTH,
+	IIO_MOD_LIGHT_IR,
+	IIO_MOD_ROOT_SUM_SQUARED_X_Y,
+	IIO_MOD_SUM_SQUARED_X_Y_Z,
+	IIO_MOD_LIGHT_CLEAR,
+	IIO_MOD_LIGHT_RED,
+	IIO_MOD_LIGHT_GREEN,
+	IIO_MOD_LIGHT_BLUE,
+	IIO_MOD_QUATERNION,
+	IIO_MOD_TEMP_AMBIENT,
+	IIO_MOD_TEMP_OBJECT,
+	IIO_MOD_NORTH_MAGN,
+	IIO_MOD_NORTH_TRUE,
+	IIO_MOD_NORTH_MAGN_TILT_COMP,
+	IIO_MOD_NORTH_TRUE_TILT_COMP,
+	IIO_MOD_RUNNING,
+	IIO_MOD_JOGGING,
+	IIO_MOD_WALKING,
+	IIO_MOD_STILL,
+};
+
+enum iio_event_type {
+	IIO_EV_TYPE_THRESH,
+	IIO_EV_TYPE_MAG,
+	IIO_EV_TYPE_ROC,
+	IIO_EV_TYPE_THRESH_ADAPTIVE,
+	IIO_EV_TYPE_MAG_ADAPTIVE,
+	IIO_EV_TYPE_INSTANCE,
+};
+
+enum iio_event_info {
+	IIO_EV_INFO_ENABLE,
+	IIO_EV_INFO_VALUE,
+	IIO_EV_INFO_HYSTERESIS,
+	IIO_EV_INFO_PERIOD,
+};
+
+enum iio_event_direction {
+	IIO_EV_DIR_EITHER,
+	IIO_EV_DIR_RISING,
+	IIO_EV_DIR_FALLING,
+	IIO_EV_DIR_NONE,
+};
+
+
 typedef struct
 {
 	const char *type; /* event type; e.g: transition */
@@ -274,7 +375,7 @@ typedef struct
 	 */
 	int needs_enable;
 
-	int semi_arbitrated_rate;	/* Arbitrated sampling rate before we considered other sensors co-located on the same iio device */
+	float semi_arbitrated_rate;	/* Arbitrated sampling rate before we considered other sensors co-located on the same iio device */
 }
 sensor_info_t;
 
@@ -284,5 +385,52 @@ extern int			sensor_count;
 extern struct sensor_t		sensor_desc[MAX_SENSORS];
 extern sensor_info_t		sensor[MAX_SENSORS];
 extern sensor_catalog_entry_t	sensor_catalog[];
+extern unsigned int		catalog_size;
+
+/* Needed both in sensors and activity HALs */
+void check_trig_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void check_poll_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void check_event_sensors (int i, char *sysfs_file, char map[catalog_size]);
+void discover_sensors(int dev_num, char *sysfs_base_path, char map[catalog_size],
+		      void (*discover_sensor)(int, char*, char*));
+
+/*
+ * Macros associating iio sysfs entries to to sensor types ; see
+ * linux/kernel/drivers/iio/industrialio-core.c and
+ * hardware/libhardware/include/hardware/sensor.h
+ */
+
+#define DECLARE_VOID_CHANNEL(tag)	\
+			tag,	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+			"",	\
+
+#define DECLARE_CHANNEL(tag, spacer, name)		\
+			name,				\
+			"in_"tag spacer name"_en",	\
+			"in_"tag spacer name"_type",	\
+			"in_"tag spacer name"_index",	\
+			"in_"tag spacer name"_raw",	\
+			"in_"tag spacer name"_input",	\
+			"in_"tag spacer name"_scale",	\
+			0, {{0}},
+
+#define DECLARE_NAMED_CHANNEL(tag, name)	DECLARE_CHANNEL(tag, "_", name)
+
+#define DECLARE_GENERIC_CHANNEL(tag)		DECLARE_CHANNEL(tag, "", "")
+
+#define DECLARE_EVENT(tag, spacer1, name, spacer2, type, spacer3, dir)		\
+		      type, dir,						\
+		      "in_"tag spacer1 name spacer2 type spacer3 dir"_en",	\
+		      "in_"tag spacer1 name spacer2 type spacer3 dir"_value",	\
+
+#define DECLARE_GENERIC_EVENT(tag, name, type, dir) \
+		DECLARE_EVENT(tag, "_", name, "_", type, "_", dir)
+#define DECLARE_NAMED_EVENT(tag, name) \
+		DECLARE_EVENT(tag, "_", name, "","","","")
 
 #endif

@@ -167,7 +167,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 };
 
-#define CATALOG_SIZE	ARRAY_SIZE(sensor_catalog)
+unsigned int catalog_size = ARRAY_SIZE(sensor_catalog);
 
 /* ACPI PLD (physical location of device) definitions, as used with sensors */
 
@@ -598,7 +598,13 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	}
 
 	switch (sensor_type) {
-		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_ACCELEROMETER:
+			/* Only engage accelerometer bias compensation if really needed */
+			if (sensor_get_quirks(s) & QUIRK_BIASED)
+				sensor[s].cal_data = calloc(1, sizeof(accel_cal_t));
+			break;
+
+			case SENSOR_TYPE_GYROSCOPE:
 			sensor[s].cal_data = malloc(sizeof(gyro_cal_t));
 			break;
 
@@ -626,75 +632,6 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	sensor_count++;
 }
 
-
-static void discover_sensors (int dev_num, char *sysfs_base_path, char map[CATALOG_SIZE],
-			      void (*discover_sensor)(int, char*, char*))
-{
-	char sysfs_dir[PATH_MAX];
-	DIR *dir;
-	struct dirent *d;
-	unsigned int i;
-
-	memset(map, 0, CATALOG_SIZE);
-
-	snprintf(sysfs_dir, sizeof(sysfs_dir), sysfs_base_path, dev_num);
-
-	dir = opendir(sysfs_dir);
-	if (!dir) {
-		return;
-	}
-
-	/* Enumerate entries in this iio device's base folder */
-
-	while ((d = readdir(dir))) {
-		if (!strcmp(d->d_name, ".") || !strcmp(d->d_name, ".."))
-			continue;
-
-		/* If the name matches a catalog entry, flag it */
-		for (i = 0; i < CATALOG_SIZE; i++) {
-
-			/* No discovery for virtual sensors */
-			if (sensor_catalog[i].is_virtual)
-				continue;
-			discover_sensor(i, d->d_name, map);
-		}
-	}
-
-	closedir(dir);
-}
-
-static void check_poll_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
-{
-        int c;
-
-	for (c = 0; c < sensor_catalog[i].num_channels; c++)
-		if (!strcmp(sysfs_file, sensor_catalog[i].channel[c].raw_path) ||
-		    !strcmp(sysfs_file, sensor_catalog[i].channel[c].input_path)) {
-			map[i] = 1;
-			break;
-		}
-}
-static void check_trig_sensors (int i, char *sysfs_file, char map[CATALOG_SIZE])
-{
-
-	if (!strcmp(sysfs_file, sensor_catalog[i].channel[0].en_path)) {
-		map[i] = 1;
-		return;
-	}
-}
-
-static void check_event_sensors(int i, char *sysfs_file, char map[CATALOG_SIZE])
-{
-	int j, k;
-
-	for (j = 0; j < sensor_catalog[i].num_channels; j++)
-		for (k = 0; k < sensor_catalog[i].channel[j].num_events; k++)
-			if (!strcmp(sysfs_file, sensor_catalog[i].channel[j].event[k].ev_en_path)) {
-				map[i] = 1;
-				return ;
-			}
-}
-
 static void virtual_sensors_check (void)
 {
 	int i;
@@ -703,9 +640,9 @@ static void virtual_sensors_check (void)
 	int has_mag = 0;
 	int has_rot = 0;
 	int has_ori = 0;
-	int catalog_size = CATALOG_SIZE;
 	int gyro_cal_idx = 0;
 	int magn_cal_idx = 0;
+	unsigned int j;
 
 	for (i=0; i<sensor_count; i++)
 		switch (sensor[i].type) {
@@ -728,38 +665,38 @@ static void virtual_sensors_check (void)
 				break;
 		}
 
-	for (i=0; i<catalog_size; i++)
-		switch (sensor_catalog[i].type) {
+	for (j=0; j<catalog_size; j++)
+		switch (sensor_catalog[j].type) {
 			/*
-	 		* If we have accel + gyro + magn but no rotation vector sensor,
-	 		* SensorService replaces the HAL provided orientation sensor by the
-	 		* AOSP version... provided we report one. So initialize a virtual
-	 		* orientation sensor with zero values, which will get replaced. See:
-	 		* frameworks/native/services/sensorservice/SensorService.cpp, looking
-	 		* for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
-	 		* back to mUserSensorList.add instead of replaceAt, but accommodate it.
-	 		*/
+			 * If we have accel + gyro + magn but no rotation vector sensor,
+			 * SensorService replaces the HAL provided orientation sensor by the
+			 * AOSP version... provided we report one. So initialize a virtual
+			 * orientation sensor with zero values, which will get replaced. See:
+			 * frameworks/native/services/sensorservice/SensorService.cpp, looking
+			 * for SENSOR_TYPE_ROTATION_VECTOR; that code should presumably fall
+			 * back to mUserSensorList.add instead of replaceAt, but accommodate it.
+			 */
 
 			case SENSOR_TYPE_ORIENTATION:
 				if (has_acc && has_gyr && has_mag && !has_rot && !has_ori)
-					add_sensor(0, i, MODE_POLL);
+					add_sensor(0, j, MODE_POLL);
 				break;
 			case SENSOR_TYPE_GYROSCOPE_UNCALIBRATED:
 				if (has_gyr) {
 					sensor[sensor_count].base_count = 1;
 					sensor[sensor_count].base[0] = gyro_cal_idx;
-					add_virtual_sensor(i);
+					add_virtual_sensor(j);
 				}
 				break;
 			case SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED:
 				if (has_mag) {
 					sensor[sensor_count].base_count = 1;
 					sensor[sensor_count].base[0] = magn_cal_idx;
-					add_virtual_sensor(i);
+					add_virtual_sensor(j);
 				}
 				break;
 			default:
-			break;
+				break;
 		}
 }
 
@@ -892,9 +829,9 @@ void enumerate_sensors (void)
 	 * using their own channels). We can't have multiple sensors of the same type on the same device. In case of detection as both a poll-mode
 	 * and trigger-based sensor, use the trigger usage mode.
 	 */
-	char poll_sensors[CATALOG_SIZE];
-	char trig_sensors[CATALOG_SIZE];
-	char event_sensors[CATALOG_SIZE];
+	char poll_sensors[catalog_size];
+	char trig_sensors[catalog_size];
+	char event_sensors[catalog_size];
 	int dev_num;
 	unsigned int i;
 	int trig_found;
@@ -906,7 +843,7 @@ void enumerate_sensors (void)
 		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
 		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
 
-		for (i=0; i<CATALOG_SIZE; i++) {
+		for (i=0; i<catalog_size; i++) {
 			if (event_sensors[i]) {
 				add_sensor(dev_num, i, MODE_EVENT);
 				continue;
