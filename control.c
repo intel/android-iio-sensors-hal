@@ -378,11 +378,11 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				break;
 
 			case SENSOR_TYPE_MAGNETIC_FIELD:
-				compass_read_data(&sensor[s]);
+				compass_read_data(s);
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
-				gyro_cal_init(&sensor[s]);
+				gyro_cal_init(s);
 				break;
 		}
 	} else {
@@ -398,11 +398,11 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				break;
 
 			case SENSOR_TYPE_MAGNETIC_FIELD:
-				compass_store_data(&sensor[s]);
+				compass_store_data(s);
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
-				gyro_store_data(&sensor[s]);
+				gyro_store_data(s);
 				break;
 		}
 	}

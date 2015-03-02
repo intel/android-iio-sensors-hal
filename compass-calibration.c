@@ -482,14 +482,14 @@ static int compass_ready (sensor_info_t* info)
 }
 
 
-void calibrate_compass (sensors_event_t* event, sensor_info_t* info)
+void calibrate_compass (int s, sensors_event_t* event)
 {
     int cal_level;
 
     /* Calibration is continuous */
-    compass_collect (event, info);
+    compass_collect (event, &sensor[s]);
 
-    cal_level = compass_ready(info);
+    cal_level = compass_ready(&sensor[s]);
 
     switch (cal_level) {
         case 0:
@@ -498,38 +498,38 @@ void calibrate_compass (sensors_event_t* event, sensor_info_t* info)
             break;
 
         case 1:
-            compass_compute_cal (event, info);
+            compass_compute_cal (event, &sensor[s]);
             event->magnetic.status = SENSOR_STATUS_ACCURACY_LOW;
             break;
 
         case 2:
-            compass_compute_cal (event, info);
+            compass_compute_cal (event, &sensor[s]);
             event->magnetic.status = SENSOR_STATUS_ACCURACY_MEDIUM;
             break;
 
         default:
-            compass_compute_cal (event, info);
+            compass_compute_cal (event, &sensor[s]);
             event->magnetic.status = SENSOR_STATUS_ACCURACY_HIGH;
             break;
     }
 }
 
-void compass_read_data (sensor_info_t* info)
+void compass_read_data (int s)
 {
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "r");
 
-    compass_cal_init(data_file, info);
+    compass_cal_init(data_file, &sensor[s]);
 
     if (data_file)
         fclose(data_file);
 }
 
 
-void compass_store_data (sensor_info_t* info)
+void compass_store_data (int s)
 {
     FILE* data_file = fopen (COMPASS_CALIBRATION_PATH, "w");
 
-    compass_store_result(data_file, info);
+    compass_store_result(data_file, &sensor[s]);
 
     if (data_file)
         fclose(data_file);

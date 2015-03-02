@@ -65,13 +65,13 @@ accel_cal_t;
 typedef double mat_input_t[MAGN_DS_SIZE][3];
 
 
-void calibrate_compass  (sensors_event_t* event, sensor_info_t* info);
-void compass_read_data  (sensor_info_t* info);
-void compass_store_data (sensor_info_t* info);
+void calibrate_compass  (int s, sensors_event_t* event);
+void compass_read_data  (int s);
+void compass_store_data (int s);
 
-void calibrate_gyro     (sensors_event_t* event, sensor_info_t* info);
-void gyro_cal_init      (sensor_info_t* info);
-void gyro_store_data    (sensor_info_t* info);
+void calibrate_gyro     (int s, sensors_event_t* event);
+void gyro_cal_init      (int s);
+void gyro_store_data    (int s);
 
 void calibrate_accel    (int s, sensors_event_t* event);
 void accel_cal_init     (int s);

@@ -29,14 +29,14 @@ static void reset (gyro_cal_t* cal_data)
 }
 
 
-void gyro_cal_init (sensor_info_t* info)
+void gyro_cal_init (int s)
 {
 	int ret;
-	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) sensor[s].cal_data;
 	FILE* data_file;
 	float version;
 
-	info->cal_level = 0;
+	sensor[s].cal_level = 0;
 
 	if (cal_data == NULL)
 		return;
@@ -59,10 +59,10 @@ void gyro_cal_init (sensor_info_t* info)
 }
 
 
-void gyro_store_data (sensor_info_t* info)
+void gyro_store_data (int s)
 {
 	int ret;
-	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) sensor[s].cal_data;
 	FILE* data_file;
 
 	if (cal_data == NULL)
@@ -134,16 +134,16 @@ static int gyro_collect (float x, float y, float z, gyro_cal_t* cal_data)
 }
 
 
-void calibrate_gyro (sensors_event_t* event, sensor_info_t* info)
+void calibrate_gyro (int s, sensors_event_t* event)
 {
-	gyro_cal_t* cal_data = (gyro_cal_t*) info->cal_data;
+	gyro_cal_t* cal_data = (gyro_cal_t*) sensor[s].cal_data;
 
 	if (cal_data == NULL)
 		return;
 
 	/* Attempt gyroscope calibration if we have not reached this state */
-	if (info->cal_level == 0)
-		info->cal_level = gyro_collect(event->data[0], event->data[1],
+	if (sensor[s].cal_level == 0)
+		sensor[s].cal_level = gyro_collect(event->data[0], event->data[1],
 					       event->data[2], cal_data);
 
 
@@ -151,6 +151,6 @@ void calibrate_gyro (sensors_event_t* event, sensor_info_t* info)
 	event->data[1] = event->data[1] - cal_data->bias_y;
 	event->data[2] = event->data[2] - cal_data->bias_z;
 
-	if (info->cal_level)
+	if (sensor[s].cal_level)
 	       event->gyro.status = SENSOR_STATUS_ACCURACY_HIGH;
 }

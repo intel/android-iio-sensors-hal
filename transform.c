@@ -305,7 +305,7 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 			break;
 
 		case SENSOR_TYPE_MAGNETIC_FIELD:
-			calibrate_compass (data, &sensor[s]);
+			calibrate_compass (s, data);
 			denoise(s, data);
 			break;
 
@@ -320,7 +320,7 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 			 */
 			if (sensor[s].selected_trigger !=
 				sensor[s].motion_trigger_name)
-					calibrate_gyro(data, &sensor[s]);
+					calibrate_gyro(s, data);
 
 			/*
 			 * For noisy sensors drop a few samples to make sure we have at least GYRO_MIN_SAMPLES events in the
