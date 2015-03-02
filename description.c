@@ -374,6 +374,9 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "biased"))
 			sensor[s].quirks |= QUIRK_BIASED;
 
+		if (strstr(quirks_buf, "spotty"))
+			sensor[s].quirks |= QUIRK_SPOTTY;
+
 		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 

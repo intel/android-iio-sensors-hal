@@ -1171,8 +1171,12 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL)
-			set_report_ts(s, ts);
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL) {
+			if (sensor[s].quirks & QUIRK_SPOTTY)
+				set_report_ts(s, ts);
+			else
+				sensor[s].report_ts = ts;
+		}
 }
 
 
