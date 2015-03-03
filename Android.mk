@@ -4,7 +4,7 @@
 
 # IIO sensors HAL module implementation, compiled as hw/iio-sensors-hal.so
 
-ifeq ($(USE_INTEL_SENSOR_HAL),true)
+ifeq ($(USE_IIO_SENSOR_HAL),true)
 
 LOCAL_PATH := $(call my-dir)
 
