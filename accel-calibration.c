@@ -181,7 +181,7 @@ void accel_cal_init (int s)
 	}
 
 	/* Fall back to initial values */
-	memset(cal_data, sizeof(accel_cal_t), 0);
+	memset(cal_data, 0, sizeof(accel_cal_t));
 
 	/* Store the parameters that are used with that data set, so we can check them against future version of the code to prevent inadvertent reuse */
 	cal_data->version	   = (ACCEL_CALIB_DATA_VERSION << 16) + sizeof(accel_cal_t);
