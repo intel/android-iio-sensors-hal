@@ -201,7 +201,8 @@ void accel_cal_store (int s)
 
 	fd = open(ACCEL_CALIBRATION_PATH, O_WRONLY | O_TRUNC | O_CREAT, S_IRUSR);
 
-	write(fd, cal_data, sizeof(accel_cal_t));
-
-	close(fd);
+	if (fd != -1) {
+		write(fd, cal_data, sizeof(accel_cal_t));
+		close(fd);
+	}
 }
