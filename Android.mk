@@ -55,7 +55,7 @@ endif
 
 # Activity HAL module implementation
 
-ifeq ($(USE_INTEL_ACTIVITY_RECOGNITION_HAL),true)
+ifeq ($(USE_IIO_ACTIVITY_RECOGNITION_HAL),true)
 
 include $(CLEAR_VARS)
 
@@ -65,7 +65,7 @@ activity_src_files := $(src_path)/activity_event_entry.c \
 	              $(src_path)/utils.c \
 
 LOCAL_C_INCLUDES += $(LOCAL_PATH) vendor/intel/hardware/iio-sensors
-LOCAL_MODULE := activity.$(TARGET_BOARD_PLATFORM)
+LOCAL_MODULE := activity_recognition.$(TARGET_BOARD_PLATFORM)
 LOCAL_MODULE_OWNER := intel
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
