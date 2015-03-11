@@ -378,11 +378,11 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				break;
 
 			case SENSOR_TYPE_MAGNETIC_FIELD:
-				compass_read_data(&sensor[s]);
+				compass_read_data(s);
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
-				gyro_cal_init(&sensor[s]);
+				gyro_cal_init(s);
 				break;
 		}
 	} else {
@@ -398,11 +398,11 @@ int adjust_counters (int s, int enabled, int from_virtual)
 				break;
 
 			case SENSOR_TYPE_MAGNETIC_FIELD:
-				compass_store_data(&sensor[s]);
+				compass_store_data(s);
 				break;
 
 			case SENSOR_TYPE_GYROSCOPE:
-				gyro_store_data(&sensor[s]);
+				gyro_store_data(s);
 				break;
 		}
 	}
@@ -1171,8 +1171,12 @@ static void stamp_reports (int dev_num, int64_t ts)
 	int s;
 
 	for (s=0; s<MAX_SENSORS; s++)
-		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL)
-			set_report_ts(s, ts);
+		if (sensor[s].dev_num == dev_num && is_enabled(s) && sensor[s].mode != MODE_POLL) {
+			if (sensor[s].quirks & QUIRK_SPOTTY)
+				set_report_ts(s, ts);
+			else
+				sensor[s].report_ts = ts;
+		}
 }
 
 
