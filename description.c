@@ -108,7 +108,7 @@ int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 
 	/* Fall back to simple form, like ro.iio.anglvel.name */
 
-	sprintf(prop_name, PROP_BASE, prefix, sel);
+	snprintf(prop_name, PROP_NAME_MAX, PROP_BASE, prefix, sel);
 
 	if (property_get(prop_name, prop_val, "")) {
 		strncpy(val, prop_val, MAX_NAME_SIZE-1);
