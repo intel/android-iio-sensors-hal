@@ -1304,6 +1304,7 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 	for (s = 0; s < MAX_SENSORS; s++)
 		if (sensor[s].dev_num == dev_num &&
 		    is_enabled(s)) {
+			sensor[s].event_id = event.id;
 			sensor[s].report_ts = ts;
 			sensor[s].report_pending = 1;
 			sensor[s].report_initialized = 1;
@@ -1382,7 +1383,19 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	if (sensor[s].mode == MODE_EVENT) {
 		ALOGV("Reporting event\n");
 		/* Android requires events to return 1.0 */
-		data->data[0] = 1.0;
+		int dir = IIO_EVENT_CODE_EXTRACT_DIR(sensor[s].event_id);
+		switch (sensor[s].type) {
+			case SENSOR_TYPE_PROXIMITY:
+				if (dir == IIO_EV_DIR_FALLING)
+					data->data[0] = 0.0;
+				else
+					data->data[0] = 1.0;
+				break;
+			default:
+				data->data[0] = 1.0;
+				break;
+
+		}
 		data->data[1] = 0.0;
 		data->data[2] = 0.0;
 		return 1;

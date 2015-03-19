@@ -165,6 +165,42 @@ sensor_catalog_entry_t sensor_catalog[] = {
 			},
 		},
 	},
+	{
+		.tag		= "proximity",
+		.type		= SENSOR_TYPE_PROXIMITY,
+		.num_channels	= 4,
+		.is_virtual	= 0,
+		.channel = {
+			{
+				DECLARE_VOID_CHANNEL("proximity0")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_EVENT("proximity0", "_", "", "", "thresh", "_", "either") },
+				},
+			},
+			{
+				DECLARE_VOID_CHANNEL("proximity1")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_EVENT("proximity1", "_", "", "", "thresh", "_", "either") },
+				},
+			},
+			{
+				DECLARE_VOID_CHANNEL("proximity2")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_EVENT("proximity2", "_", "", "", "thresh", "_", "either") },
+				},
+			},
+			{
+				DECLARE_VOID_CHANNEL("proximity3")
+				.num_events = 1,
+				.event = {
+					{ DECLARE_EVENT("proximity3", "_", "", "", "thresh", "_", "either") },
+				},
+			},
+		},
+	},
 };
 
 unsigned int catalog_size = ARRAY_SIZE(sensor_catalog);

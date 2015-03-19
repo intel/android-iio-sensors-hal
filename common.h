@@ -151,7 +151,6 @@ enum iio_event_direction {
 	IIO_EV_DIR_NONE,
 };
 
-
 typedef struct
 {
 	const char *type; /* event type; e.g: transition */
@@ -355,6 +354,7 @@ typedef struct
 	 * more than one at a later time.
 	 */
 	sensors_event_t sample;
+	uint64_t event_id;
 
 	/*
 	 * If the QUIRK_FIELD_ORDERING bit is set in quirks, the contents of this array are used in the finalization stage to swap sample fields
