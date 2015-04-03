@@ -21,7 +21,7 @@
 #include "calibration.h"
 #include "description.h"
 #include "filtering.h"
-
+#include <linux/iio/events.h>
 /* Currently active sensors count, per device */
 static int poll_sensors_per_dev[MAX_DEVICES];		/* poll-mode sensors				*/
 static int trig_sensors_per_dev[MAX_DEVICES];		/* trigger, event based				*/
