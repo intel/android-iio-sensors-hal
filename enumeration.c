@@ -598,25 +598,26 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	/* Read ACPI _PLD attributes for this sensor, if there are any */
 	decode_placement_information(dev_num, num_channels, s);
 
-        /*
-         * See if we have optional correction scaling factors for each of the
-         * channels of this sensor. These would be expressed using properties
-         * like iio.accel.y.opt_scale = -1. In case of a single channel we also
-         * support things such as iio.temp.opt_scale = -1. Note that this works
-         * for all types of sensors, and whatever transform is selected, on top
-         * of any previous conversions.
-         */
+	/*
+	 * See if we have optional correction scaling factors for each of the
+	 * channels of this sensor. These would be expressed using properties
+	 * like iio.accel.y.opt_scale = -1. In case of a single channel we also
+	 * support things such as iio.temp.opt_scale = -1. Note that this works
+	 * for all types of sensors, and whatever transform is selected, on top
+	 * of any previous conversions.
+	 */
 
-        if (num_channels) {
+	if (num_channels) {
 		for (c = 0; c < num_channels; c++) {
 			ch_name = sensor_catalog[catalog_index].channel[c].name;
 			sprintf(suffix, "%s.opt_scale", ch_name);
 			if (!sensor_get_fl_prop(s, suffix, &opt_scale))
 				sensor[s].channel[c].opt_scale = opt_scale;
 		}
-        } else
+        } else {
 		if (!sensor_get_fl_prop(s, "opt_scale", &opt_scale))
 			sensor[s].channel[0].opt_scale = opt_scale;
+        }
 
 	populate_descriptors(s, sensor_type);
 
