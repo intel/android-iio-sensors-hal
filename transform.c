@@ -13,7 +13,7 @@
 #include "transform.h"
 #include "utils.h"
 #include "filtering.h"
-
+#include "enumeration.h"
 
 #define	GYRO_MIN_SAMPLES 5 /* Drop first few gyro samples after enable */
 
@@ -421,7 +421,7 @@ static float transform_sample_ISH (int s, int c, unsigned char* sample_data)
 	/* In case correction has been requested using properties, apply it */
 	correction = sensor[s].channel[c].opt_scale;
 
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			switch (c) {
 				case 0:

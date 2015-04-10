@@ -229,7 +229,7 @@ float sensor_get_max_range (int s)
 
 	/* We should cap returned samples accordingly... */
 
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 			return 50;
 
@@ -419,7 +419,7 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 
 char* sensor_get_string_type (int s)
 {
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return SENSOR_STRING_TYPE_ACCELEROMETER;
 
@@ -466,7 +466,7 @@ flag_t sensor_get_flags (int s)
 {
 	flag_t flags = 0;
 
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
@@ -492,7 +492,7 @@ flag_t sensor_get_flags (int s)
 
 static int get_cdd_freq (int s, int must)
 {
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			return (must ? 100 : 200); /* must 100 Hz, should 200 Hz, CDD compliant */
 

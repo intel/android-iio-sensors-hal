@@ -65,7 +65,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "intensity",
-		.type		= SENSOR_TYPE_LIGHT,
+		.type		= SENSOR_TYPE_INTERNAL_INTENSITY,
 		.num_channels	= 1,
 		.is_virtual	= 0,
 		.channel = {
@@ -74,7 +74,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "illuminance",
-		.type		= SENSOR_TYPE_LIGHT,
+		.type		= SENSOR_TYPE_INTERNAL_ILLUMINANCE,
 		.num_channels	= 1,
 		.is_virtual	= 0,
 		.channel = {
@@ -376,6 +376,20 @@ static void decode_placement_information (int dev_num, int num_channels, int s)
 }
 
 
+static int map_internal_to_external_type (int sensor_type)
+{
+	/* Most sensors are internally identified using the Android type, but for some we use a different type specification internally */
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_INTERNAL_ILLUMINANCE:
+		case SENSOR_TYPE_INTERNAL_INTENSITY:
+			return SENSOR_TYPE_LIGHT;
+
+		default:
+			return sensor_type;
+	}
+}
+
 static void populate_descriptors (int s, int sensor_type)
 {
 	int32_t		min_delay_us;
@@ -386,7 +400,7 @@ static void populate_descriptors (int s, int sensor_type)
 	sensor_desc[s].vendor		= sensor_get_vendor(s);
 	sensor_desc[s].version		= sensor_get_version(s);
 	sensor_desc[s].handle		= s;
-	sensor_desc[s].type		= sensor_type;
+	sensor_desc[s].type		= map_internal_to_external_type(sensor_type);
 
 	sensor_desc[s].maxRange		= sensor_get_max_range(s);
 	sensor_desc[s].resolution	= sensor_get_resolution(s);
@@ -505,7 +519,7 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 	 * receiving the illumination sensor calibration inputs from
 	 * the Android properties and setting it within sysfs
 	 */
-	if (sensor_type == SENSOR_TYPE_LIGHT) {
+	if (sensor_type == SENSOR_TYPE_INTERNAL_ILLUMINANCE) {
 		retval = sensor_get_illumincalib(s);
                 if (retval > 0) {
 			sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
