@@ -377,6 +377,15 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "spotty"))
 			sensor[s].quirks |= QUIRK_SPOTTY;
 
+		if (strstr(quirks_buf, "no-event"))
+			sensor[s].quirks |= QUIRK_NO_EVENT_MODE;
+
+		if (strstr(quirks_buf, "no-trig"))
+			sensor[s].quirks |= QUIRK_NO_TRIG_MODE;
+
+		if (strstr(quirks_buf, "no-poll"))
+			sensor[s].quirks |= QUIRK_NO_POLL_MODE;
+
 		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 

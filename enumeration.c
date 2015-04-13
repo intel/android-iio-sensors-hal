@@ -446,7 +446,7 @@ static void add_virtual_sensor (int catalog_index)
 }
 
 
-static void add_sensor (int dev_num, int catalog_index, int mode)
+static int add_sensor (int dev_num, int catalog_index, int mode)
 {
 	int s;
 	int sensor_type;
@@ -463,7 +463,7 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
-		return;
+		return -1;
 	}
 
 	sensor_type = sensor_catalog[catalog_index].type;
@@ -487,6 +487,17 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
                 sensor[s].num_channels = 0;
         else
                 sensor[s].num_channels = num_channels;
+
+	/* Populate the quirks array */
+	sensor_get_quirks(s);
+
+	/* Reject interfaces that may have been disabled through a quirk for this driver */
+	if ((mode == MODE_EVENT   && (sensor[s].quirks & QUIRK_NO_EVENT_MODE)) ||
+	    (mode == MODE_TRIGGER && (sensor[s].quirks & QUIRK_NO_TRIG_MODE )) ||
+            (mode == MODE_POLL    && (sensor[s].quirks & QUIRK_NO_POLL_MODE ))) {
+		memset(&sensor[s], 0, sizeof(sensor[0]));
+		return -1;
+	}
 
 	prefix = sensor_catalog[catalog_index].tag;
 
@@ -621,9 +632,6 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 
 	populate_descriptors(s, sensor_type);
 
-	/* Populate the quirks array */
-	sensor_get_quirks(s);
-
 	if (sensor[s].internal_name[0] == '\0') {
 		/*
 		 * In case the kernel-mode driver doesn't expose a name for
@@ -667,6 +675,7 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	sensor[s].needs_enable = get_needs_enable(dev_num, sensor_catalog[catalog_index].tag);
 
 	sensor_count++;
+	return 0;
 }
 
 static void virtual_sensors_check (void)
@@ -881,19 +890,19 @@ void enumerate_sensors (void)
 		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
 
 		for (i=0; i<catalog_size; i++) {
-			if (event_sensors[i]) {
-				add_sensor(dev_num, i, MODE_EVENT);
+			/* Try using events interface */
+			if (event_sensors[i] && !add_sensor(dev_num, i, MODE_EVENT))
 				continue;
-			}
-			if (trig_sensors[i]) {
-				add_sensor(dev_num, i, MODE_TRIGGER);
+
+			/* Then trigger */
+			if (trig_sensors[i] && !add_sensor(dev_num, i, MODE_TRIGGER)) {
 				trig_found = 1;
 				continue;
 			}
-			if (poll_sensors[i]) {
+
+			/* Try polling otherwise */
+			if (poll_sensors[i])
 				add_sensor(dev_num, i, MODE_POLL);
-				continue;
-			}
 		}
 
 		if (trig_found)
