@@ -882,6 +882,37 @@ static void setup_trigger_names (void)
 		}
 }
 
+
+static int catalog_index_from_sensor_type (int type)
+{
+	/* Return first matching catalog entry index for selected type */
+	unsigned int i;
+
+	for (i=0; i<catalog_size; i++)
+		if (sensor_catalog[i].type == type)
+			return i;
+
+	return -1;
+}
+
+
+static void post_process_sensor_list (char poll_map[catalog_size], char trig_map[catalog_size], char event_map[catalog_size])
+{
+	int illuminance_cat_index = catalog_index_from_sensor_type(SENSOR_TYPE_INTERNAL_ILLUMINANCE);
+	int intensity_cat_index	  = catalog_index_from_sensor_type(SENSOR_TYPE_INTERNAL_INTENSITY);
+	int illuminance_found	  = poll_map[illuminance_cat_index] || trig_map[illuminance_cat_index] || event_map[illuminance_cat_index];
+
+	/* If an illumimance sensor has been reported */
+	if (illuminance_found) {
+		/* Hide any intensity sensors we can have for the same iio device */
+		poll_map [intensity_cat_index     ] = 0;
+		trig_map [intensity_cat_index     ] = 0;
+		event_map[intensity_cat_index     ] = 0;
+		return;
+	}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -902,6 +933,9 @@ void enumerate_sensors (void)
 		discover_sensors(dev_num, BASE_PATH, poll_sensors, check_poll_sensors);
 		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
 		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
+
+		/* Hide specific sensor types if appropriate */
+		post_process_sensor_list(poll_sensors, trig_sensors, event_sensors);
 
 		for (i=0; i<catalog_size; i++) {
 			/* Try using events interface */

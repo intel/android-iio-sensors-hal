@@ -536,7 +536,7 @@ static void* acquisition_routine (void* param)
 	/* Initialize data fields that will be shared by all sensor reports */
 	data.version	= sizeof(sensors_event_t);
 	data.sensor	= s;
-	data.type	= sensor[s].type;
+	data.type	= sensor_desc[s].type;
 
 	num_fields = get_field_count(s, &field_size);
 

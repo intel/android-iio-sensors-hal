@@ -295,6 +295,7 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		reorder_fields(data->data, sensor[s].order);
 
 	sensor[s].event_count++;
+
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
@@ -342,6 +343,8 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
+		case SENSOR_TYPE_INTERNAL_ILLUMINANCE:
+		case SENSOR_TYPE_INTERNAL_INTENSITY:
 			/* Only keep two decimals for these readings */
 			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
 
