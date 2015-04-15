@@ -152,6 +152,9 @@ continuous    : disable use of motion trigger even if the sensor supports it
 init-rate     : set sampling rate at 10 Hz after enabling that sensor
 biased        : the sensor has unusually high bias ; engage high bias detection and compensation routines
 spotty        : the sensor may have gaps in its events sequence ; adjust timestamps accordingly
+no-poll       : specifically disable the iio polling (sysfs) way of getting data from this driver, even if it's seemingly available
+no-trig       : specifically disable the iio trigger way of getting data from this driver, even if it's seemingly available
+no-event      : specifically disable the iio event way of getting data from this driver, even if it's seemingly available
 
 
 FILTERING

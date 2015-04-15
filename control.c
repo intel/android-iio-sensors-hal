@@ -439,6 +439,7 @@ int adjust_counters (int s, int enabled, int from_virtual)
 static int get_field_count (int s, size_t *field_size)
 {
 	*field_size = sizeof(float);
+
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
 		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
@@ -447,6 +448,8 @@ static int get_field_count (int s, size_t *field_size)
 		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
 			return 3;
 
+		case SENSOR_TYPE_INTERNAL_INTENSITY:
+		case SENSOR_TYPE_INTERNAL_ILLUMINANCE:
 		case SENSOR_TYPE_LIGHT:			/* SI lux units */
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
 		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
@@ -533,7 +536,7 @@ static void* acquisition_routine (void* param)
 	/* Initialize data fields that will be shared by all sensor reports */
 	data.version	= sizeof(sensors_event_t);
 	data.sensor	= s;
-	data.type	= sensor[s].type;
+	data.type	= sensor_desc[s].type;
 
 	num_fields = get_field_count(s, &field_size);
 
@@ -1341,7 +1344,7 @@ static int propagate_vsensor_report (int s, sensors_event_t *data)
 	memcpy(data, &sensor[s].sample, sizeof(sensors_event_t));
 
 	data->sensor	= s;
-	data->type	= sensor[s].type;
+	data->type	= sensor_desc[s].type; /* sensor_desc[s].type can differ from sensor[s].type ; internal types are remapped */
 	return 1;
 }
 
@@ -1377,7 +1380,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 
 	data->version	= sizeof(sensors_event_t);
 	data->sensor	= s;
-	data->type	= sensor[s].type;
+	data->type	= sensor_desc[s].type;	/* sensor_desc[s].type can differ from sensor[s].type ; internal types are remapped */
 	data->timestamp = sensor[s].report_ts;
 
 	if (sensor[s].mode == MODE_EVENT) {

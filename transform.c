@@ -13,7 +13,7 @@
 #include "transform.h"
 #include "utils.h"
 #include "filtering.h"
-
+#include "enumeration.h"
 
 #define	GYRO_MIN_SAMPLES 5 /* Drop first few gyro samples after enable */
 
@@ -295,6 +295,7 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		reorder_fields(data->data, sensor[s].order);
 
 	sensor[s].event_count++;
+
 	switch (sensor[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			/* Always consider the accelerometer accurate */
@@ -342,6 +343,8 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 		case SENSOR_TYPE_LIGHT:
 		case SENSOR_TYPE_AMBIENT_TEMPERATURE:
 		case SENSOR_TYPE_TEMPERATURE:
+		case SENSOR_TYPE_INTERNAL_ILLUMINANCE:
+		case SENSOR_TYPE_INTERNAL_INTENSITY:
 			/* Only keep two decimals for these readings */
 			data->data[0] = 0.01 * ((int) (data->data[0] * 100));
 
@@ -421,7 +424,7 @@ static float transform_sample_ISH (int s, int c, unsigned char* sample_data)
 	/* In case correction has been requested using properties, apply it */
 	correction = sensor[s].channel[c].opt_scale;
 
-	switch (sensor[s].type) {
+	switch (sensor_desc[s].type) {
 		case SENSOR_TYPE_ACCELEROMETER:
 			switch (c) {
 				case 0:

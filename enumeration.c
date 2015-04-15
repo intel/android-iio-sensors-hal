@@ -65,7 +65,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "intensity",
-		.type		= SENSOR_TYPE_LIGHT,
+		.type		= SENSOR_TYPE_INTERNAL_INTENSITY,
 		.num_channels	= 1,
 		.is_virtual	= 0,
 		.channel = {
@@ -74,7 +74,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "illuminance",
-		.type		= SENSOR_TYPE_LIGHT,
+		.type		= SENSOR_TYPE_INTERNAL_ILLUMINANCE,
 		.num_channels	= 1,
 		.is_virtual	= 0,
 		.channel = {
@@ -376,6 +376,20 @@ static void decode_placement_information (int dev_num, int num_channels, int s)
 }
 
 
+static int map_internal_to_external_type (int sensor_type)
+{
+	/* Most sensors are internally identified using the Android type, but for some we use a different type specification internally */
+
+	switch (sensor_type) {
+		case SENSOR_TYPE_INTERNAL_ILLUMINANCE:
+		case SENSOR_TYPE_INTERNAL_INTENSITY:
+			return SENSOR_TYPE_LIGHT;
+
+		default:
+			return sensor_type;
+	}
+}
+
 static void populate_descriptors (int s, int sensor_type)
 {
 	int32_t		min_delay_us;
@@ -386,7 +400,7 @@ static void populate_descriptors (int s, int sensor_type)
 	sensor_desc[s].vendor		= sensor_get_vendor(s);
 	sensor_desc[s].version		= sensor_get_version(s);
 	sensor_desc[s].handle		= s;
-	sensor_desc[s].type		= sensor_type;
+	sensor_desc[s].type		= map_internal_to_external_type(sensor_type);
 
 	sensor_desc[s].maxRange		= sensor_get_max_range(s);
 	sensor_desc[s].resolution	= sensor_get_resolution(s);
@@ -446,7 +460,7 @@ static void add_virtual_sensor (int catalog_index)
 }
 
 
-static void add_sensor (int dev_num, int catalog_index, int mode)
+static int add_sensor (int dev_num, int catalog_index, int mode)
 {
 	int s;
 	int sensor_type;
@@ -463,7 +477,7 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
-		return;
+		return -1;
 	}
 
 	sensor_type = sensor_catalog[catalog_index].type;
@@ -488,13 +502,24 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
         else
                 sensor[s].num_channels = num_channels;
 
+	/* Populate the quirks array */
+	sensor_get_quirks(s);
+
+	/* Reject interfaces that may have been disabled through a quirk for this driver */
+	if ((mode == MODE_EVENT   && (sensor[s].quirks & QUIRK_NO_EVENT_MODE)) ||
+	    (mode == MODE_TRIGGER && (sensor[s].quirks & QUIRK_NO_TRIG_MODE )) ||
+            (mode == MODE_POLL    && (sensor[s].quirks & QUIRK_NO_POLL_MODE ))) {
+		memset(&sensor[s], 0, sizeof(sensor[0]));
+		return -1;
+	}
+
 	prefix = sensor_catalog[catalog_index].tag;
 
 	/*
 	 * receiving the illumination sensor calibration inputs from
 	 * the Android properties and setting it within sysfs
 	 */
-	if (sensor_type == SENSOR_TYPE_LIGHT) {
+	if (sensor_type == SENSOR_TYPE_INTERNAL_ILLUMINANCE) {
 		retval = sensor_get_illumincalib(s);
                 if (retval > 0) {
 			sprintf(sysfs_path, ILLUMINATION_CALIBPATH, dev_num);
@@ -621,9 +646,6 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 
 	populate_descriptors(s, sensor_type);
 
-	/* Populate the quirks array */
-	sensor_get_quirks(s);
-
 	if (sensor[s].internal_name[0] == '\0') {
 		/*
 		 * In case the kernel-mode driver doesn't expose a name for
@@ -667,6 +689,7 @@ static void add_sensor (int dev_num, int catalog_index, int mode)
 	sensor[s].needs_enable = get_needs_enable(dev_num, sensor_catalog[catalog_index].tag);
 
 	sensor_count++;
+	return 0;
 }
 
 static void virtual_sensors_check (void)
@@ -859,6 +882,37 @@ static void setup_trigger_names (void)
 		}
 }
 
+
+static int catalog_index_from_sensor_type (int type)
+{
+	/* Return first matching catalog entry index for selected type */
+	unsigned int i;
+
+	for (i=0; i<catalog_size; i++)
+		if (sensor_catalog[i].type == type)
+			return i;
+
+	return -1;
+}
+
+
+static void post_process_sensor_list (char poll_map[catalog_size], char trig_map[catalog_size], char event_map[catalog_size])
+{
+	int illuminance_cat_index = catalog_index_from_sensor_type(SENSOR_TYPE_INTERNAL_ILLUMINANCE);
+	int intensity_cat_index	  = catalog_index_from_sensor_type(SENSOR_TYPE_INTERNAL_INTENSITY);
+	int illuminance_found	  = poll_map[illuminance_cat_index] || trig_map[illuminance_cat_index] || event_map[illuminance_cat_index];
+
+	/* If an illumimance sensor has been reported */
+	if (illuminance_found) {
+		/* Hide any intensity sensors we can have for the same iio device */
+		poll_map [intensity_cat_index     ] = 0;
+		trig_map [intensity_cat_index     ] = 0;
+		event_map[intensity_cat_index     ] = 0;
+		return;
+	}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -880,20 +934,23 @@ void enumerate_sensors (void)
 		discover_sensors(dev_num, CHANNEL_PATH, trig_sensors, check_trig_sensors);
 		discover_sensors(dev_num, EVENTS_PATH, event_sensors, check_event_sensors);
 
+		/* Hide specific sensor types if appropriate */
+		post_process_sensor_list(poll_sensors, trig_sensors, event_sensors);
+
 		for (i=0; i<catalog_size; i++) {
-			if (event_sensors[i]) {
-				add_sensor(dev_num, i, MODE_EVENT);
+			/* Try using events interface */
+			if (event_sensors[i] && !add_sensor(dev_num, i, MODE_EVENT))
 				continue;
-			}
-			if (trig_sensors[i]) {
-				add_sensor(dev_num, i, MODE_TRIGGER);
+
+			/* Then trigger */
+			if (trig_sensors[i] && !add_sensor(dev_num, i, MODE_TRIGGER)) {
 				trig_found = 1;
 				continue;
 			}
-			if (poll_sensors[i]) {
+
+			/* Try polling otherwise */
+			if (poll_sensors[i])
 				add_sensor(dev_num, i, MODE_POLL);
-				continue;
-			}
 		}
 
 		if (trig_found)

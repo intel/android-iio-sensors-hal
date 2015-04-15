@@ -14,7 +14,10 @@
 #define QUIRK_NOISY		0x10  /* High noise level on readings	      */
 #define QUIRK_FORCE_CONTINUOUS	0x20  /* Force usage of continuous trigger    */
 #define QUIRK_BIASED		0x40  /* Biased sensor, requires compensation */
-#define QUIRK_SPOTTY		0x80  /* Driver may lose events */
+#define QUIRK_SPOTTY		0x80  /* Driver may lose events		      */
+#define QUIRK_NO_EVENT_MODE	0x100 /* Disable event mode		      */
+#define QUIRK_NO_TRIG_MODE	0x200 /* Disable trigger mode                 */
+#define QUIRK_NO_POLL_MODE	0x400 /* Disable poll mode 		      */
 
 #ifdef __LP64__
 	typedef uint64_t	flag_t;
