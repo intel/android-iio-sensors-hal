@@ -87,6 +87,7 @@ channel_descriptor_t;
 typedef struct
 {
 	const char *tag;	/* Prefix such as "accel", "gyro", "temp"... */
+	const char *shorthand;
 	const int type;		/* Sensor type ; ex: SENSOR_TYPE_ACCELEROMETER */
 	const int num_channels;	/* Expected iio channels for this sensor */
 	const int is_virtual; 	/* Is the sensor virtual or not */

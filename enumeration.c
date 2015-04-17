@@ -32,6 +32,7 @@
 sensor_catalog_entry_t sensor_catalog[] = {
 	{
 		.tag		= "accel",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_ACCELEROMETER,
 		.num_channels	= 3,
 		.is_virtual	= 0,
@@ -43,6 +44,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "anglvel",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_GYROSCOPE,
 		.num_channels	= 3,
 		.is_virtual	= 0,
@@ -54,6 +56,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "magn",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_MAGNETIC_FIELD,
 		.num_channels	= 3,
 		.is_virtual	= 0,
@@ -65,6 +68,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "intensity",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_INTERNAL_INTENSITY,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -74,6 +78,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "illuminance",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_INTERNAL_ILLUMINANCE,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -83,6 +88,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "incli",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_ORIENTATION,
 		.num_channels	= 3,
 		.is_virtual	= 0,
@@ -94,6 +100,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "rot",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_ROTATION_VECTOR,
 		.num_channels	= 4,
 		.is_virtual	= 0,
@@ -106,6 +113,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "temp",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_AMBIENT_TEMPERATURE,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -115,6 +123,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "proximity",
+		.shorthand	= "prox",
 		.type		= SENSOR_TYPE_PROXIMITY,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -124,6 +133,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_GYROSCOPE_UNCALIBRATED,
 		.num_channels	= 0,
 		.is_virtual	= 1,
@@ -134,6 +144,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_MAGNETIC_FIELD_UNCALIBRATED,
 		.num_channels	= 0,
 		.is_virtual	= 1,
@@ -143,6 +154,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "steps",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_STEP_COUNTER,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -152,6 +164,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "steps",
+		.shorthand	= "",
 		.type		= SENSOR_TYPE_STEP_DETECTOR,
 		.num_channels	= 1,
 		.is_virtual	= 0,
@@ -167,6 +180,7 @@ sensor_catalog_entry_t sensor_catalog[] = {
 	},
 	{
 		.tag		= "proximity",
+		.shorthand	= "prox",
 		.type		= SENSOR_TYPE_PROXIMITY,
 		.num_channels	= 4,
 		.is_virtual	= 0,

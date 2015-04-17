@@ -92,6 +92,7 @@ int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 
 	int i			= sensor[s].catalog_index;
 	const char *prefix	= sensor_catalog[i].tag;
+	const char *shorthand = sensor_catalog[i].shorthand;
 
 	/* First try most specialized form, like ro.iio.anglvel.bmg160.name */
 
@@ -106,6 +107,16 @@ int sensor_get_st_prop (int s, const char* sel, char val[MAX_NAME_SIZE])
 		return 0;
 	}
 
+	if (shorthand[0] != '\0') {
+		/* Try with shorthand instead of prefix */
+		snprintf(prop_name, PROP_NAME_MAX, PROP_BASE, shorthand, extended_sel);
+
+		if (property_get(prop_name, prop_val, "")) {
+			strncpy(val, prop_val, MAX_NAME_SIZE-1);
+			val[MAX_NAME_SIZE-1] = '\0';
+			return 0;
+		}
+	}
 	/* Fall back to simple form, like ro.iio.anglvel.name */
 
 	snprintf(prop_name, PROP_NAME_MAX, PROP_BASE, prefix, sel);
