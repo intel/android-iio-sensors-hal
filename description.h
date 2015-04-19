@@ -18,6 +18,7 @@
 #define QUIRK_NO_EVENT_MODE	0x100 /* Disable event mode		      */
 #define QUIRK_NO_TRIG_MODE	0x200 /* Disable trigger mode                 */
 #define QUIRK_NO_POLL_MODE	0x400 /* Disable poll mode 		      */
+#define QUIRK_MOUNTING_MATRIX	0x800  /* Mounting information present */
 
 #ifdef __LP64__
 	typedef uint64_t	flag_t;
@@ -41,6 +42,7 @@ uint32_t	sensor_get_quirks	(int s);
 int		sensor_get_prop		(int s, const char* sel, int* val);
 int		sensor_get_fl_prop	(int s, const char* sel, float* val);
 int		sensor_get_order	(int s,unsigned char map[MAX_CHANNELS]);
+int		sensor_get_mounting_matrix(int s,float mounting_matrix[9]);
 int		sensor_get_cal_steps	(int s);
 char*		sensor_get_string_type	(int s);
 int 		sensor_get_st_prop	(int s, const char* sel, char val[MAX_NAME_SIZE]);

@@ -187,6 +187,17 @@ static void reorder_fields (float* data, unsigned char map[MAX_CHANNELS])
 		data[i] = temp[i];
 }
 
+static void mount_correction (float* data, float mm[9])
+{
+	int i;
+	float temp[3];
+
+	for (i=0; i<3; i++)
+		temp[i] = data[0] * mm[i * 3] + data[1] * mm[i * 3 + 1] + data[2] * mm[i * 3 + 2];
+
+	for (i=0; i<3; i++)
+		data[i] = temp[i];
+}
 
 static void clamp_gyro_readings_to_zero (int s, sensors_event_t* data)
 {
@@ -295,6 +306,8 @@ static int finalize_sample_default (int s, sensors_event_t* data)
 	/* Swap fields if we have a custom channel ordering on this sensor */
 	if (sensor[s].quirks & QUIRK_FIELD_ORDERING)
 		reorder_fields(data->data, sensor[s].order);
+	if (sensor[s].quirks & QUIRK_MOUNTING_MATRIX)
+		mount_correction(data->data, sensor[s].mounting_matrix);
 
 	sensor[s].event_count++;
 

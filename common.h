@@ -28,6 +28,7 @@
 #define DEVICE_AVAIL_FREQ_PATH	BASE_PATH "sampling_frequency_available"
 #define ILLUMINATION_CALIBPATH	BASE_PATH "in_illuminance_calibscale"
 #define SENSOR_CALIB_BIAS_PATH	BASE_PATH "in_%s_calibbias"
+#define MOUNTING_MATRIX_PATH	BASE_PATH "mounting_matrix"
 
 #define PROP_BASE		"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
@@ -264,6 +265,12 @@ typedef struct
 	 * a sample containing 4 fields.
 	 */
 	unsigned char order[MAX_CHANNELS];
+
+	/*
+	 * If the QUIRK_MOUNTING_MATRIX bit is set in quirks, the contents of this matrix is used to correct the sample values so that it takes
+	 * into account the way the sensor has been mounted on the PCB.
+	 */
+	float mounting_matrix[9];
 
 	/*
 	 * Event counter - will be used to check if we have a significant sample for noisy sensors. We want to make sure we do not send any wrong
