@@ -20,6 +20,7 @@ int usage(void)
 	fprintf(stderr, "sens [activate | deactivate] sensor_id\n");
 	fprintf(stderr, "sens set_delay sensor_id delay\n");
 	fprintf(stderr, "sens poll\n");
+	fprintf(stderr, "sens poll_stop\n");
 	return 1;
 }
 
@@ -309,6 +310,15 @@ static int dispatch_cmd(char *cmd, FILE *f)
 		if (client)
 			fclose(client);
 		client = f;
+		pthread_mutex_unlock(&client_mutex);
+
+		return 1;
+	} else if (!strcmp(argv[0], "poll_stop")) {
+		pthread_mutex_lock(&client_mutex);
+		if (client){
+			fclose(client);
+			client = NULL;
+		}
 		pthread_mutex_unlock(&client_mutex);
 
 		return 1;
