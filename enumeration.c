@@ -634,8 +634,11 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 		sensor[s].channel[c].raw_path_present = (access(sysfs_path, R_OK) != -1);
 	}
 
-	/* Read ACPI _PLD attributes for this sensor, if there are any */
-	decode_placement_information(dev_num, num_channels, s);
+	if (sensor_get_mounting_matrix(s, sensor[s].mounting_matrix))
+		sensor[s].quirks |= QUIRK_MOUNTING_MATRIX;
+	else
+		/* Read ACPI _PLD attributes for this sensor, if there are any */
+		decode_placement_information(dev_num, num_channels, s);
 
 	/*
 	 * See if we have optional correction scaling factors for each of the

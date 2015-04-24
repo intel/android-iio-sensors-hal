@@ -427,6 +427,41 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	return 1;	/* OK to use modified ordering map */
 }
 
+int sensor_get_mounting_matrix (int s, float mm[9])
+{
+	int dev_num = sensor[s].dev_num, err, i;
+	char mm_path[PATH_MAX], mm_buf[100];
+	char *tmp1 = mm_buf, *tmp2;
+
+	switch (sensor[s].type) {
+	case SENSOR_TYPE_ACCELEROMETER:
+	case SENSOR_TYPE_MAGNETIC_FIELD:
+	case SENSOR_TYPE_GYROSCOPE:
+		break;
+	default:
+		return 0;
+	}
+
+	sprintf(mm_path, MOUNTING_MATRIX_PATH, dev_num);
+
+	err = sysfs_read_str(mm_path, mm_buf, sizeof(mm_buf));
+	if (err < 0)
+		return 0;
+
+	for(i = 0; i < 9; i++) {
+		float f;
+
+		f = strtof(tmp1, &tmp2);
+		if (!f && tmp1 == tmp2)
+			return 0;
+		mm[i] = f;
+		tmp1 = tmp2 + 1;
+	}
+
+	ALOGI("%s: %f %f %f %f %f %f %f %f %f\n", __func__, mm[0], mm[1], mm[2], mm[3], mm[4], mm[5], mm[6], mm[7], mm[8]);
+	return 1;
+}
+
 
 char* sensor_get_string_type (int s)
 {
