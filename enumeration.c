@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <utils/Log.h>
+#include <sys/stat.h>
 #include <hardware/sensors.h>
 #include "enumeration.h"
 #include "description.h"
@@ -799,6 +800,11 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 		return;
 	}
 
+	/* If we found a hrtimer trigger, record it */
+	if (!memcmp(suffix, "hr-dev", 6)) {
+		strcpy(sensor[s].hrtimer_trigger_name, trigger_name);
+		return;
+	}
 	/*
 	 * It's neither the default "dev" nor an "any-motion" one. Make sure we use this though, as we may not have any other indication of the name
 	 * of the trigger to use with this sensor.
@@ -807,7 +813,7 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 }
 
 
-static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
+static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE], int* updated)
 {
 	/*
 	 * Check if we have a sensor matching the specified trigger name, which should then begin with the sensor name, and end with a number
@@ -851,9 +857,33 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE])
 			if (!strncmp(name, sensor[s].internal_name, sensor_name_len))
 				/* Switch to new trigger if appropriate */
 				propose_new_trigger(s, name, sensor_name_len);
+				updated[s] = 1;
 		}
 }
 
+static int create_hrtimer_trigger(int s)
+{
+	struct stat dir_status;
+	char buf[MAX_NAME_SIZE];
+	char hrtimer_path[PATH_MAX];
+	char hrtimer_name[MAX_NAME_SIZE];
+
+	snprintf(buf, MAX_NAME_SIZE, "hrtimer-%s-hr-dev%d", sensor[s].internal_name, sensor[s].dev_num);
+	snprintf(hrtimer_name, MAX_NAME_SIZE, "%s-hr-dev%d", sensor[s].internal_name, sensor[s].dev_num);
+	snprintf(hrtimer_path, PATH_MAX, "%s%s", CONFIGFS_TRIGGER_PATH, buf);
+
+	/* Get parent dir status */
+	if (stat(CONFIGFS_TRIGGER_PATH, &dir_status))
+		return -1;
+
+	/* Create hrtimer with the same access rights as it's parent */
+	if (mkdir(hrtimer_path, dir_status.st_mode))
+		if (errno != EEXIST)
+			return -1;
+
+	strncpy (sensor[s].hrtimer_trigger_name, hrtimer_name, MAX_NAME_SIZE);
+	return 0;
+}
 
 static void setup_trigger_names (void)
 {
@@ -862,6 +892,7 @@ static void setup_trigger_names (void)
 	int s;
 	int trigger;
 	int ret;
+	int updated[MAX_SENSORS] = {0};
 
 	/* By default, use the name-dev convention that most drivers use */
 	for (s=0; s<sensor_count; s++)
@@ -879,7 +910,14 @@ static void setup_trigger_names (void)
 			break;
 
 		/* Record initial and any-motion triggers names */
-		update_sensor_matching_trigger_name(buf);
+		update_sensor_matching_trigger_name(buf, updated);
+	}
+
+
+	/* If we don't have any other trigger exposed and quirk hrtimer is set setup the hrtimer name here  - and create it also */
+	for (s=0; s<sensor_count; s++) {
+		if ((sensor[s].quirks & QUIRK_HRTIMER) && !updated[s])
+			create_hrtimer_trigger(s);
 	}
 
 	/*
@@ -896,6 +934,8 @@ static void setup_trigger_names (void)
 			ALOGI("Sensor %d (%s) default trigger: %s\n", s, sensor[s].friendly_name, sensor[s].init_trigger_name);
 			if (sensor[s].motion_trigger_name[0])
 				ALOGI("Sensor %d (%s) motion trigger: %s\n", s, sensor[s].friendly_name, sensor[s].motion_trigger_name);
+			if (sensor[s].hrtimer_trigger_name[0])
+				ALOGI("Sensor %d (%s) hrtimer trigger: %s\n", s, sensor[s].friendly_name, sensor[s].hrtimer_trigger_name);
 		}
 }
 

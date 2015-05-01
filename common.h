@@ -30,6 +30,8 @@
 #define SENSOR_CALIB_BIAS_PATH	BASE_PATH "in_%s_calibbias"
 #define MOUNTING_MATRIX_PATH	BASE_PATH "mounting_matrix"
 
+#define CONFIGFS_TRIGGER_PATH	"/config/iio/triggers/"
+
 #define PROP_BASE		"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
 #define MAX_TYPE_SPEC_LEN	32	/* Channel type spec len; ex: "le:u10/16>>0" */
@@ -153,6 +155,7 @@ typedef struct
 	char vendor_name[MAX_NAME_SIZE];	/* ex: Intel 		     */
 	char init_trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1	     */
 	char motion_trigger_name[MAX_NAME_SIZE];/* ex: accel-any-motion-dev1 */
+	char hrtimer_trigger_name[MAX_NAME_SIZE]; /*ex: accel-hr-dev1 */
 	float max_range;
 	float resolution;
 	float power;

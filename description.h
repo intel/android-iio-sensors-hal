@@ -19,6 +19,7 @@
 #define QUIRK_NO_TRIG_MODE	0x200 /* Disable trigger mode                 */
 #define QUIRK_NO_POLL_MODE	0x400 /* Disable poll mode 		      */
 #define QUIRK_MOUNTING_MATRIX	0x800  /* Mounting information present */
+#define QUIRK_HRTIMER		0x1000	/* We may use a hrtimer if there is no other trigger */
 
 #ifdef __LP64__
 	typedef uint64_t	flag_t;

@@ -397,6 +397,9 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "no-poll"))
 			sensor[s].quirks |= QUIRK_NO_POLL_MODE;
 
+		if (strstr(quirks_buf, "hrtimer"))
+			sensor[s].quirks |= QUIRK_HRTIMER;
+
 		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
