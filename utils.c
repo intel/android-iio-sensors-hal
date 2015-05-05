@@ -13,6 +13,7 @@
 #include "common.h"
 #include "utils.h"
 
+#include <errno.h>
 
 /* Note:
  *
