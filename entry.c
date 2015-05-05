@@ -21,6 +21,8 @@
 #include "description.h"
 #include "utils.h"
 
+#include <errno.h>
+
 /* This is the IIO Sensors HAL module entry points file */
 
 static int init_count;

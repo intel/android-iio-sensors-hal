@@ -29,6 +29,8 @@
 #include "control.h"
 #include "calibration.h"
 
+#include <errno.h>
+
 /*
  * This table maps syfs entries in scan_elements directories to sensor types,
  * and will also be used to determine other sysfs names as well as the iio
