@@ -746,6 +746,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	float group_max_sampling_rate;
 	float cur_sampling_rate; /* Currently used sampling rate	      */
 	float arb_sampling_rate; /* Granted sampling rate after arbitration   */
+	char hrtimer_sampling_path[PATH_MAX];
 
 	ALOGV("Sampling rate %g requested on sensor %d (%s)\n", requested_rate, s, sensor[s].friendly_name);
 
@@ -877,6 +878,11 @@ static int sensor_set_rate (int s, float requested_rate)
 
 	ALOGI("Sensor %d (%s) sampling rate set to %g\n", s, sensor[s].friendly_name, arb_sampling_rate);
 
+	if (sensor[s].hrtimer_trigger_name[0] != '\0') {
+		snprintf (hrtimer_sampling_path, PATH_MAX, "%s%s/%s", CONFIGFS_TRIGGER_PATH, sensor[s].hrtimer_trigger_name, "sampling_frequency");
+		sysfs_write_float(hrtimer_sampling_path, arb_sampling_rate);
+	}
+
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
@@ -991,7 +997,11 @@ int sensor_activate (int s, int enabled, int from_virtual)
 		if (trig_sensors_per_dev[dev_num]) {
 
 			/* Start sampling */
-			setup_trigger(s, sensor[s].init_trigger_name);
+			if (sensor[s].hrtimer_trigger_name[0] != '\0')
+				setup_trigger(s, sensor[s].hrtimer_trigger_name);
+			else
+				setup_trigger(s, sensor[s].init_trigger_name);
+
 			enable_buffer(dev_num, 1);
 		}
 	} else if (sensor[s].mode == MODE_POLL) {
