@@ -14,6 +14,7 @@
 #define DEV_FILE_PATH		"/dev/iio:device%d"
 #define BASE_PATH		"/sys/bus/iio/devices/iio:device%d/"
 #define TRIGGER_FILE_PATH	"/sys/bus/iio/devices/trigger%d/name"
+#define IIO_DEVICES		"/sys/bus/iio/devices/"
 
 #define CHANNEL_PATH		BASE_PATH "scan_elements/"
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
@@ -30,7 +31,7 @@
 #define SENSOR_CALIB_BIAS_PATH	BASE_PATH "in_%s_calibbias"
 #define MOUNTING_MATRIX_PATH	BASE_PATH "mounting_matrix"
 
-#define CONFIGFS_TRIGGER_PATH	"/config/iio/triggers/"
+#define CONFIGFS_TRIGGER_PATH	"/sys/kernel/config/iio/triggers/"
 
 #define PROP_BASE		"ro.iio.%s.%s" /* Note: PROPERTY_KEY_MAX is small */
 
@@ -156,6 +157,7 @@ typedef struct
 	char init_trigger_name[MAX_NAME_SIZE];	/* ex: accel-name-dev1	     */
 	char motion_trigger_name[MAX_NAME_SIZE];/* ex: accel-any-motion-dev1 */
 	char hrtimer_trigger_name[MAX_NAME_SIZE]; /*ex: accel-hr-dev1 */
+	int trigger_nr;	/* trigger number associated with this device */
 	float max_range;
 	float resolution;
 	float power;

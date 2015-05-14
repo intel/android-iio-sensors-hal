@@ -509,6 +509,7 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 	sensor[s].catalog_index	= catalog_index;
 	sensor[s].type		= sensor_type;
 	sensor[s].mode		= mode;
+	sensor[s].trigger_nr = -1;	/* -1 means no trigger - we'll populate these at a later time */
 
         num_channels = sensor_catalog[catalog_index].num_channels;
 
@@ -813,7 +814,7 @@ static void propose_new_trigger (int s, char trigger_name[MAX_NAME_SIZE],
 }
 
 
-static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE], int* updated)
+static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE], int* updated, int trigger)
 {
 	/*
 	 * Check if we have a sensor matching the specified trigger name, which should then begin with the sensor name, and end with a number
@@ -858,10 +859,11 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE], int* 
 				/* Switch to new trigger if appropriate */
 				propose_new_trigger(s, name, sensor_name_len);
 				updated[s] = 1;
+				sensor[s].trigger_nr = trigger;
 		}
 }
 
-static int create_hrtimer_trigger(int s)
+static int create_hrtimer_trigger(int s, int trigger)
 {
 	struct stat dir_status;
 	char buf[MAX_NAME_SIZE];
@@ -882,6 +884,7 @@ static int create_hrtimer_trigger(int s)
 			return -1;
 
 	strncpy (sensor[s].hrtimer_trigger_name, hrtimer_name, MAX_NAME_SIZE);
+	sensor[s].trigger_nr = trigger;
 	return 0;
 }
 
@@ -910,14 +913,14 @@ static void setup_trigger_names (void)
 			break;
 
 		/* Record initial and any-motion triggers names */
-		update_sensor_matching_trigger_name(buf, updated);
+		update_sensor_matching_trigger_name(buf, updated, trigger);
 	}
 
 
 	/* If we don't have any other trigger exposed and quirk hrtimer is set setup the hrtimer name here  - and create it also */
 	for (s=0; s<sensor_count; s++) {
 		if ((sensor[s].quirks & QUIRK_HRTIMER) && !updated[s])
-			create_hrtimer_trigger(s);
+			create_hrtimer_trigger(s, trigger);
 	}
 
 	/*
