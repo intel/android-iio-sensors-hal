@@ -573,7 +573,7 @@ max_delay_t sensor_get_max_delay (int s)
 	int dev_num	= sensor[s].dev_num;
 	char freqs_buf[100];
 	char* cursor;
-	float min_supported_rate = 1000;
+	float min_supported_rate;
 	float rate_cap;
 	float sr;
 
@@ -602,31 +602,42 @@ max_delay_t sensor_get_max_delay (int s)
 				return 0;
 		}
 	}
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		if (sensor[s].mode == MODE_POLL) {
-			/* The must rate */
-			min_supported_rate = get_cdd_freq(s, 1);
-		}
-	} else {
-		cursor = freqs_buf;
-		while (*cursor && cursor[0]) {
+	switch (sensor[s].mode) {
+		case MODE_TRIGGER:
+			/* For interrupt-based devices, obey the list of supported sampling rates */
+			sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+			if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
 
-			/* Decode a single value */
-			sr = strtod(cursor, NULL);
+				min_supported_rate = 1000;
+				cursor = freqs_buf;
 
-			if (sr < min_supported_rate)
-				min_supported_rate = sr;
+				while (*cursor && cursor[0]) {
 
-			/* Skip digits */
-			while (cursor[0] && !isspace(cursor[0]))
-				cursor++;
+					/* Decode a single value */
+					sr = strtod(cursor, NULL);
 
-			/* Skip spaces */
-			while (cursor[0] && isspace(cursor[0]))
-				cursor++;
-		}
+					if (sr < min_supported_rate)
+						min_supported_rate = sr;
+
+					/* Skip digits */
+					while (cursor[0] && !isspace(cursor[0]))
+						cursor++;
+
+					/* Skip spaces */
+					while (cursor[0] && isspace(cursor[0]))
+						cursor++;
+				}
+
+				break;
+			}
+
+			/* Fall through ... */
+
+		default:
+			/* Report 1 Hz */
+			min_supported_rate = 1;
+			break;
 	}
 
 	/* Check if a minimum rate was specified for this sensor */

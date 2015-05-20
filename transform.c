@@ -551,8 +551,11 @@ float acquire_immediate_float_value (int s, int c)
 		sprintf(sysfs_path, BASE_PATH "%s", dev_num, input_path);
 		ret = sysfs_read_float(sysfs_path, &val);
 
-		if (!ret)
+		if (!ret) {
+			if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
+				return CONVERT_GAUSS_TO_MICROTESLA (val * correction);
 			return val * correction;
+		}
 	}
 
 	if (!sensor[s].channel[c].raw_path_present)
