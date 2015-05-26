@@ -823,7 +823,7 @@ static int sensor_set_rate (int s, float requested_rate)
 			sr = strtod(cursor, NULL);
 
 			/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
-			if (fabs(arb_sampling_rate - sr) <= 0.001) {
+			if (fabs(arb_sampling_rate - sr) <= 0.01) {
 				arb_sampling_rate = sr;
 				break;
 			}
