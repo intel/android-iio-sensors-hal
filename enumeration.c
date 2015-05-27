@@ -905,7 +905,7 @@ static void setup_trigger_names (void)
 
 	for (trigger=0; trigger<MAX_TRIGGERS; trigger++) {
 
-		snprintf(filename, sizeof(filename), TRIGGER_FILE_PATH,trigger);
+		snprintf(filename, sizeof(filename), TRIGGER_FILE_PATH, trigger);
 
 		ret = sysfs_read_str(filename, buf, sizeof(buf));
 
@@ -918,9 +918,11 @@ static void setup_trigger_names (void)
 
 
 	/* If we don't have any other trigger exposed and quirk hrtimer is set setup the hrtimer name here  - and create it also */
-	for (s=0; s<sensor_count; s++) {
-		if ((sensor[s].quirks & QUIRK_HRTIMER) && !updated[s])
+	for (s=0; s<sensor_count && trigger<MAX_TRIGGERS; s++) {
+		if ((sensor[s].quirks & QUIRK_HRTIMER) && !updated[s]) {
 			create_hrtimer_trigger(s, trigger);
+			trigger++;
+		}
 	}
 
 	/*
