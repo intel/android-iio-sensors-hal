@@ -807,6 +807,15 @@ static int sensor_set_rate (int s, float requested_rate)
 		return -ENOSYS;
 	}
 
+	if (sensor[s].hrtimer_trigger_name[0] != '\0') {
+		snprintf(trigger_path, PATH_MAX, "%s%s%d/", IIO_DEVICES, "trigger", sensor[s].trigger_nr);
+		snprintf(hrtimer_sampling_path, PATH_MAX, "%s%s", trigger_path, "sampling_frequency");
+		/* Enforce frequency update when software trigger
+		 * frequency and current sampling rate are different */
+		if (sysfs_read_float(hrtimer_sampling_path, &sr) != -1 && sr != cur_sampling_rate)
+			cur_sampling_rate = -1;
+	}
+
 	/* Check if we have contraints on allowed sampling rates */
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
@@ -879,11 +888,8 @@ static int sensor_set_rate (int s, float requested_rate)
 
 	ALOGI("Sensor %d (%s) sampling rate set to %g\n", s, sensor[s].friendly_name, arb_sampling_rate);
 
-	if (sensor[s].hrtimer_trigger_name[0] != '\0') {
-		snprintf(trigger_path, PATH_MAX, "%s%s%d/", IIO_DEVICES, "trigger", sensor[s].trigger_nr);
-		snprintf (hrtimer_sampling_path, PATH_MAX, "%s%s", trigger_path, "sampling_frequency");
+	if (sensor[s].hrtimer_trigger_name[0] != '\0')
 		sysfs_write_float(hrtimer_sampling_path, arb_sampling_rate);
-	}
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
@@ -1249,7 +1255,6 @@ static int integrate_device_report_from_dev(int dev_num, int fd)
 			sensor[s].report_pending = DATA_TRIGGER;
 			sensor[s].report_initialized = 1;
 
-			ts_offset += sr_offset;
 		}
 
 	/* Tentatively switch to an any-motion trigger if conditions are met */
