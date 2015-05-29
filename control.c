@@ -1249,7 +1249,6 @@ static int integrate_device_report_from_dev(int dev_num, int fd)
 			sensor[s].report_pending = DATA_TRIGGER;
 			sensor[s].report_initialized = 1;
 
-			ts_offset += sr_offset;
 		}
 
 	/* Tentatively switch to an any-motion trigger if conditions are met */
