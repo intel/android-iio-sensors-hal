@@ -20,6 +20,9 @@ int usage(void)
 	fprintf(stderr, "sens [activate | deactivate] sensor_id\n");
 	fprintf(stderr, "sens set_delay sensor_id delay\n");
 	fprintf(stderr, "sens poll\n");
+	fprintf(stderr, "sens poll [duration] [number_of_events] \n");
+	fprintf(stderr, "sens poll_stop\n");
+	fprintf(stderr, "sens check_sample_rate [rate] \n");
 	return 1;
 }
 
@@ -63,23 +66,33 @@ static struct sensors_module_t *hmi;
 static struct hw_device_t *dev;
 static FILE *client;
 static pthread_mutex_t client_mutex = PTHREAD_MUTEX_INITIALIZER;
-
+static pthread_cond_t cond = PTHREAD_COND_INITIALIZER;
+static int ready_to_close = 0;
+static int number_of_events = 0;
+static int non_param_poll = 1;
+static int event_no = 0;
+static int init_events = 0;
+static int print_events = 1;
+static long long timestamp = 0;
+static long long event_init_poll_time = 0;
+static long long poll_duration = 0;
 
 static void print_event(struct sensors_event_t *e)
 {
 	FILE *f;
 
 	pthread_mutex_lock(&client_mutex);
-
 	if (!client) {
 		pthread_mutex_unlock(&client_mutex);
 		return;
 	}
 	f = client;
 
-	fprintf(f, "event: version=%d sensor=%d type=%s timestamp=%lld\n",
+	fprintf(f, "event %d: version=%d sensor=%d type=%s timestamp=%lld\n",event_no,
 		e->version, e->sensor, type_str(e->type), (long long)e->timestamp);
-
+	if (poll_duration != 0)
+		fprintf(f,"Time remaining:%lld \n",poll_duration - ((long long)e->timestamp
+			- event_init_poll_time));
 	switch (e->type) {
 	case SENSOR_TYPE_META_DATA:
 		break;
@@ -155,11 +168,57 @@ static void print_event(struct sensors_event_t *e)
 			(unsigned long long)e->u64.step_counter);
 		break;
 	}
-
 	fprintf(f, "\n");
 	fflush(f);
 
 	pthread_mutex_unlock(&client_mutex);
+}
+
+static void print_result(int result)
+{
+	FILE *f;
+	pthread_mutex_lock(&client_mutex);
+	if (!client) {
+		pthread_mutex_unlock(&client_mutex);
+		return;
+	}
+	f = client;
+	fprintf(f, "Number of events: %d \n", event_no - init_events);
+	fprintf(f, "Duration: %lld \n\n", (long long) timestamp - event_init_poll_time);
+	if(!print_events){
+		if(result)
+			fprintf(f, "Test passed\n\n");
+		else
+			fprintf(f, "Test failed\n\n");
+	}
+	fflush(f);
+	pthread_mutex_unlock(&client_mutex);
+
+}
+
+static void process_event(struct sensors_event_t *e)
+{
+	int is_poll_duration_over = 0;
+	int is_event_number_reached = 0;
+
+	if (event_init_poll_time == 0) {
+		event_init_poll_time = (long long) e->timestamp;
+		init_events = event_no;
+	}
+	is_poll_duration_over = (long long) e->timestamp - event_init_poll_time <= poll_duration ? 0 : 1;
+	is_event_number_reached = (event_no - init_events) < number_of_events ? 0 : 1;
+
+	if ((!is_poll_duration_over && !is_event_number_reached) || non_param_poll)
+	{
+		timestamp = e -> timestamp;
+		event_no++;
+		if(print_events)
+			print_event(e);
+	} else {
+		ready_to_close = 1;
+		print_result(is_event_number_reached);
+		pthread_cond_signal(&cond);
+	}
 }
 
 static void run_sensors_poll_v0(void)
@@ -173,7 +232,7 @@ static void run_sensors_poll_v0(void)
 		count = poll_dev->poll(poll_dev, events, sizeof(events)/sizeof(sensors_event_t));
 
 		for(i = 0; i < count; i++)
-			print_event(&events[i]);
+			process_event(&events[i]);
 	}
 }
 
@@ -304,11 +363,62 @@ static int dispatch_cmd(char *cmd, FILE *f)
 		return sensor_set_delay(handle, delay);
 
 	} else if (!strcmp(argv[0], "poll")) {
+		if (argc == 1) {
+			non_param_poll = 1;
+		} else if (argc == 3) {
+			non_param_poll = 0;
+			poll_duration = atoll(argv[1]);
+			number_of_events = atoi(argv[2]);
+			event_init_poll_time = 0;
+			ready_to_close = 0;
+		} else {
+			CLIENT_ERR(f, "poll: no poll duration or number of events set");
+			return -1;
+		}
+		print_events = 1;
+		pthread_mutex_lock(&client_mutex);
+		if (client)
+			fclose(client);
+		client = f;
+
+		if (!non_param_poll) {
+			pthread_cond_wait(&cond, &client_mutex);
+			fclose(client);
+			client = NULL;
+		}
+
+		pthread_mutex_unlock(&client_mutex);
+
+		return 1;
+	} else if (!strcmp(argv[0], "check_sample_rate")) {
+
+		if (argc < 2) {
+			CLIENT_ERR(f, "check_sample_rate: no events rate");
+			return -1;
+		}
+
+		non_param_poll = 0;
+		poll_duration = 1000000000;
+		number_of_events = atoi(argv[1]);
+		event_init_poll_time = 0;
+		ready_to_close = 0;
+		print_events = 0;
 
 		pthread_mutex_lock(&client_mutex);
 		if (client)
 			fclose(client);
 		client = f;
+		pthread_cond_wait(&cond, &client_mutex);
+		fclose(client);
+		client = NULL;
+		pthread_mutex_unlock(&client_mutex);
+		return 1;
+	} else if (!strcmp(argv[0], "poll_stop")) {
+		pthread_mutex_lock(&client_mutex);
+		if (client){
+			fclose(client);
+			client = NULL;
+		}
 		pthread_mutex_unlock(&client_mutex);
 
 		return 1;
