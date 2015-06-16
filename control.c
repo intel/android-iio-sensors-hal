@@ -889,7 +889,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	ALOGI("Sensor %d (%s) sampling rate set to %g\n", s, sensor[s].friendly_name, arb_sampling_rate);
 
 	if (sensor[s].hrtimer_trigger_name[0] != '\0')
-		sysfs_write_float(hrtimer_sampling_path, arb_sampling_rate);
+		sysfs_write_float(hrtimer_sampling_path, ceilf(arb_sampling_rate));
 
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
