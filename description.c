@@ -400,6 +400,9 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "hrtimer"))
 			sensor[s].quirks |= QUIRK_HRTIMER;
 
+		if (strstr(quirks_buf, "secondary"))
+			sensor[s].quirks |= QUIRK_SECONDARY;
+
 		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
@@ -437,12 +440,13 @@ int sensor_get_mounting_matrix (int s, float mm[9])
 	char *tmp1 = mm_buf, *tmp2;
 
 	switch (sensor[s].type) {
-	case SENSOR_TYPE_ACCELEROMETER:
-	case SENSOR_TYPE_MAGNETIC_FIELD:
-	case SENSOR_TYPE_GYROSCOPE:
-		break;
-	default:
-		return 0;
+		case SENSOR_TYPE_ACCELEROMETER:
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_PROXIMITY:
+			break;
+		default:
+			return 0;
 	}
 
 	sprintf(mm_path, MOUNTING_MATRIX_PATH, dev_num);
@@ -459,6 +463,18 @@ int sensor_get_mounting_matrix (int s, float mm[9])
 			return 0;
 		mm[i] = f;
 		tmp1 = tmp2 + 1;
+	}
+
+	/*
+	 * For proximity sensors, interpret a negative final z value as a hint that the sensor is back mounted. In that case, mark the sensor as secondary to
+	 * ensure that it gets listed after other sensors of same type that would be front-mounted. Most applications will only ask for the default proximity
+	 * sensor and it makes more sense to point to, say, the IR based proximity sensor rather than SAR based one if we have both, as on SoFIA LTE MRD boards.
+	 */
+	 if (sensor[s].type == SENSOR_TYPE_PROXIMITY) {
+		if (mm[8] < 0) {
+			sensor[s].quirks |= QUIRK_SECONDARY;
+		}
+		return 0;
 	}
 
 	ALOGI("%s: %f %f %f %f %f %f %f %f %f\n", __func__, mm[0], mm[1], mm[2], mm[3], mm[4], mm[5], mm[6], mm[7], mm[8]);
