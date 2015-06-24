@@ -7,19 +7,20 @@
 
 #include "common.h"
 
-#define QUIRK_ALREADY_DECODED	0x01  /* Sensor quirks have been read	      */
-#define QUIRK_INITIAL_RATE	0x02  /* Force initial sensor sampling rate   */
-#define QUIRK_FIELD_ORDERING	0x04  /* Do field remapping for this sensor   */
-#define QUIRK_TERSE_DRIVER	0x08  /* Force duplicate events generation    */
-#define QUIRK_NOISY		0x10  /* High noise level on readings	      */
-#define QUIRK_FORCE_CONTINUOUS	0x20  /* Force usage of continuous trigger    */
-#define QUIRK_BIASED		0x40  /* Biased sensor, requires compensation */
-#define QUIRK_SPOTTY		0x80  /* Driver may lose events		      */
-#define QUIRK_NO_EVENT_MODE	0x100 /* Disable event mode		      */
-#define QUIRK_NO_TRIG_MODE	0x200 /* Disable trigger mode                 */
-#define QUIRK_NO_POLL_MODE	0x400 /* Disable poll mode 		      */
-#define QUIRK_MOUNTING_MATRIX	0x800  /* Mounting information present */
-#define QUIRK_HRTIMER		0x1000	/* We may use a hrtimer if there is no other trigger */
+#define QUIRK_ALREADY_DECODED	0x01	/* Sensor quirks have been read				*/
+#define QUIRK_INITIAL_RATE	0x02	/* Force initial sensor sampling rate			*/
+#define QUIRK_FIELD_ORDERING	0x04	/* Do field remapping for this sensor			*/
+#define QUIRK_TERSE_DRIVER	0x08	/* Force duplicate events generation			*/
+#define QUIRK_NOISY		0x10	/* High noise level on readings				*/
+#define QUIRK_FORCE_CONTINUOUS	0x20	/* Force usage of continuous trigger			*/
+#define QUIRK_BIASED		0x40	/* Biased sensor, requires compensation			*/
+#define QUIRK_SPOTTY		0x80	/* Driver may lose events				*/
+#define QUIRK_NO_EVENT_MODE	0x100	/* Disable event mode					*/
+#define QUIRK_NO_TRIG_MODE	0x200	/* Disable trigger mode					*/
+#define QUIRK_NO_POLL_MODE	0x400	/* Disable poll mode					*/
+#define QUIRK_MOUNTING_MATRIX	0x800 	/* Mounting information present				*/
+#define QUIRK_HRTIMER		0x1000	/* We may use a hrtimer if there is no other trigger	*/
+#define QUIRK_SECONDARY		0x2000	/* List after other sensors of the same type		*/
 
 #ifdef __LP64__
 	typedef uint64_t	flag_t;
