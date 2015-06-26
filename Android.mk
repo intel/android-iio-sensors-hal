@@ -38,7 +38,7 @@ LOCAL_LDFLAGS := -Wl,--gc-sections
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_PRELINK_MODULE := false
 LOCAL_SRC_FILES := $(src_files)
-
+LOCAL_PROPRIETARY_MODULE := true
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -48,6 +48,7 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_SRC_FILES := sens.c
 LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_PATH := $(TARGET_OUT_VENDOR_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
 
 endif
@@ -74,7 +75,7 @@ LOCAL_LDFLAGS := -Wl,--gc-sections
 LOCAL_SHARED_LIBRARIES := liblog libcutils
 LOCAL_PRELINK_MODULE := false
 LOCAL_SRC_FILES := $(activity_src_files)
-
+LOCAL_PROPRIETARY_MODULE := true
 include $(BUILD_SHARED_LIBRARY)
 
 include $(CLEAR_VARS)
@@ -84,6 +85,7 @@ LOCAL_CFLAGS := -DLOG_TAG=\"Activity\" -fvisibility=hidden
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_SRC_FILES := activity.c
 LOCAL_MODULE_TAGS := eng
+LOCAL_MODULE_PATH := $(TARGET_OUT_VENDOR_EXECUTABLES)
 include $(BUILD_EXECUTABLE)
 
 endif
