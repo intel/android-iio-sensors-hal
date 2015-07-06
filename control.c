@@ -1300,6 +1300,7 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 	int len, s;
 	int64_t ts;
 	struct iio_event_data event;
+	int64_t boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
 	/* There's an incoming report on the specified iio device char dev fd */
 	if (fd == -1) {
@@ -1316,9 +1317,9 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 		return -1;
 	}
 
-	ts = event.timestamp;
+	ts = event.timestamp + boot_to_rt_delta;
 
-	ALOGV("Read event %lld from fd %d of iio device %d\n", event.id, fd, dev_num);
+	ALOGV("Read event %lld from fd %d of iio device %d - ts %lld\n", event.id, fd, dev_num, ts);
 
 	/* Map device report to sensor reports */
 	for (s = 0; s < MAX_SENSORS; s++)
