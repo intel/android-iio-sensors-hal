@@ -286,7 +286,7 @@ static float sensor_get_min_freq (int s)
 }
 
 
-static float sensor_get_max_freq (int s)
+float sensor_get_max_freq (int s)
 {
 	float max_freq;
 
@@ -623,7 +623,8 @@ max_delay_t sensor_get_max_delay (int s)
 		case MODE_TRIGGER:
 			/* For interrupt-based devices, obey the list of supported sampling rates */
 			sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-			if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
+			if (!(sensor_get_quirks(s) & QUIRK_HRTIMER) &&
+					sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
 
 				min_supported_rate = 1000;
 				cursor = freqs_buf;
@@ -680,6 +681,7 @@ int32_t sensor_get_min_delay (int s)
 	float max_supported_rate = 0;
 	float max_from_prop = sensor_get_max_freq(s);
 	float sr;
+	int hrtimer_quirk_enabled = sensor_get_quirks(s) & QUIRK_HRTIMER;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
 	 * special : 0, unless otherwise noted
@@ -711,8 +713,8 @@ int32_t sensor_get_min_delay (int s)
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		if (sensor[s].mode == MODE_POLL) {
+	if (hrtimer_quirk_enabled || sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
+		if (hrtimer_quirk_enabled || (sensor[s].mode == MODE_POLL)) {
 			/* If we have max specified via a property use it */
 			if (max_from_prop != ANDROID_MAX_FREQ)
 				max_supported_rate = max_from_prop;
