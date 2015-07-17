@@ -225,6 +225,9 @@ unsigned int catalog_size = ARRAY_SIZE(sensor_catalog);
 #define PANEL_FRONT	4
 #define PANEL_BACK	5
 
+/* Buffer default length */
+#define BUFFER_LENGTH	16
+
 /* We equate sensor handles to indices in these tables */
 
 struct sensor_t	sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
@@ -489,6 +492,7 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 	int num_channels;
 	char suffix[MAX_NAME_SIZE + 8];
 	int calib_bias;
+	int buffer_length;
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -564,6 +568,19 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 				sprintf(sysfs_path, SENSOR_CALIB_BIAS_PATH, dev_num, prefix);
 				sysfs_write_int(sysfs_path, calib_bias);
 			}
+
+	/* Change buffer length according to the property or use default value */
+	if (mode == MODE_TRIGGER) {
+                if (sensor_get_prop(s, "buffer_length", &buffer_length)) {
+                        buffer_length = BUFFER_LENGTH;
+                }
+
+                sprintf(sysfs_path, BUFFER_LENGTH_PATH, dev_num);
+
+                if (sysfs_write_int(sysfs_path, buffer_length) <= 0) {
+                        ALOGE("Failed to set buffer length on dev%d", dev_num);
+                }
+        }
 
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);

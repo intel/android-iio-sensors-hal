@@ -18,6 +18,7 @@
 
 #define CHANNEL_PATH		BASE_PATH "scan_elements/"
 #define ENABLE_PATH		BASE_PATH "buffer/enable"
+#define BUFFER_LENGTH_PATH	BASE_PATH "buffer/length"
 #define NAME_PATH		BASE_PATH "name"
 #define TRIGGER_PATH		BASE_PATH "trigger/current_trigger"
 #define EVENTS_PATH		BASE_PATH "events/"
