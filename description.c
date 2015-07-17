@@ -433,6 +433,35 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 	return 1;	/* OK to use modified ordering map */
 }
 
+int sensor_get_available_frequencies (int s)
+{
+	int dev_num = sensor[s].dev_num, err, i;
+	char avail_sysfs_path[PATH_MAX], freqs_buf[100];
+	char *p, *end;
+	float f;
+
+	sensor[s].avail_freqs_count = 0;
+	sensor[s].avail_freqs = 0;
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	err = sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf));
+	if (err < 0)
+		return 0;
+
+	for (p = freqs_buf, f = strtof(p, &end); p != end; p = end, f = strtof(p, &end))
+		sensor[s].avail_freqs_count++;
+
+	if (sensor[s].avail_freqs_count) {
+		sensor[s].avail_freqs = (float*) calloc(sensor[s].avail_freqs_count, sizeof(float));
+
+		for (p = freqs_buf, f = strtof(p, &end), i = 0; p != end; p = end, f = strtof(p, &end), i++)
+			sensor[s].avail_freqs[i] = f;
+	}
+
+	return 0;
+}
+
 int sensor_get_mounting_matrix (int s, float mm[9])
 {
 	int dev_num = sensor[s].dev_num, err, i;

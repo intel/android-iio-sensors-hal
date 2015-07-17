@@ -653,6 +653,8 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 		sensor[s].channel[c].raw_path_present = (access(sysfs_path, R_OK) != -1);
 	}
 
+	sensor_get_available_frequencies(s);
+
 	if (sensor_get_mounting_matrix(s, sensor[s].mounting_matrix))
 		sensor[s].quirks |= QUIRK_MOUNTING_MATRIX;
 	else
