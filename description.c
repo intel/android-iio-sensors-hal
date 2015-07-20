@@ -614,13 +614,9 @@ static int get_cdd_freq (int s, int must)
  */
 max_delay_t sensor_get_max_delay (int s)
 {
-	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor[s].dev_num;
-	char freqs_buf[100];
-	char* cursor;
+	int dev_num = sensor[s].dev_num, i;
 	float min_supported_rate;
 	float rate_cap;
-	float sr;
 
 	/*
 	 * continuous, on-change: maximum sampling period allowed in microseconds.
@@ -651,33 +647,15 @@ max_delay_t sensor_get_max_delay (int s)
 	switch (sensor[s].mode) {
 		case MODE_TRIGGER:
 			/* For interrupt-based devices, obey the list of supported sampling rates */
-			sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 			if (!(sensor_get_quirks(s) & QUIRK_HRTIMER) &&
-					sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
-
+					sensor[s].avail_freqs_count) {
 				min_supported_rate = 1000;
-				cursor = freqs_buf;
-
-				while (*cursor && cursor[0]) {
-
-					/* Decode a single value */
-					sr = strtod(cursor, NULL);
-
-					if (sr < min_supported_rate)
-						min_supported_rate = sr;
-
-					/* Skip digits */
-					while (cursor[0] && !isspace(cursor[0]))
-						cursor++;
-
-					/* Skip spaces */
-					while (cursor[0] && isspace(cursor[0]))
-						cursor++;
+				for (i = 0; i < sensor[s].avail_freqs_count; i++) {
+					if (sensor[s].avail_freqs[i] < min_supported_rate)
+						min_supported_rate = sensor[s].avail_freqs[i];
 				}
-
 				break;
 			}
-
 			/* Fall through ... */
 
 		default:
@@ -703,13 +681,9 @@ max_delay_t sensor_get_max_delay (int s)
 
 int32_t sensor_get_min_delay (int s)
 {
-	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor[s].dev_num;
-	char freqs_buf[100];
-	char* cursor;
+	int dev_num = sensor[s].dev_num, i;
 	float max_supported_rate = 0;
 	float max_from_prop = sensor_get_max_freq(s);
-	float sr;
 	int hrtimer_quirk_enabled = sensor_get_quirks(s) & QUIRK_HRTIMER;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
@@ -740,9 +714,7 @@ int32_t sensor_get_min_delay (int s)
 		}
 	}
 
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-
-	if (hrtimer_quirk_enabled || sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
+	if (hrtimer_quirk_enabled || !sensor[s].avail_freqs_count) {
 		if (hrtimer_quirk_enabled || (sensor[s].mode == MODE_POLL)) {
 			/* If we have max specified via a property use it */
 			if (max_from_prop != ANDROID_MAX_FREQ)
@@ -752,22 +724,11 @@ int32_t sensor_get_min_delay (int s)
 				max_supported_rate = get_cdd_freq(s, 0);
 		}
 	} else {
-		cursor = freqs_buf;
-		while (*cursor && cursor[0]) {
-
-			/* Decode a single value */
-			sr = strtod(cursor, NULL);
-
-			if (sr > max_supported_rate && sr <= max_from_prop)
-				max_supported_rate = sr;
-
-			/* Skip digits */
-			while (cursor[0] && !isspace(cursor[0]))
-				cursor++;
-
-			/* Skip spaces */
-			while (cursor[0] && isspace(cursor[0]))
-				cursor++;
+		for (i = 0; i < sensor[s].avail_freqs_count; i++) {
+			if (sensor[s].avail_freqs[i] > max_supported_rate &&
+				sensor[s].avail_freqs[i] <= max_from_prop) {
+				max_supported_rate = sensor[s].avail_freqs[i];
+			}
 		}
 	}
 

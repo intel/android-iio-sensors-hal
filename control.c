@@ -731,29 +731,18 @@ extern float sensor_get_max_freq (int s);
 
 static float select_closest_available_rate(int s, float requested_rate)
 {
-	char avail_sysfs_path[PATH_MAX];
-	char freqs_buf[100];
-	char* cursor;
 	float sr;
+	int j;
 	float selected_rate = 0;
-	float max_rate_from_prop;
+	float max_rate_from_prop = sensor_get_max_freq(s);
 	int dev_num = sensor[s].dev_num;
 
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) <= 0) {
+	if (!sensor[s].avail_freqs_count)
 		return requested_rate;
-	}
 
-	max_rate_from_prop = sensor_get_max_freq(s);
-	cursor = freqs_buf;
+	for (j = 0; j < sensor[s].avail_freqs_count; j++) {
 
-	/* Decode allowed sampling rates string, ex: "10 20 50 100" */
-
-	/* While we're not at the end of the string */
-	while (*cursor && cursor[0]) {
-
-		/* Decode a single value */
-		sr = strtod(cursor, NULL);
+		sr = sensor[s].avail_freqs[j];
 
 		/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
 		if ((fabs(requested_rate - sr) <= 0.01) && (sr <= max_rate_from_prop)) {
@@ -772,14 +761,6 @@ static float select_closest_available_rate(int s, float requested_rate)
 		if (sr > requested_rate) {
 			return selected_rate;
 		}
-
-		/* Skip digits */
-		while (cursor[0] && !isspace(cursor[0]))
-			cursor++;
-
-		/* Skip spaces */
-		while (cursor[0] && isspace(cursor[0]))
-				cursor++;
 	}
 
 	/* Check for wrong values */
