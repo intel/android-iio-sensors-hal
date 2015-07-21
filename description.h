@@ -34,6 +34,7 @@ char*		sensor_get_name		(int s);
 char*		sensor_get_vendor	(int s);
 int		sensor_get_version	(int s);
 float		sensor_get_max_range	(int s);
+void 		sensor_update_max_range	(int s);
 float		sensor_get_resolution	(int s);
 float		sensor_get_power	(int s);
 flag_t		sensor_get_flags	(int s);

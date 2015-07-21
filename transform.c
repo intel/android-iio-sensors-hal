@@ -41,8 +41,6 @@
 #define CONVERT_M_Y	(-CONVERT_M)
 #define CONVERT_M_Z	(CONVERT_M)
 
-#define CONVERT_GAUSS_TO_MICROTESLA(x)	((x) * 100)
-
 /* Conversion of orientation data to degree units */
 #define CONVERT_O	(1.0 / 64)
 #define CONVERT_O_A	(CONVERT_O)

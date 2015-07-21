@@ -300,6 +300,8 @@ void build_sensor_report_maps (int dev_num)
 			known_channels++;
 		}
 
+		sensor_update_max_range(s);
+
 		/* Stop sampling - if we are recovering from hal restart */
                 enable_buffer(dev_num, 0);
                 setup_trigger(s, "\n");

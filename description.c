@@ -11,6 +11,7 @@
 #include "enumeration.h"
 #include "description.h"
 #include "utils.h"
+#include "transform.h"
 
 #define IIO_SENSOR_HAL_VERSION	1
 
@@ -218,6 +219,60 @@ int sensor_get_version (__attribute__((unused)) int s)
 	return IIO_SENSOR_HAL_VERSION;
 }
 
+void sensor_update_max_range(int s)
+{
+	if (sensor[s].max_range)
+		return;
+
+	if (sensor[s].num_channels && sensor[s].channel[0].type_info.realbits) {
+		switch (sensor[s].type) {
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			sensor[s].max_range = (1ULL << sensor[s].channel[0].type_info.realbits) *
+					CONVERT_MICROTESLA_TO_GAUSS(sensor[s].resolution) +
+					(sensor[s].offset || sensor[s].channel[0].offset);
+			sensor[s].max_range = CONVERT_GAUSS_TO_MICROTESLA(sensor[s].max_range);
+			break;
+		case SENSOR_TYPE_PROXIMITY:
+			break;
+		default:
+			sensor[s].max_range =  (1ULL << sensor[s].channel[0].type_info.realbits) *
+				sensor[s].resolution + (sensor[s].offset || sensor[s].channel[0].offset);
+			break;
+		}
+	}
+
+	if (!sensor[s].max_range) {
+		/* Try returning a sensible value given the sensor type */
+		/* We should cap returned samples accordingly... */
+		switch (sensor[s].type) {
+		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
+			sensor[s].max_range = 50;
+			break;
+		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
+			sensor[s].max_range = 500;
+			break;
+		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
+			sensor[s].max_range = 360;
+			break;
+		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
+			sensor[s].max_range = 10;
+			break;
+		case SENSOR_TYPE_LIGHT:			/* SI lux units */
+			sensor[s].max_range = 50000;
+			break;
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
+		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
+		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
+		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
+			sensor[s].max_range = 100;
+			break;
+		}
+	}
+
+	if (sensor[s].max_range)
+		sensor_desc[s].maxRange = sensor[s].max_range;
+}
 
 float sensor_get_max_range (int s)
 {
@@ -236,36 +291,7 @@ float sensor_get_max_range (int s)
 		!sensor_get_fl_prop(s, "max_range", &sensor[s].max_range))
 			return sensor[s].max_range;
 
-	/* Try returning a sensible value given the sensor type */
-
-	/* We should cap returned samples accordingly... */
-
-	switch (sensor_desc[s].type) {
-		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
-			return 50;
-
-		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
-			return 500;
-
-		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
-			return 360;
-
-		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
-			return 10;
-
-		case SENSOR_TYPE_LIGHT:			/* SI lux units */
-			return 50000;
-
-		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
-		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
-		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
-		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
-		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
-			return 100;
-
-		default:
-			return 0;
-		}
+	return 0;
 }
 
 static float sensor_get_min_freq (int s)
@@ -319,10 +345,18 @@ float sensor_get_resolution (int s)
 	}
 
 	if (sensor[s].resolution != 0.0 ||
-		!sensor_get_fl_prop(s, "resolution", &sensor[s].resolution))
-			return sensor[s].resolution;
+	    !sensor_get_fl_prop(s, "resolution", &sensor[s].resolution)) {
+		return sensor[s].resolution;
+	}
 
-	return 0;
+	sensor[s].resolution = sensor[s].scale;
+	if (!sensor[s].resolution && sensor[s].num_channels)
+		sensor[s].resolution = sensor[s].channel[0].scale;
+
+	if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
+		sensor[s].resolution = CONVERT_GAUSS_TO_MICROTESLA(sensor[s].resolution);
+
+	return sensor[s].resolution ? : 1;
 }
 
 
