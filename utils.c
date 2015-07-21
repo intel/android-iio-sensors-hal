@@ -188,32 +188,35 @@ int sysfs_read_str(const char path[PATH_MAX], char *buf, int buf_len)
 }
 
 
-int64_t get_timestamp_realtime (void)
+int64_t get_timestamp (clockid_t clock_id)
 {
 	struct timespec ts = {0};
-	clock_gettime(CLOCK_REALTIME, &ts);
 
-	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+	if (!clock_gettime(clock_id, &ts))
+		return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+	else	/* in this case errno is set appropriately */
+		return -1;
 }
 
+int64_t get_timestamp_realtime (void)
+{
+	return get_timestamp(CLOCK_REALTIME);
+}
 
 int64_t get_timestamp_boot (void)
 {
-	struct timespec ts = {0};
-	clock_gettime(CLOCK_BOOTTIME, &ts);
-
-	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+	return get_timestamp(CLOCK_BOOTTIME);
 }
 
+int64_t get_timestamp_thread (void)
+{
+	return get_timestamp(CLOCK_THREAD_CPUTIME_ID);
+}
 
 int64_t get_timestamp_monotonic (void)
 {
-	struct timespec ts = {0};
-	clock_gettime(CLOCK_MONOTONIC, &ts);
-
-	return 1000000000LL * ts.tv_sec + ts.tv_nsec;
+	return get_timestamp(CLOCK_MONOTONIC);
 }
-
 
 void set_timestamp (struct timespec *out, int64_t target_ns)
 {
