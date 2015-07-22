@@ -227,6 +227,9 @@ unsigned int catalog_size = ARRAY_SIZE(sensor_catalog);
 #define PANEL_FRONT	4
 #define PANEL_BACK	5
 
+/* Buffer default length */
+#define BUFFER_LENGTH	16
+
 /* We equate sensor handles to indices in these tables */
 
 struct sensor_t	sensor_desc[MAX_SENSORS];	/* Android-level descriptors */
@@ -491,6 +494,7 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 	int num_channels;
 	char suffix[MAX_NAME_SIZE + 8];
 	int calib_bias;
+	int buffer_length;
 
 	if (sensor_count == MAX_SENSORS) {
 		ALOGE("Too many sensors!\n");
@@ -566,6 +570,19 @@ static int add_sensor (int dev_num, int catalog_index, int mode)
 				sprintf(sysfs_path, SENSOR_CALIB_BIAS_PATH, dev_num, prefix);
 				sysfs_write_int(sysfs_path, calib_bias);
 			}
+
+	/* Change buffer length according to the property or use default value */
+	if (mode == MODE_TRIGGER) {
+                if (sensor_get_prop(s, "buffer_length", &buffer_length)) {
+                        buffer_length = BUFFER_LENGTH;
+                }
+
+                sprintf(sysfs_path, BUFFER_LENGTH_PATH, dev_num);
+
+                if (sysfs_write_int(sysfs_path, buffer_length) <= 0) {
+                        ALOGE("Failed to set buffer length on dev%d", dev_num);
+                }
+        }
 
 	/* Read name attribute, if available */
 	sprintf(sysfs_path, NAME_PATH, dev_num);
@@ -977,6 +994,53 @@ static void post_process_sensor_list (char poll_map[catalog_size], char trig_map
 }
 
 
+static void swap_sensors (int s1, int s2)
+{
+	struct sensor_t	temp_sensor_desc;
+	sensor_info_t	temp_sensor;
+
+	/* S1 -> temp */
+	memcpy(&temp_sensor, &sensor[s1], sizeof(sensor_info_t));
+	memcpy(&temp_sensor_desc, &sensor_desc[s1], sizeof(struct sensor_t));
+
+	/* S2 -> S1 */
+	memcpy(&sensor[s1], &sensor[s2], sizeof(sensor_info_t));
+	memcpy(&sensor_desc[s1], &sensor_desc[s2], sizeof(struct sensor_t));
+
+	/* temp -> S2 */
+	memcpy(&sensor[s2], &temp_sensor, sizeof(sensor_info_t));
+	memcpy(&sensor_desc[s2], &temp_sensor_desc,  sizeof(struct sensor_t));
+
+	/* Fix-up sensor id mapping, which is stale */
+	sensor_desc[s1].handle	= s1;
+	sensor_desc[s2].handle	= s2;
+
+	/* Fix up name and vendor buffer pointers, which are potentially stale pointers */
+	sensor_desc[s1].name		= sensor_get_name(s1);
+	sensor_desc[s1].vendor		= sensor_get_vendor(s1);
+	sensor_desc[s2].name		= sensor_get_name(s2);
+	sensor_desc[s2].vendor		= sensor_get_vendor(s2);
+}
+
+
+static void reorder_sensors (void)
+{
+	/* Some sensors may be marked as secondary - these need to be listed after other sensors of the same type */
+	int s1, s2;
+
+	for (s1=0; s1<sensor_count-1; s1++)
+		if (sensor[s1].quirks & QUIRK_SECONDARY) {
+			/* Search for subsequent sensors of same type */
+			for (s2 = s1+1; s2<sensor_count; s2++)
+				if (sensor[s2].type == sensor[s1].type && !(sensor[s2].quirks & QUIRK_SECONDARY)) {
+					ALOGI("Sensor S%d has higher priority than S%d, swapping\n", s2, s1);
+					swap_sensors(s1, s2);
+					break;
+				}
+		}
+}
+
+
 void enumerate_sensors (void)
 {
 	/*
@@ -990,6 +1054,7 @@ void enumerate_sensors (void)
 	int dev_num;
 	unsigned int i;
 	int trig_found;
+	int s;
 
 	for (dev_num=0; dev_num<MAX_DEVICES; dev_num++) {
 		trig_found = 0;
@@ -1021,12 +1086,21 @@ void enumerate_sensors (void)
 			build_sensor_report_maps(dev_num);
 	}
 
+	/* Make sure secondary sensors appear after primary ones */
+	reorder_sensors();
+
 	ALOGI("Discovered %d sensors\n", sensor_count);
 
 	/* Set up default - as well as custom - trigger names */
 	setup_trigger_names();
 
+	ALOGI("Discovered %d sensors\n", sensor_count);
+
 	virtual_sensors_check();
+
+	for (s=0; s<sensor_count; s++) {
+		ALOGI("S%d: %s\n", s, sensor[s].friendly_name);
+	}
 }
 
 

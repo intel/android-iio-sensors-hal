@@ -729,20 +729,79 @@ static float get_group_max_sampling_rate (int s)
 	return arbitrated_rate;
 }
 
+extern float sensor_get_max_freq (int s);
+
+static float select_closest_available_rate(int s, float requested_rate)
+{
+	char avail_sysfs_path[PATH_MAX];
+	char freqs_buf[100];
+	char* cursor;
+	float sr;
+	float selected_rate = 0;
+	float max_rate_from_prop;
+	int dev_num = sensor[s].dev_num;
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) <= 0) {
+		return requested_rate;
+	}
+
+	max_rate_from_prop = sensor_get_max_freq(s);
+	cursor = freqs_buf;
+
+	/* Decode allowed sampling rates string, ex: "10 20 50 100" */
+
+	/* While we're not at the end of the string */
+	while (*cursor && cursor[0]) {
+
+		/* Decode a single value */
+		sr = strtod(cursor, NULL);
+
+		/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
+		if ((fabs(requested_rate - sr) <= 0.01) && (sr <= max_rate_from_prop)) {
+			return sr;
+		}
+
+		/* Select rate if it's less than max freq */
+		if ((sr > selected_rate) && (sr <= max_rate_from_prop)) {
+			selected_rate = sr;
+		}
+
+		/*
+		 * If we reached a higher value than the desired rate, adjust selected rate so it matches the first higher available one and
+		 * stop parsing - this makes the assumption that rates are sorted by increasing value in the allowed frequencies string.
+		 */
+		if (sr > requested_rate) {
+			return selected_rate;
+		}
+
+		/* Skip digits */
+		while (cursor[0] && !isspace(cursor[0]))
+			cursor++;
+
+		/* Skip spaces */
+		while (cursor[0] && isspace(cursor[0]))
+				cursor++;
+	}
+
+	/* Check for wrong values */
+	if (selected_rate < 0.1) {
+		return requested_rate;
+	} else {
+		return selected_rate;
+	}
+}
 
 static int sensor_set_rate (int s, float requested_rate)
 {
 	/* Set the rate at which a specific sensor should report events. See Android sensors.h for indication on sensor trigger modes */
 
 	char sysfs_path[PATH_MAX];
-	char avail_sysfs_path[PATH_MAX];
 	int dev_num		=	sensor[s].dev_num;
 	int i			=	sensor[s].catalog_index;
 	const char *prefix	=	sensor_catalog[i].tag;
 	int per_sensor_sampling_rate;
 	int per_device_sampling_rate;
-	char freqs_buf[100];
-	char* cursor;
 	int n;
 	float sr;
 	float group_max_sampling_rate;
@@ -820,48 +879,10 @@ static int sensor_set_rate (int s, float requested_rate)
 
 	/* Check if we have contraints on allowed sampling rates */
 
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
-		cursor = freqs_buf;
-
-		/* Decode allowed sampling rates string, ex: "10 20 50 100" */
-
-		/* While we're not at the end of the string */
-		while (*cursor && cursor[0]) {
-
-			/* Decode a single value */
-			sr = strtod(cursor, NULL);
-
-			/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
-			if (fabs(arb_sampling_rate - sr) <= 0.01) {
-				arb_sampling_rate = sr;
-				break;
-			}
-
-			/*
-			 * If we reached a higher value than the desired rate, adjust selected rate so it matches the first higher available one and
-			 * stop parsing - this makes the assumption that rates are sorted by increasing value in the allowed frequencies string.
-			 */
-			if (sr > arb_sampling_rate) {
-				arb_sampling_rate = sr;
-				break;
-			}
-
-			/* Skip digits */
-			while (cursor[0] && !isspace(cursor[0]))
-				cursor++;
-
-			/* Skip spaces */
-			while (cursor[0] && isspace(cursor[0]))
-					cursor++;
-		}
+	if (!(sensor_get_quirks(s) & QUIRK_HRTIMER)) {
+		arb_sampling_rate = select_closest_available_rate(s, arb_sampling_rate);
 	}
 
-	if (sensor[s].max_supported_rate &&
-		arb_sampling_rate > sensor[s].max_supported_rate) {
-		arb_sampling_rate = sensor[s].max_supported_rate;
-	}
 
 	/* Record the rate that was agreed upon with the sensor taken in isolation ; this avoid uncontrolled ripple effects between colocated sensor rates */
 	sensor[s].semi_arbitrated_rate = arb_sampling_rate;
@@ -896,7 +917,11 @@ static int sensor_set_rate (int s, float requested_rate)
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
-	sysfs_write_float(sysfs_path, arb_sampling_rate);
+	if (sensor_get_quirks(s) & QUIRK_HRTIMER) {
+		sysfs_write_float(sysfs_path, select_closest_available_rate(s, arb_sampling_rate));
+	} else {
+		sysfs_write_float(sysfs_path, arb_sampling_rate);
+	}
 
 	/* Check if it makes sense to use an alternate trigger */
 	tentative_switch_trigger(s);
@@ -1302,6 +1327,7 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 	int len, s;
 	int64_t ts;
 	struct iio_event_data event;
+	int64_t boot_to_rt_delta = get_timestamp_boot() - get_timestamp_realtime();
 
 	/* There's an incoming report on the specified iio device char dev fd */
 	if (fd == -1) {
@@ -1318,9 +1344,9 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 		return -1;
 	}
 
-	ts = event.timestamp;
+	ts = event.timestamp + boot_to_rt_delta;
 
-	ALOGV("Read event %lld from fd %d of iio device %d\n", event.id, fd, dev_num);
+	ALOGV("Read event %lld from fd %d of iio device %d - ts %lld\n", event.id, fd, dev_num, ts);
 
 	/* Map device report to sensor reports */
 	for (s = 0; s < MAX_SENSORS; s++)

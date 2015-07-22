@@ -286,7 +286,7 @@ static float sensor_get_min_freq (int s)
 }
 
 
-static float sensor_get_max_freq (int s)
+float sensor_get_max_freq (int s)
 {
 	float max_freq;
 
@@ -400,6 +400,9 @@ uint32_t sensor_get_quirks (int s)
 		if (strstr(quirks_buf, "hrtimer"))
 			sensor[s].quirks |= QUIRK_HRTIMER;
 
+		if (strstr(quirks_buf, "secondary"))
+			sensor[s].quirks |= QUIRK_SECONDARY;
+
 		sensor[s].quirks |= QUIRK_ALREADY_DECODED;
 	}
 
@@ -437,12 +440,13 @@ int sensor_get_mounting_matrix (int s, float mm[9])
 	char *tmp1 = mm_buf, *tmp2;
 
 	switch (sensor[s].type) {
-	case SENSOR_TYPE_ACCELEROMETER:
-	case SENSOR_TYPE_MAGNETIC_FIELD:
-	case SENSOR_TYPE_GYROSCOPE:
-		break;
-	default:
-		return 0;
+		case SENSOR_TYPE_ACCELEROMETER:
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+		case SENSOR_TYPE_GYROSCOPE:
+		case SENSOR_TYPE_PROXIMITY:
+			break;
+		default:
+			return 0;
 	}
 
 	sprintf(mm_path, MOUNTING_MATRIX_PATH, dev_num);
@@ -459,6 +463,18 @@ int sensor_get_mounting_matrix (int s, float mm[9])
 			return 0;
 		mm[i] = f;
 		tmp1 = tmp2 + 1;
+	}
+
+	/*
+	 * For proximity sensors, interpret a negative final z value as a hint that the sensor is back mounted. In that case, mark the sensor as secondary to
+	 * ensure that it gets listed after other sensors of same type that would be front-mounted. Most applications will only ask for the default proximity
+	 * sensor and it makes more sense to point to, say, the IR based proximity sensor rather than SAR based one if we have both, as on SoFIA LTE MRD boards.
+	 */
+	 if (sensor[s].type == SENSOR_TYPE_PROXIMITY) {
+		if (mm[8] < 0) {
+			sensor[s].quirks |= QUIRK_SECONDARY;
+		}
+		return 0;
 	}
 
 	ALOGI("%s: %f %f %f %f %f %f %f %f %f\n", __func__, mm[0], mm[1], mm[2], mm[3], mm[4], mm[5], mm[6], mm[7], mm[8]);
@@ -607,7 +623,8 @@ max_delay_t sensor_get_max_delay (int s)
 		case MODE_TRIGGER:
 			/* For interrupt-based devices, obey the list of supported sampling rates */
 			sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-			if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
+			if (!(sensor_get_quirks(s) & QUIRK_HRTIMER) &&
+					sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
 
 				min_supported_rate = 1000;
 				cursor = freqs_buf;
@@ -664,6 +681,7 @@ int32_t sensor_get_min_delay (int s)
 	float max_supported_rate = 0;
 	float max_from_prop = sensor_get_max_freq(s);
 	float sr;
+	int hrtimer_quirk_enabled = sensor_get_quirks(s) & QUIRK_HRTIMER;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
 	 * special : 0, unless otherwise noted
@@ -695,8 +713,8 @@ int32_t sensor_get_min_delay (int s)
 
 	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
 
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		if (sensor[s].mode == MODE_POLL) {
+	if (hrtimer_quirk_enabled || sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
+		if (hrtimer_quirk_enabled || (sensor[s].mode == MODE_POLL)) {
 			/* If we have max specified via a property use it */
 			if (max_from_prop != ANDROID_MAX_FREQ)
 				max_supported_rate = max_from_prop;
