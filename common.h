@@ -5,6 +5,8 @@
 #ifndef __COMMON_H__
 #define __COMMON_H__
 
+#include <string.h>
+
 #define MAX_DEVICES	9	/* Check iio devices 0 to MAX_DEVICES-1 */
 #define MAX_SENSORS	12	/* We can handle as many sensors */
 #define MAX_CHANNELS	4	/* We can handle as many channels per sensor */
