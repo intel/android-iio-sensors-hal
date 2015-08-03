@@ -10,6 +10,7 @@
 #include <pthread.h>
 #include <errno.h>
 #include <signal.h>
+#include <string.h>
 
 #include <hardware/sensors.h>
 #include <utils/Log.h>
