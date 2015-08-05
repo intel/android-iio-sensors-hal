@@ -34,11 +34,14 @@ static int poll_fd;					/* epoll instance covering all enabled sensors	*/
 
 static int active_poll_sensors;				/* Number of enabled poll-mode sensors		*/
 
+static int flush_event_fd[2];				/* Pipe used for flush signaling */
+
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
 static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 
+#define FLUSH_REPORT_TAG			900
 /*
  * We associate tags to each of our poll set entries. These tags have the following values:
  * - a iio device number if the fd is a iio character device fd
@@ -1635,6 +1638,12 @@ await_event:
 					/* Get report from acquisition thread */
 					integrate_thread_report(ev[i].data.u32);
 					break;
+				case FLUSH_REPORT_TAG:
+					{
+						char flush_event_content;
+						read(flush_event_fd[0], &flush_event_content, sizeof(flush_event_content));
+						break;
+					}
 
 				default:
 					ALOGW("Unexpected event source!\n");
@@ -1674,18 +1683,21 @@ int sensor_set_delay (int s, int64_t ns)
 
 int sensor_flush (int s)
 {
+	char flush_event_content = 0;
 	/* If one shot or not enabled return -EINVAL */
 	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE || !is_enabled(s))
 		return -EINVAL;
 
 	sensor[s].meta_data_pending++;
+	write(flush_event_fd[1], &flush_event_content, sizeof(flush_event_content));
 	return 0;
 }
 
 
 int allocate_control_data (void)
 {
-	int i;
+	int i, ret;
+	struct epoll_event ev = {0};
 
 	for (i=0; i<MAX_DEVICES; i++) {
 		device_fd[i] = -1;
@@ -1696,6 +1708,21 @@ int allocate_control_data (void)
 
 	if (poll_fd == -1) {
 		ALOGE("Can't create epoll instance for iio sensors!\n");
+		return -1;
+	}
+
+	ret = pipe(flush_event_fd);
+	if (ret) {
+		ALOGE("Cannot create flush_event_fd");
+		return -1;
+	}
+
+	ev.events = EPOLLIN;
+	ev.data.u32 = FLUSH_REPORT_TAG;
+	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, flush_event_fd[0] , &ev);
+	if (ret == -1) {
+		ALOGE("Failed adding %d to poll set (%s)\n",
+			flush_event_fd[0], strerror(errno));
 		return -1;
 	}
 
