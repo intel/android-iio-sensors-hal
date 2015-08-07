@@ -859,14 +859,9 @@ static int sensor_set_rate (int s, float requested_rate)
 		 * frequency and current sampling rate are different */
 		if (sysfs_read_float(hrtimer_sampling_path, &sr) != -1 && sr != cur_sampling_rate)
 			cur_sampling_rate = -1;
-	}
-
-	/* Check if we have contraints on allowed sampling rates */
-
-	if (!(sensor_get_quirks(s) & QUIRK_HRTIMER)) {
+	} else {
 		arb_sampling_rate = select_closest_available_rate(s, arb_sampling_rate);
 	}
-
 
 	/* Record the rate that was agreed upon with the sensor taken in isolation ; this avoid uncontrolled ripple effects between colocated sensor rates */
 	sensor[s].semi_arbitrated_rate = arb_sampling_rate;
@@ -901,7 +896,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
-	if (sensor_get_quirks(s) & QUIRK_HRTIMER) {
+	if (sensor[s].hrtimer_trigger_name[0] != '\0') {
 		sysfs_write_float(sysfs_path, select_closest_available_rate(s, arb_sampling_rate));
 	} else {
 		sysfs_write_float(sysfs_path, arb_sampling_rate);

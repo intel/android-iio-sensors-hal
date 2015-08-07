@@ -294,7 +294,7 @@ float sensor_get_max_range (int s)
 	return 0;
 }
 
-static float sensor_get_min_freq (int s)
+float sensor_get_min_freq (int s)
 {
 	/*
 	 * Check if a low cap has been specified for this sensor sampling rate.
@@ -681,8 +681,7 @@ max_delay_t sensor_get_max_delay (int s)
 	switch (sensor[s].mode) {
 		case MODE_TRIGGER:
 			/* For interrupt-based devices, obey the list of supported sampling rates */
-			if (!(sensor_get_quirks(s) & QUIRK_HRTIMER) &&
-					sensor[s].avail_freqs_count) {
+			if (sensor[s].avail_freqs_count) {
 				min_supported_rate = 1000;
 				for (i = 0; i < sensor[s].avail_freqs_count; i++) {
 					if (sensor[s].avail_freqs[i] < min_supported_rate)
@@ -712,13 +711,24 @@ max_delay_t sensor_get_max_delay (int s)
 	return (max_delay_t) (1000000.0 / min_supported_rate);
 }
 
+float sensor_get_max_static_freq(int s)
+{
+	float max_from_prop = sensor_get_max_freq(s);
+
+	/* If we have max specified via a property use it */
+	if (max_from_prop != ANDROID_MAX_FREQ) {
+		return max_from_prop;
+	} else {
+		/* The should rate */
+		return get_cdd_freq(s, 0);
+	}
+}
 
 int32_t sensor_get_min_delay (int s)
 {
 	int dev_num = sensor[s].dev_num, i;
 	float max_supported_rate = 0;
 	float max_from_prop = sensor_get_max_freq(s);
-	int hrtimer_quirk_enabled = sensor_get_quirks(s) & QUIRK_HRTIMER;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
 	 * special : 0, unless otherwise noted
@@ -748,8 +758,8 @@ int32_t sensor_get_min_delay (int s)
 		}
 	}
 
-	if (hrtimer_quirk_enabled || !sensor[s].avail_freqs_count) {
-		if (hrtimer_quirk_enabled || (sensor[s].mode == MODE_POLL)) {
+	if (!sensor[s].avail_freqs_count) {
+		if (sensor[s].mode == MODE_POLL) {
 			/* If we have max specified via a property use it */
 			if (max_from_prop != ANDROID_MAX_FREQ)
 				max_supported_rate = max_from_prop;

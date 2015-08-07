@@ -882,12 +882,16 @@ static void update_sensor_matching_trigger_name (char name[MAX_NAME_SIZE], int* 
 		}
 }
 
+extern float sensor_get_max_static_freq(int s);
+extern float sensor_get_min_freq (int s);
+
 static int create_hrtimer_trigger(int s, int trigger)
 {
 	struct stat dir_status;
 	char buf[MAX_NAME_SIZE];
 	char hrtimer_path[PATH_MAX];
 	char hrtimer_name[MAX_NAME_SIZE];
+	float min_supported_rate = 1, min_rate_cap, max_supported_rate;
 
 	snprintf(buf, MAX_NAME_SIZE, "hrtimer-%s-hr-dev%d", sensor[s].internal_name, sensor[s].dev_num);
 	snprintf(hrtimer_name, MAX_NAME_SIZE, "%s-hr-dev%d", sensor[s].internal_name, sensor[s].dev_num);
@@ -904,6 +908,27 @@ static int create_hrtimer_trigger(int s, int trigger)
 
 	strncpy (sensor[s].hrtimer_trigger_name, hrtimer_name, MAX_NAME_SIZE);
 	sensor[s].trigger_nr = trigger;
+
+	max_supported_rate = sensor_get_max_static_freq(s);
+
+	/* set 0 for wrong values */
+	if (max_supported_rate < 0.1) {
+		max_supported_rate = 0;
+	}
+
+	sensor[s].max_supported_rate = max_supported_rate;
+	sensor_desc[s].minDelay = max_supported_rate ? (int32_t) (1000000.0 / max_supported_rate) : 0;
+
+	/* Check if a minimum rate was specified for this sensor */
+	min_rate_cap = sensor_get_min_freq(s);
+
+	if (min_supported_rate < min_rate_cap) {
+		min_supported_rate = min_rate_cap;
+	}
+
+	sensor[s].min_supported_rate = min_supported_rate;
+	sensor_desc[s].maxDelay = (max_delay_t) (1000000.0 / min_supported_rate);
+
 	return 0;
 }
 
