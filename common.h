@@ -280,6 +280,12 @@ typedef struct
 	 */
 	float mounting_matrix[9];
 
+	/** Count of available frequencies */
+	int avail_freqs_count;
+
+	/** Array of available frequencies */
+	float* avail_freqs;
+
 	/*
 	 * Event counter - will be used to check if we have a significant sample for noisy sensors. We want to make sure we do not send any wrong
 	 * events before filtering kicks in. We can also use it for statistics.

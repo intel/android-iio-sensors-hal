@@ -11,6 +11,7 @@
 #include "enumeration.h"
 #include "description.h"
 #include "utils.h"
+#include "transform.h"
 
 #define IIO_SENSOR_HAL_VERSION	1
 
@@ -218,6 +219,60 @@ int sensor_get_version (__attribute__((unused)) int s)
 	return IIO_SENSOR_HAL_VERSION;
 }
 
+void sensor_update_max_range(int s)
+{
+	if (sensor[s].max_range)
+		return;
+
+	if (sensor[s].num_channels && sensor[s].channel[0].type_info.realbits) {
+		switch (sensor[s].type) {
+		case SENSOR_TYPE_MAGNETIC_FIELD:
+			sensor[s].max_range = (1ULL << sensor[s].channel[0].type_info.realbits) *
+					CONVERT_MICROTESLA_TO_GAUSS(sensor[s].resolution) +
+					(sensor[s].offset || sensor[s].channel[0].offset);
+			sensor[s].max_range = CONVERT_GAUSS_TO_MICROTESLA(sensor[s].max_range);
+			break;
+		case SENSOR_TYPE_PROXIMITY:
+			break;
+		default:
+			sensor[s].max_range =  (1ULL << sensor[s].channel[0].type_info.realbits) *
+				sensor[s].resolution + (sensor[s].offset || sensor[s].channel[0].offset);
+			break;
+		}
+	}
+
+	if (!sensor[s].max_range) {
+		/* Try returning a sensible value given the sensor type */
+		/* We should cap returned samples accordingly... */
+		switch (sensor[s].type) {
+		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
+			sensor[s].max_range = 50;
+			break;
+		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
+			sensor[s].max_range = 500;
+			break;
+		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
+			sensor[s].max_range = 360;
+			break;
+		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
+			sensor[s].max_range = 10;
+			break;
+		case SENSOR_TYPE_LIGHT:			/* SI lux units */
+			sensor[s].max_range = 50000;
+			break;
+		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
+		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
+		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
+		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
+		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
+			sensor[s].max_range = 100;
+			break;
+		}
+	}
+
+	if (sensor[s].max_range)
+		sensor_desc[s].maxRange = sensor[s].max_range;
+}
 
 float sensor_get_max_range (int s)
 {
@@ -236,39 +291,10 @@ float sensor_get_max_range (int s)
 		!sensor_get_fl_prop(s, "max_range", &sensor[s].max_range))
 			return sensor[s].max_range;
 
-	/* Try returning a sensible value given the sensor type */
-
-	/* We should cap returned samples accordingly... */
-
-	switch (sensor_desc[s].type) {
-		case SENSOR_TYPE_ACCELEROMETER:		/* m/s^2	*/
-			return 50;
-
-		case SENSOR_TYPE_MAGNETIC_FIELD:	/* micro-tesla	*/
-			return 500;
-
-		case SENSOR_TYPE_ORIENTATION:		/* degrees	*/
-			return 360;
-
-		case SENSOR_TYPE_GYROSCOPE:		/* radians/s	*/
-			return 10;
-
-		case SENSOR_TYPE_LIGHT:			/* SI lux units */
-			return 50000;
-
-		case SENSOR_TYPE_AMBIENT_TEMPERATURE:	/* °C		*/
-		case SENSOR_TYPE_TEMPERATURE:		/* °C		*/
-		case SENSOR_TYPE_PROXIMITY:		/* centimeters	*/
-		case SENSOR_TYPE_PRESSURE:		/* hecto-pascal */
-		case SENSOR_TYPE_RELATIVE_HUMIDITY:	/* percent */
-			return 100;
-
-		default:
-			return 0;
-		}
+	return 0;
 }
 
-static float sensor_get_min_freq (int s)
+float sensor_get_min_freq (int s)
 {
 	/*
 	 * Check if a low cap has been specified for this sensor sampling rate.
@@ -319,10 +345,18 @@ float sensor_get_resolution (int s)
 	}
 
 	if (sensor[s].resolution != 0.0 ||
-		!sensor_get_fl_prop(s, "resolution", &sensor[s].resolution))
-			return sensor[s].resolution;
+	    !sensor_get_fl_prop(s, "resolution", &sensor[s].resolution)) {
+		return sensor[s].resolution;
+	}
 
-	return 0;
+	sensor[s].resolution = sensor[s].scale;
+	if (!sensor[s].resolution && sensor[s].num_channels)
+		sensor[s].resolution = sensor[s].channel[0].scale;
+
+	if (sensor[s].type == SENSOR_TYPE_MAGNETIC_FIELD)
+		sensor[s].resolution = CONVERT_GAUSS_TO_MICROTESLA(sensor[s].resolution);
+
+	return sensor[s].resolution ? : 1;
 }
 
 
@@ -431,6 +465,35 @@ int sensor_get_order (int s, unsigned char map[MAX_CHANNELS])
 		map[i] = buf[i] - '0';
 
 	return 1;	/* OK to use modified ordering map */
+}
+
+int sensor_get_available_frequencies (int s)
+{
+	int dev_num = sensor[s].dev_num, err, i;
+	char avail_sysfs_path[PATH_MAX], freqs_buf[100];
+	char *p, *end;
+	float f;
+
+	sensor[s].avail_freqs_count = 0;
+	sensor[s].avail_freqs = 0;
+
+	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
+
+	err = sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf));
+	if (err < 0)
+		return 0;
+
+	for (p = freqs_buf, f = strtof(p, &end); p != end; p = end, f = strtof(p, &end))
+		sensor[s].avail_freqs_count++;
+
+	if (sensor[s].avail_freqs_count) {
+		sensor[s].avail_freqs = (float*) calloc(sensor[s].avail_freqs_count, sizeof(float));
+
+		for (p = freqs_buf, f = strtof(p, &end), i = 0; p != end; p = end, f = strtof(p, &end), i++)
+			sensor[s].avail_freqs[i] = f;
+	}
+
+	return 0;
 }
 
 int sensor_get_mounting_matrix (int s, float mm[9])
@@ -585,13 +648,9 @@ static int get_cdd_freq (int s, int must)
  */
 max_delay_t sensor_get_max_delay (int s)
 {
-	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor[s].dev_num;
-	char freqs_buf[100];
-	char* cursor;
+	int dev_num = sensor[s].dev_num, i;
 	float min_supported_rate;
 	float rate_cap;
-	float sr;
 
 	/*
 	 * continuous, on-change: maximum sampling period allowed in microseconds.
@@ -622,33 +681,14 @@ max_delay_t sensor_get_max_delay (int s)
 	switch (sensor[s].mode) {
 		case MODE_TRIGGER:
 			/* For interrupt-based devices, obey the list of supported sampling rates */
-			sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-			if (!(sensor_get_quirks(s) & QUIRK_HRTIMER) &&
-					sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) > 0) {
-
+			if (sensor[s].avail_freqs_count) {
 				min_supported_rate = 1000;
-				cursor = freqs_buf;
-
-				while (*cursor && cursor[0]) {
-
-					/* Decode a single value */
-					sr = strtod(cursor, NULL);
-
-					if (sr < min_supported_rate)
-						min_supported_rate = sr;
-
-					/* Skip digits */
-					while (cursor[0] && !isspace(cursor[0]))
-						cursor++;
-
-					/* Skip spaces */
-					while (cursor[0] && isspace(cursor[0]))
-						cursor++;
+				for (i = 0; i < sensor[s].avail_freqs_count; i++) {
+					if (sensor[s].avail_freqs[i] < min_supported_rate)
+						min_supported_rate = sensor[s].avail_freqs[i];
 				}
-
 				break;
 			}
-
 			/* Fall through ... */
 
 		default:
@@ -671,17 +711,24 @@ max_delay_t sensor_get_max_delay (int s)
 	return (max_delay_t) (1000000.0 / min_supported_rate);
 }
 
+float sensor_get_max_static_freq(int s)
+{
+	float max_from_prop = sensor_get_max_freq(s);
+
+	/* If we have max specified via a property use it */
+	if (max_from_prop != ANDROID_MAX_FREQ) {
+		return max_from_prop;
+	} else {
+		/* The should rate */
+		return get_cdd_freq(s, 0);
+	}
+}
 
 int32_t sensor_get_min_delay (int s)
 {
-	char avail_sysfs_path[PATH_MAX];
-	int dev_num	= sensor[s].dev_num;
-	char freqs_buf[100];
-	char* cursor;
+	int dev_num = sensor[s].dev_num, i;
 	float max_supported_rate = 0;
 	float max_from_prop = sensor_get_max_freq(s);
-	float sr;
-	int hrtimer_quirk_enabled = sensor_get_quirks(s) & QUIRK_HRTIMER;
 
 	/* continuous, on change: minimum sampling period allowed in microseconds.
 	 * special : 0, unless otherwise noted
@@ -711,10 +758,8 @@ int32_t sensor_get_min_delay (int s)
 		}
 	}
 
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-
-	if (hrtimer_quirk_enabled || sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) < 0) {
-		if (hrtimer_quirk_enabled || (sensor[s].mode == MODE_POLL)) {
+	if (!sensor[s].avail_freqs_count) {
+		if (sensor[s].mode == MODE_POLL) {
 			/* If we have max specified via a property use it */
 			if (max_from_prop != ANDROID_MAX_FREQ)
 				max_supported_rate = max_from_prop;
@@ -723,22 +768,11 @@ int32_t sensor_get_min_delay (int s)
 				max_supported_rate = get_cdd_freq(s, 0);
 		}
 	} else {
-		cursor = freqs_buf;
-		while (*cursor && cursor[0]) {
-
-			/* Decode a single value */
-			sr = strtod(cursor, NULL);
-
-			if (sr > max_supported_rate && sr <= max_from_prop)
-				max_supported_rate = sr;
-
-			/* Skip digits */
-			while (cursor[0] && !isspace(cursor[0]))
-				cursor++;
-
-			/* Skip spaces */
-			while (cursor[0] && isspace(cursor[0]))
-				cursor++;
+		for (i = 0; i < sensor[s].avail_freqs_count; i++) {
+			if (sensor[s].avail_freqs[i] > max_supported_rate &&
+				sensor[s].avail_freqs[i] <= max_from_prop) {
+				max_supported_rate = sensor[s].avail_freqs[i];
+			}
 		}
 	}
 

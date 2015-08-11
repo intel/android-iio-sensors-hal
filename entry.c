@@ -25,7 +25,7 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 	if (init_count == 0 || handle < 0 || handle >= sensor_count)
 		return -EINVAL;
 
-	entry_ts = get_timestamp_boot();
+	entry_ts = get_timestamp_thread();
 
 	/*
 	 * The Intel sensor hub seems to have trouble enabling sensors before
@@ -49,7 +49,7 @@ static int activate (__attribute__((unused)) struct sensors_poll_device_t* dev,
 
 	ret = sensor_activate(handle, enabled, 0);
 
-	elapsed_ms = (int) ((get_timestamp_boot() - entry_ts) / 1000000);
+	elapsed_ms = (int) ((get_timestamp_thread() - entry_ts) / 1000000);
 
 	if (elapsed_ms) {
 		if (enabled)

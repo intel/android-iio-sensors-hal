@@ -36,11 +36,14 @@ static int poll_fd;					/* epoll instance covering all enabled sensors	*/
 
 static int active_poll_sensors;				/* Number of enabled poll-mode sensors		*/
 
+static int flush_event_fd[2];				/* Pipe used for flush signaling */
+
 /* We use pthread condition variables to get worker threads out of sleep */
 static pthread_condattr_t thread_cond_attr	[MAX_SENSORS];
 static pthread_cond_t     thread_release_cond	[MAX_SENSORS];
 static pthread_mutex_t    thread_release_mutex	[MAX_SENSORS];
 
+#define FLUSH_REPORT_TAG			900
 /*
  * We associate tags to each of our poll set entries. These tags have the following values:
  * - a iio device number if the fd is a iio character device fd
@@ -301,6 +304,8 @@ void build_sensor_report_maps (int dev_num)
 
 			known_channels++;
 		}
+
+		sensor_update_max_range(s);
 
 		/* Stop sampling - if we are recovering from hal restart */
                 enable_buffer(dev_num, 0);
@@ -733,29 +738,18 @@ extern float sensor_get_max_freq (int s);
 
 static float select_closest_available_rate(int s, float requested_rate)
 {
-	char avail_sysfs_path[PATH_MAX];
-	char freqs_buf[100];
-	char* cursor;
 	float sr;
+	int j;
 	float selected_rate = 0;
-	float max_rate_from_prop;
+	float max_rate_from_prop = sensor_get_max_freq(s);
 	int dev_num = sensor[s].dev_num;
 
-	sprintf(avail_sysfs_path, DEVICE_AVAIL_FREQ_PATH, dev_num);
-	if (sysfs_read_str(avail_sysfs_path, freqs_buf, sizeof(freqs_buf)) <= 0) {
+	if (!sensor[s].avail_freqs_count)
 		return requested_rate;
-	}
 
-	max_rate_from_prop = sensor_get_max_freq(s);
-	cursor = freqs_buf;
+	for (j = 0; j < sensor[s].avail_freqs_count; j++) {
 
-	/* Decode allowed sampling rates string, ex: "10 20 50 100" */
-
-	/* While we're not at the end of the string */
-	while (*cursor && cursor[0]) {
-
-		/* Decode a single value */
-		sr = strtod(cursor, NULL);
+		sr = sensor[s].avail_freqs[j];
 
 		/* If this matches the selected rate, we're happy.  Have some tolerance for rounding errors and avoid needless jumps to higher rates */
 		if ((fabs(requested_rate - sr) <= 0.01) && (sr <= max_rate_from_prop)) {
@@ -774,14 +768,6 @@ static float select_closest_available_rate(int s, float requested_rate)
 		if (sr > requested_rate) {
 			return selected_rate;
 		}
-
-		/* Skip digits */
-		while (cursor[0] && !isspace(cursor[0]))
-			cursor++;
-
-		/* Skip spaces */
-		while (cursor[0] && isspace(cursor[0]))
-				cursor++;
 	}
 
 	/* Check for wrong values */
@@ -875,14 +861,9 @@ static int sensor_set_rate (int s, float requested_rate)
 		 * frequency and current sampling rate are different */
 		if (sysfs_read_float(hrtimer_sampling_path, &sr) != -1 && sr != cur_sampling_rate)
 			cur_sampling_rate = -1;
-	}
-
-	/* Check if we have contraints on allowed sampling rates */
-
-	if (!(sensor_get_quirks(s) & QUIRK_HRTIMER)) {
+	} else {
 		arb_sampling_rate = select_closest_available_rate(s, arb_sampling_rate);
 	}
-
 
 	/* Record the rate that was agreed upon with the sensor taken in isolation ; this avoid uncontrolled ripple effects between colocated sensor rates */
 	sensor[s].semi_arbitrated_rate = arb_sampling_rate;
@@ -917,7 +898,7 @@ static int sensor_set_rate (int s, float requested_rate)
 	if (trig_sensors_per_dev[dev_num])
 		enable_buffer(dev_num, 0);
 
-	if (sensor_get_quirks(s) & QUIRK_HRTIMER) {
+	if (sensor[s].hrtimer_trigger_name[0] != '\0') {
 		sysfs_write_float(sysfs_path, select_closest_available_rate(s, arb_sampling_rate));
 	} else {
 		sysfs_write_float(sysfs_path, arb_sampling_rate);
@@ -1654,6 +1635,12 @@ await_event:
 					/* Get report from acquisition thread */
 					integrate_thread_report(ev[i].data.u32);
 					break;
+				case FLUSH_REPORT_TAG:
+					{
+						char flush_event_content;
+						read(flush_event_fd[0], &flush_event_content, sizeof(flush_event_content));
+						break;
+					}
 
 				default:
 					ALOGW("Unexpected event source!\n");
@@ -1693,18 +1680,21 @@ int sensor_set_delay (int s, int64_t ns)
 
 int sensor_flush (int s)
 {
+	char flush_event_content = 0;
 	/* If one shot or not enabled return -EINVAL */
 	if (sensor_desc[s].flags & SENSOR_FLAG_ONE_SHOT_MODE || !is_enabled(s))
 		return -EINVAL;
 
 	sensor[s].meta_data_pending++;
+	write(flush_event_fd[1], &flush_event_content, sizeof(flush_event_content));
 	return 0;
 }
 
 
 int allocate_control_data (void)
 {
-	int i;
+	int i, ret;
+	struct epoll_event ev = {0};
 
 	for (i=0; i<MAX_DEVICES; i++) {
 		device_fd[i] = -1;
@@ -1715,6 +1705,21 @@ int allocate_control_data (void)
 
 	if (poll_fd == -1) {
 		ALOGE("Can't create epoll instance for iio sensors!\n");
+		return -1;
+	}
+
+	ret = pipe(flush_event_fd);
+	if (ret) {
+		ALOGE("Cannot create flush_event_fd");
+		return -1;
+	}
+
+	ev.events = EPOLLIN;
+	ev.data.u32 = FLUSH_REPORT_TAG;
+	ret = epoll_ctl(poll_fd, EPOLL_CTL_ADD, flush_event_fd[0] , &ev);
+	if (ret == -1) {
+		ALOGE("Failed adding %d to poll set (%s)\n",
+			flush_event_fd[0], strerror(errno));
 		return -1;
 	}
 
