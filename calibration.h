@@ -39,7 +39,7 @@ gyro_cal_t;
 /* Accelerometer bias estimation and compensation */
 
 #define BUCKET_COUNT 3
-#define BUCKET_TOLERANCE 1 	/* Maximum monitoring distance from value of interest, in m/s² */
+#define BUCKET_TOLERANCE 2.5 	/* Maximum monitoring distance from value of interest, in m/s² */
 #define SLICES 100		    /* We currently have 3 buckets per axis, and 100 slices per bucket ; then we distribute incoming samples among slices */
 
 typedef struct
