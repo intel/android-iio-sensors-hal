@@ -1,6 +1,18 @@
 /*
- * Copyright (C) 2014-2015 Intel Corporation.
- */
+// Copyright (c) 2015 Intel Corporation
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//      http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+*/
 
 #ifndef __CALIBRATION_H__
 #define __CALIBRATION_H__
@@ -39,7 +51,7 @@ gyro_cal_t;
 /* Accelerometer bias estimation and compensation */
 
 #define BUCKET_COUNT 3
-#define BUCKET_TOLERANCE 1 	/* Maximum monitoring distance from value of interest, in m/s² */
+#define BUCKET_TOLERANCE 2.5 	/* Maximum monitoring distance from value of interest, in m/s² */
 #define SLICES 100		    /* We currently have 3 buckets per axis, and 100 slices per bucket ; then we distribute incoming samples among slices */
 
 typedef struct
