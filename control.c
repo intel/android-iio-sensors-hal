@@ -33,7 +33,9 @@
 #include "calibration.h"
 #include "description.h"
 #include "filtering.h"
+#ifndef __NO_EVENTS__
 #include <linux/iio/events.h>
+#endif
 #include <errno.h>
 
 /* Currently active sensors count, per device */
@@ -1107,6 +1109,9 @@ int sensor_activate (int s, int enabled, int from_virtual)
 			}
 
 			/* Note: poll-mode fds are not readable */
+#ifdef __NO_EVENTS__
+		}
+#else
 		} else if (sensor[s].mode == MODE_EVENT) {
 			event_fd = events_fd[dev_num];
 
@@ -1138,6 +1143,7 @@ int sensor_activate (int s, int enabled, int from_virtual)
 				device_fd[dev_num] = -1;
 			}
 		}
+#endif
 	}
 
 	/* Ensure that on-change sensors send at least one event after enable */
@@ -1315,6 +1321,7 @@ static int integrate_device_report_from_dev(int dev_num, int fd)
 	return 0;
 }
 
+#ifndef __NO_EVENTS__
 static int integrate_device_report_from_event(int dev_num, int fd)
 {
 	int len, s;
@@ -1353,6 +1360,7 @@ static int integrate_device_report_from_event(int dev_num, int fd)
 		}
 	return 0;
 }
+#endif
 
 static int integrate_device_report(int dev_num)
 {
@@ -1363,11 +1371,13 @@ static int integrate_device_report(int dev_num)
 		return -1;
 	}
 
+#ifndef __NO_EVENTS__
 	if (events_fd[dev_num] != -1) {
 		ret = integrate_device_report_from_event(dev_num, events_fd[dev_num]);
 		if (ret < 0)
 			return ret;
 	}
+#endif
 
 	if (device_fd[dev_num] != -1)
 		ret = integrate_device_report_from_dev(dev_num, device_fd[dev_num]);
@@ -1421,6 +1431,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 	data->type	= sensor_desc[s].type;	/* sensor_desc[s].type can differ from sensor[s].type ; internal types are remapped */
 	data->timestamp = sensor[s].report_ts;
 
+#ifndef __NO_EVENTS__
 	if (sensor[s].mode == MODE_EVENT) {
 		ALOGV("Reporting event\n");
 		/* Android requires events to return 1.0 */
@@ -1441,6 +1452,7 @@ static int propagate_sensor_report (int s, sensors_event_t *data)
 		data->data[2] = 0.0;
 		return 1;
 	}
+#endif
 
 	/* Convert the data into the expected Android-level format */
 

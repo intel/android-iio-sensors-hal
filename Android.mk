@@ -44,6 +44,9 @@ LOCAL_MODULE_OWNER := intel
 LOCAL_MODULE_RELATIVE_PATH := hw
 LOCAL_MODULE_TAGS := optional
 LOCAL_CFLAGS := -DLOG_TAG=\"Sensors\" -fvisibility=hidden
+ifeq ($(NO_IIO_EVENTS),true)
+LOCAL_CFLAGS += -D__NO_EVENTS__
+endif
 LOCAL_LDFLAGS := -Wl,--gc-sections
 LOCAL_SHARED_LIBRARIES := liblog libcutils libdl
 LOCAL_PRELINK_MODULE := false
