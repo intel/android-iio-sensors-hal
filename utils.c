@@ -20,7 +20,6 @@
 #include <utils/Log.h>
 #include <hardware/sensors.h>
 #include <utils/Atomic.h>
-#include <linux/android_alarm.h>
 
 #include "common.h"
 #include "utils.h"
