@@ -35,6 +35,7 @@
 #include "filtering.h"
 #ifndef __NO_EVENTS__
 #include <linux/iio/events.h>
+#include <linux/iio/types.h>
 #endif
 #include <errno.h>
 
